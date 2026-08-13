@@ -3,3 +3,6 @@ __pycache__/
 JWE3/ArcWaterFix/disabled-backups/
 JWE3/ArcWaterFix/cache-backups/
 JWE3/ArcWaterFix/analysis/shaders/
+Kena/WaterFlicker/.analysis/
+Kena/WaterFlicker/.local-backups/
+Kena/WaterFlicker/.local-tools/

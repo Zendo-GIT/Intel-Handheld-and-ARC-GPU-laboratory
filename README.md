@@ -1,18 +1,32 @@
-# Laboratoire d'optimisation MSI Claw
+# MSI Claw Game Optimization Lab
 
-Ce dépôt regroupe des diagnostics et des correctifs **spécifiques à un jeu** pour
-les MSI Claw. Il est indépendant de Clawptimize Dev et de ClawTweaks.
+This repository collects **game-specific** diagnostics and fixes for MSI Claw
+handhelds. It is independent from Clawptimize Dev and ClawTweaks.
 
-Principes du laboratoire :
+## Laboratory principles
 
-- ne jamais imposer un changement global de pilote pour corriger un seul jeu ;
-- préférer les correctifs locaux, réversibles et vérifiables ;
-- ne pas injecter de code dans les processus et ne pas contourner les anti-cheats ;
-- conserver une sauvegarde bit-identique et une restauration vérifiée lorsqu'un
-  correctif local doit modifier un fichier officiel ;
-- mesurer séparément les saccades réelles et celles provoquées par un Alt+Tab.
+- Never require a global driver rollback to repair one game.
+- Prefer local, reversible, and verifiable fixes.
+- Do not inject code into game processes or bypass anti-cheat systems.
+- Keep a bit-identical backup and verify restoration whenever a local fix must
+  modify an official file.
+- Separate genuine frame-time stutter from stutter caused by Alt+Tab.
+- Treat third-party wrappers and GPU spoofing as diagnostic instruments, not as
+  mandatory dependencies for public fixes.
+- Publish only fixes that have been reproduced and validated on the reference
+  hardware and exact game build.
 
-## Cas en cours
+## Cases
 
-- [Jurassic World Evolution 3 — eau sur Intel Arc](JWE3/ArcWaterFix/README.md) :
-  correctif validé et publication 1.0.0 préparée pour Nexus Mods et GitHub.
+- [Jurassic World Evolution 3 — Intel Arc water corruption](JWE3/ArcWaterFix/README.md):
+  fix validated; release 1.0.0 prepared for Nexus Mods and GitHub.
+- [Kena: Bridge of Spirits — Intel Arc water flicker](Kena/WaterFlicker/README.md):
+  Intel Arc defect confirmed; native DirectX 12 investigation in progress.
+
+## Anti-cheat policy
+
+The laboratory does not assume that a technique proven safe for one
+single-player title is safe for another game. DLL injection, runtime hooks,
+anti-cheat bypasses, and generic executable patches are not acceptable default
+solutions. Every public fix must document its exact scope, installation method,
+reversibility, and compatibility limitations.

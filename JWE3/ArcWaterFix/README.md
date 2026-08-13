@@ -1,48 +1,48 @@
-# Jurassic World Evolution 3 — correctif expérimental de l'eau Intel Arc
+# Jurassic World Evolution 3 — Experimental Intel Arc Water Fix
 
-## Périmètre confirmé
+## Confirmed scope
 
-- Machine de référence : MSI Claw 8 AI+ Polar Tempest, Core Ultra 7 258V,
-  Intel Arc 140V, 32 Go de RAM.
-- Jeu de référence : Jurassic World Evolution 3 `1.4.2.0`.
-- Pilote observé : Intel Graphics `32.0.101.8864`.
-- Symptôme : grandes zones polygonales ou carrées qui clignotent dans l'eau et
-  laissent apparaître le fond.
-- Le problème persiste sans XeSS, sans OptiScaler, sans fakenvapi et quel que
-  soit le réglage de qualité de l'eau.
+- Reference system: MSI Claw 8 AI+ Polar Tempest, Intel Core Ultra 7 258V,
+  Intel Arc 140V, 32 GB RAM.
+- Reference game: Jurassic World Evolution 3 `1.4.2.0`.
+- Observed driver: Intel Graphics `32.0.101.8864`.
+- Symptom: large polygonal or square regions flicker across the water and expose
+  the terrain underneath.
+- The issue persists without XeSS, OptiScaler, or fakenvapi and at every water
+  quality setting.
 
-## Résultat des premiers essais
+## Initial diagnostic results
 
-La piste du Content Pack Cobra est **rejetée** : les variantes `lod-static` et
-`flat-safe` n'ont provoqué aucun changement visible. Le pack expérimental est
-donc désactivé et `Content0\Environment\Water\Water.ovl` est resté intact.
+The Cobra Content Pack hypothesis was **rejected**: the `lod-static` and
+`flat-safe` variants produced no visible change. The experimental pack was
+therefore disabled, and `Content0\Environment\Water\Water.ovl` remained intact.
 
-L'archive de shaders du jeu contient des chemins distincts `Win64_SM60` et
-`Win64_SM65`, dont plusieurs shaders `Water_WaterPool` et
-`Water_WaterVolume`. La remise à zéro des caches DirectX 12 et Intel n'a eu
-aucun effet : cette piste est donc rejetée elle aussi.
+The game shader archive contains separate `Win64_SM60` and `Win64_SM65` paths,
+including several `Water_WaterPool` and `Water_WaterVolume` shaders. Resetting
+the DirectX 12 and Intel shader caches had no effect, so that hypothesis was
+also rejected.
 
-Le moteur conserve séparément le niveau matériel `f3d_mesh_shader_tier`. Dans
-`JWE3.exe` 1.4.2.0, le booléen interne qui autorise les mesh shaders est produit
-par `setge al` à l'offset fichier `0x1CB666D`. Le correctif actuel remplace cette
-instruction par `xor eax,eax; nop`, avant que le moteur ne crée ses interfaces
-et pipelines. Il force ainsi le chemin classique vertex shader/SM60 sans
-modifier le pilote Intel.
+The engine stores the `f3d_mesh_shader_tier` hardware tier separately. In
+`JWE3.exe` 1.4.2.0, the internal Boolean that enables mesh shaders is produced
+by `setge al` at file offset `0x1CB666D`. The current fix replaces that
+instruction with `xor eax,eax; nop` before the engine creates its interfaces
+and pipelines. This forces the classic vertex-shader/SM60 path without changing
+the Intel driver.
 
-## Correctif actuel : fallback mesh shader
+## Current fix: mesh-shader fallback
 
-### Résultat sur la machine de référence
+### Result on the reference system
 
-**Validé visuellement le 13 août 2026 : le fallback mesh shader supprime le
-glitch polygonal de l'eau sur l'Intel Arc 140V avec le pilote 32.0.101.8864.**
+**Visually validated on August 13, 2026: the mesh-shader fallback removes the
+polygonal water corruption on Intel Arc 140V with driver 32.0.101.8864.**
 
-Ce résultat confirme que le défaut se situe dans l'exécution du chemin mesh
-shader SM65 sur ce pilote, et non dans les matériaux de l'eau, XeSS, le cache de
-shaders ou les réglages de qualité. Le correctif reste installé sur la machine
-de test.
+This result confirms that the defect occurs while executing the SM65
+mesh-shader path on this driver. It is not caused by the water materials, XeSS,
+the shader cache, or the water quality settings. The fix remains installed on
+the reference system.
 
-Le gestionnaire refuse tout exécutable autre que la version testée, crée une
-sauvegarde vérifiée et permet une restauration complète :
+The manager rejects every executable other than the tested build, creates and
+verifies a backup, and supports complete restoration:
 
 ```powershell
 .\tools\Manage-JWE3MeshShaderFallback.ps1 -Action Status
@@ -50,30 +50,29 @@ sauvegarde vérifiée et permet une restauration complète :
 .\tools\Manage-JWE3MeshShaderFallback.ps1 -Action Uninstall
 ```
 
-- SHA-256 officiel :
+- Official SHA-256:
   `04FA75D84683DE73AAFF7C0D5C28D8FDC5B4E900E5968022995CF84039F0A79F`
-- SHA-256 corrigé :
+- Patched SHA-256:
   `3A172D9261075017974897A2F4EB89F16232B5E5D711B2EA77A524394BD7FAA8`
-- sauvegarde : `JWE3.exe.clawlab-original-1.4.2.0.bak`
+- Backup: `JWE3.exe.clawlab-original-1.4.2.0.bak`
 
-Une mise à jour du jeu ou une vérification Steam peut restaurer l'exécutable
-officiel. Le gestionnaire refusera alors de réutiliser les offsets de 1.4.2.0
-sur une autre version.
+A game update or Steam file verification may restore the official executable.
+The manager will then refuse to reuse the 1.4.2.0 offsets on an unknown build.
 
-## Variantes de diagnostic
+## Diagnostic variants
 
-Une seule variante doit être active à la fois.
+Only one variant may be active at a time.
 
-| Variante | Modification | But |
+| Variant | Change | Purpose |
 | --- | --- | --- |
-| `lod-static` | Retire les biais de mip et fige l'animation de la texture de détail de `gst_water` | Premier essai conservateur contre les blocs animés |
-| `dither-off` | Désactive le fondu tramé des matériaux de bassin | Isole un défaut de dither/roughness |
-| `opacity-safe` | Augmente l'opacité liée à la profondeur | Masque un éventuel calcul de profondeur instable |
-| `flat-safe` | Neutralise relief, parallaxe, distorsion et animation | Mode de secours visuellement plus plat |
+| `lod-static` | Removes mip biases and freezes the `gst_water` detail texture animation | Conservative first test for animated blocks |
+| `dither-off` | Disables dithered fading on pool materials | Isolates a dither or roughness defect |
+| `opacity-safe` | Increases depth-based opacity | Masks a potentially unstable depth calculation |
+| `flat-safe` | Neutralizes relief, parallax, distortion, and animation | Visually flatter fallback mode |
 
-## Gestion de l'ancien prototype FGM
+## Legacy FGM prototype management
 
-Depuis PowerShell, dans ce dossier :
+Run these commands from PowerShell in this directory:
 
 ```powershell
 .\tools\Manage-ArcWaterFix.ps1 -Action Status
@@ -83,16 +82,15 @@ Depuis PowerShell, dans ce dossier :
 .\tools\Manage-ArcWaterFix.ps1 -Action Uninstall
 ```
 
-Le gestionnaire refuse toute modification lorsque `JWE3.exe` est lancé. Une
-désinstallation déplace le module dans `disabled-backups` au lieu de le
-supprimer.
+The manager refuses all modifications while `JWE3.exe` is running. Uninstalling
+moves the module into `disabled-backups` instead of deleting it.
 
-## Test de recompilation des shaders
+## Shader recompilation test
 
-Le dossier DirectX `c68ef6650597d61f` a été attribué à JWE3 par sa table
-`app_id`, qui contient le chemin de `JWE3.exe`. Le cache Intel associé au même
-créneau d'exécution est également sauvegardé. Aucun de ces fichiers n'est un
-fichier officiel du jeu.
+The DirectX cache directory `c68ef6650597d61f` was attributed to JWE3 through
+its `app_id` table, which contains the path to `JWE3.exe`. The Intel cache from
+the same execution window is backed up as well. None of these files is an
+official game file.
 
 ```powershell
 .\tools\Manage-JWE3ShaderCache.ps1 -Action Status
@@ -100,50 +98,50 @@ fichier officiel du jeu.
 .\tools\Manage-JWE3ShaderCache.ps1 -Action Restore
 ```
 
-`Reset` déplace les caches dans `cache-backups` ; `Restore` remet la dernière
-sauvegarde et conserve séparément le cache créé pendant le test.
+`Reset` moves the caches into `cache-backups`. `Restore` restores the latest
+backup and preserves the cache created during the test separately.
 
-## Reconstruction
+## Rebuilding the diagnostic variants
 
-La reconstruction nécessite une copie de Cobra Tools compatible JWE3 et une
-extraction du `Water.ovl` officiel :
+Rebuilding requires a JWE3-compatible copy of Cobra Tools and an extraction of
+the official `Water.ovl`:
 
 ```powershell
 python .\tools\build_water_variants.py `
-  --cobra-tools "C:\chemin\vers\cobra-tools" `
-  --water-extracted "C:\chemin\vers\Water-extracted" `
+  --cobra-tools "C:\path\to\cobra-tools" `
+  --water-extracted "C:\path\to\Water-extracted" `
   --output .\build
 ```
 
-Les fichiers du jeu restent en lecture seule pendant la reconstruction.
+Official game files remain read-only during the rebuild.
 
-## Sécurité anti-cheat
+## Anti-cheat safety
 
-Ce prototype est un remplacement de ressources Cobra pour un jeu solo. Il
-n'injecte aucun hook, overlay ou DLL. Cela réduit fortement le risque par
-rapport à un injecteur générique, mais ne constitue pas une garantie universelle
-pour d'autres jeux. Le laboratoire n'emploiera pas ce mécanisme sur un titre
-multijoueur protégé sans validation spécifique de l'éditeur et de l'anti-cheat.
+The legacy prototype is a Cobra resource replacement for a single-player game.
+It injects no hook, overlay, or DLL. This greatly reduces risk compared with a
+generic injector, but it is not a universal guarantee for other games. The
+laboratory will not use this mechanism on a protected multiplayer title without
+specific validation from the publisher and anti-cheat vendor.
 
-Le fallback mesh shader est, lui aussi, strictement limité par nom, chemin et
-hash à JWE3 1.4.2.0. Il ne lance aucun injecteur, ne modifie pas la mémoire d'un
-processus et n'installe aucune DLL. La recherche locale n'a trouvé aucun binaire
-Easy Anti-Cheat, BattlEye, Vanguard, EQU8, XIGNCODE ou GameGuard dans le dossier
-du jeu. Un patch d'exécutable ne doit néanmoins jamais être transposé à un jeu
-protégé : le laboratoire le refusera par défaut.
+The mesh-shader fallback is also restricted by filename, path, and hash to JWE3
+1.4.2.0. It does not launch an injector, modify a running process, or install a
+DLL. The local audit found no Easy Anti-Cheat, BattlEye, Vanguard, EQU8,
+XIGNCODE, or GameGuard binary in the game directory. Nevertheless, an
+executable patch must never be transferred to a protected game; the laboratory
+rejects that use by default.
 
-## Publication publique 1.0.0
+## Public release 1.0.0
 
-Le dossier `Publish-Ready/JWE3-Intel-Arc-Water-Glitch-Fix` contient :
+`Publish-Ready/JWE3-Intel-Arc-Water-Glitch-Fix` contains:
 
-- `Nexus-Mods` : ZIP final, SHA-256, description prête à coller, checklist et
-  capture du bug avant correction ;
-- `GitHub-Repository` : dépôt public complet avec sources, README, licence MIT,
-  documentation technique, règles de contribution et sécurité, modèles
-  d'issues/PR et workflow GitHub Actions ;
-- `ARTIFACTS_SHA256.txt` : empreinte de chaque fichier livré.
+- `Nexus-Mods`: final ZIP, SHA-256, ready-to-paste description, upload
+  checklist, and a screenshot of the defect before the fix;
+- `GitHub-Repository`: complete public repository with source code, README, MIT
+  license, technical documentation, contribution and security policies,
+  issue/PR templates, and a GitHub Actions workflow;
+- `ARTIFACTS_SHA256.txt`: hash of every delivered file.
 
-La reconstruction reproductible s'effectue avec :
+Rebuild the publication bundle with:
 
 ```powershell
 .\tools\Build-PublicationBundle.ps1 -Version 1.0.0
