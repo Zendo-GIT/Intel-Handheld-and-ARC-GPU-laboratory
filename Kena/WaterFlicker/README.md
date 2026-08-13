@@ -2,9 +2,11 @@
 
 ## Status
 
-The issue is reproduced and the affected water material is confirmed, but a
-native DirectX 12 fix has **not** been validated yet. No experimental PAK in
-this directory should be published as a fix.
+The issue is reproduced and a native DirectX 12 fix has been validated on the
+reference Intel Arc system. The validated PAK disables only the subtle animated
+foam contribution on the affected Forest Path water material. The bright water
+flashes disappeared, while the tester could not identify a visible loss of
+foam during normal play.
 
 The required end result is a local, reversible fix that works on Intel Arc with
 native DirectX 12. OptiScaler, fakenvapi, GPU vendor spoofing, and a DirectX 11
@@ -16,6 +18,7 @@ fallback are not acceptable runtime dependencies.
 - Intel Core Ultra 7 258V / Intel Arc 140V
 - 32 GB RAM
 - Intel Graphics driver `32.0.101.8864`
+- Unreal Engine `4.27.2-60700+DEV` (reported by the crash context)
 - Steam App ID `1954200`, build `10345375`
 - `Kena-Win64-Shipping.exe` SHA-256:
   `2AA94A7C678EAD73186D776B0D668BB993A90F2359AE76BC816887899D3E034B`
@@ -121,36 +124,118 @@ and were removed after testing.
 | `Metallic`: `0.7 → 0` | Confirmed shallow-water instance | No change |
 | `RefractionScale`: `1.5 → 0` | Confirmed shallow-water instance | No change |
 | Static water colors replaced with magenta | Confirmed shallow-water instance | PAK loaded and material confirmed; flashing remained |
+| Parent changed from translucent `M_Water_UIWS` to cooked opaque `M_Water_UIWS_Opaque` | Confirmed shallow-water instance | No change |
+| `Wave_Intensity`, `Wave_Intensity_Secondary`, and `Ripples_Intensity` set to zero | Confirmed shallow-water instance | Water became visibly flatter; flashing remained unchanged |
+| Parent changed to cooked `M_SimpleUnlitTranslucent` | Confirmed shallow-water instance | Water became nearly black but remained translucent/reflective; the flash became darker at the same frequency |
+| `Foam_Opacity`: `0.2 → 0` | Confirmed shallow-water instance | **Flashing eliminated; no identifiable visual loss reported** |
 
 These results exclude the tested static highlight, SSR flag, specular,
-metallic, refraction-scale, and base-color parameters as individual causes.
+metallic, refraction-scale, base-color parameters, and the translucent pass as
+individual causes. The visibly flatter surface also proves that the animated
+normal overrides were active, while excluding their motion as the source of
+the flash.
 
-## Current diagnostic
+## Validated fix
 
-The active temporary probe switches only the confirmed material instance from
-the translucent parent `M_Water_UIWS` to Kena's already cooked opaque parent
-`M_Water_UIWS_Opaque`. Its purpose is to distinguish the translucent DirectX 12
-pass from lighting and reflection behavior shared with opaque water.
+The successful probe changes exactly one existing scalar parameter on the
+confirmed material instance:
 
-Expected interpretation:
+```text
+Asset: /Game/Mochi/MaterialLibrary/Water/UIWS/MI_WaterClean_Shallow
+Parameter: Foam_Opacity
+Original value: 0.2
+Fixed value: 0.0
+```
 
-- flash removed: investigate Kena's translucent surface-lighting or composition
-  pass;
-- flash remains: investigate the common lighting/reflection stage or Intel
-  driver execution beyond translucency.
+The parent water material references `MF_RadialFoam` and `T_Ocean_Foam`. This
+foam contribution is a subtle procedural overlay rather than necessarily
+recognizable white shoreline foam. Disabling its opacity eliminated the bright
+cyan/white flashes on the reference Intel Arc system. This establishes the
+foam branch as the trigger, but it does not by itself identify the exact Intel
+driver instruction or compiler defect inside that branch.
 
-The water is expected to look different during this diagnostic. The probe is
-not a release candidate.
+The fix preserves the water's color, transparency, normals, waves, refraction,
+specular settings, metallic setting, blend mode, parent, and compiled shader
+permutation. It requires no executable patch, GPU spoofing, DLL, hook, overlay,
+or configuration change.
+
+## Investigation history
+
+An attempted opaque-unlit probe changed the parent to the cooked
+`M_Emissive_Color` material, disabled the old static permutation, removed its
+static parameters, and changed the explicit blend-mode override to opaque. The
+title screen loaded, but entering the affected save triggered an Unreal
+assertion while loading the confirmed material instance:
+
+```text
+MaterialInstanceConstant /Game/Mochi/MaterialLibrary/Water/UIWS/MI_WaterClean_Shallow:
+Serial size mismatch: Got 14203, Expected 50657
+```
+
+The probe was removed immediately and `~Mods` was returned to an empty state.
+This was an asset-serialization failure, not a graphics-driver crash. Changing
+`bHasStaticPermutationResource` altered conditional deserialization without
+recooking the material's binary resource data, so that method must not be
+reused.
+
+A conservative follow-up preserved the original parent, static parameters,
+compiled permutation, export serial size (`51642` bytes), and complete
+conditional structure. Its only semantic change was the existing
+material-instance override from `BLEND_Translucent` to `BLEND_Opaque`. The save
+still crashed while the material was loading, this time with an access
+violation on a task-graph worker rather than a serial-size assertion. The probe
+was removed and `~Mods` was returned to an empty state.
+
+This confirms that changing the blend mode also requires a compatible cooked
+shader permutation. Parent, blend-mode, and static-permutation mutations are
+therefore outside the safe scope of UAssetGUI-only probes. Further work must
+either use safe parameters already compiled into the original material or
+identify the Intel/DX12 runtime path selected before the shader executes.
+
+Configuration probes are currently **inconclusive**, not negative results. A
+late-mounted PAK first changed
+`r.SeparateTranslucencyAfterDistortion=1` to `0`, then a second probe used both
+`r.DisableDistortion=1` and the unmistakable witness
+`r.ScreenPercentage=50`. The rendered scene did not become lower-resolution,
+which proves that `WindowsEngine.ini` inside `~Mods` was not consumed.
+
+The same two variables were then placed temporarily in the user's actual Saved
+`Engine.ini`, followed by a direct launch using `-ExecCmds`. Neither route
+produced the 50 percent resolution witness. The original local configuration
+was restored byte-for-byte after testing. Because the witness itself never
+appeared, these attempts do not establish whether disabling distortion affects
+the water flash. No configuration-only probe is currently installed.
+
+The final material override changes only the confirmed Forest Path instance's
+`Foam_Opacity` from `0.2` to `0`. In-game validation eliminated the flashing;
+no identifiable visual loss was reported.
+
+## Release artifacts
+
+- Public repository source: `github/`
+- Reproducible release builder: `github/tools/Build-Release.ps1`
+- Nexus Mods ZIP: `github/dist/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip`
+- Complete handoff bundle:
+  `Publish-Ready/Kena-Intel-Arc-Water-Flash-Fix/`
+
+Release ZIP SHA-256:
+
+```text
+997CD9C24BD9896B796867228543D8C037160E38FEEBA5C0FA6D99D4335BC832
+```
+
+The ZIP contains five entries, no nested archive, and no executable or DLL. Its
+embedded PAK is byte-identical to the file validated in game.
 
 ## PAK policy
 
-Experimental PAK files are installed only at:
+The validated PAK and temporary experimental PAK files are installed only at:
 
 ```text
 Kena/Content/Paks/~Mods/
 ```
 
-Every probe is reversible and contains only the minimum overridden assets. The
+Every PAK is reversible and contains only the minimum overridden assets. The
 official PAK is never edited. Disabled probes are retained under the ignored
 local analysis directory for audit and recovery.
 

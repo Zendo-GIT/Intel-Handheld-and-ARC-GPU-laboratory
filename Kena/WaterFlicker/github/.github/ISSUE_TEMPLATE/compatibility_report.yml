@@ -1,0 +1,43 @@
+name: Compatibility report
+description: Report a successful or unsuccessful test on another system.
+title: "[Compatibility]: "
+labels:
+  - compatibility
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device and GPU
+      placeholder: MSI Claw 8 AI+ / Intel Arc 140V
+    validations:
+      required: true
+  - type: input
+    id: driver
+    attributes:
+      label: Graphics-driver version
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Game storefront and build
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Flashing eliminated
+        - Flashing reduced
+        - No change
+        - Regression or crash
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Location and visual result
+      description: Note the water location, visible foam changes, and other mods.
+    validations:
+      required: true

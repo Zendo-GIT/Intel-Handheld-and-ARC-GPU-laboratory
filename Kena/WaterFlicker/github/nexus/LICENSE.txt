@@ -1,0 +1,14 @@
+The original scripts and documentation accompanying this mod are licensed
+under the MIT License, Copyright (c) 2026 ClawLab.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+the original software and associated documentation files to deal in them
+without restriction, subject to inclusion of this notice.
+
+THE ORIGINAL SOFTWARE AND DOCUMENTATION ARE PROVIDED "AS IS", WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED.
+
+This license does not grant rights to Kena: Bridge of Spirits or its assets.
+The packaged material override is supplied only as a game-specific,
+non-standalone interoperability modification. All game content remains the
+property of its respective owners.

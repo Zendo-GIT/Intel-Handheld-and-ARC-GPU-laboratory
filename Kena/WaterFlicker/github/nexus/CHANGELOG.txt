@@ -1,0 +1,10 @@
+KENA INTEL ARC WATER FLASH FIX - CHANGELOG
+===========================================
+
+1.0.0 - 2026-08-13
+
+- Disabled only Foam_Opacity on the confirmed Forest Path shallow-water
+  material instance.
+- Eliminated the reproduced cyan/white water flashes on the reference Intel
+  Arc 140V system.
+- Preserved native DirectX 12 operation without wrappers or vendor spoofing.

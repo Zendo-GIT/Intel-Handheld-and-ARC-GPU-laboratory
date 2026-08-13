@@ -1,7 +1,7 @@
 # MSI Claw Game Optimization Lab
 
 This repository collects **game-specific** diagnostics and fixes for MSI Claw
-handhelds. It is independent from Clawptimize Dev and ClawTweaks.
+handhelds. It is independent from Clawptimize and ClawTweaks.
 
 ## Laboratory principles
 
@@ -21,7 +21,8 @@ handhelds. It is independent from Clawptimize Dev and ClawTweaks.
 - [Jurassic World Evolution 3 — Intel Arc water corruption](JWE3/ArcWaterFix/README.md):
   fix validated; release 1.0.0 prepared for Nexus Mods and GitHub.
 - [Kena: Bridge of Spirits — Intel Arc water flicker](Kena/WaterFlicker/README.md):
-  Intel Arc defect confirmed; native DirectX 12 investigation in progress.
+  minimal native DirectX 12 material fix validated on Intel Arc; release 1.0.0
+  prepared for Nexus Mods and GitHub.
 
 ## Anti-cheat policy
 
