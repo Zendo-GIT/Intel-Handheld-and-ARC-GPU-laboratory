@@ -1,0 +1,13 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Graphics>
+			<DisplayCalibration preset="Default" default="true" location="local" version="2">
+				<SDRLog2InvGamma>0.000000</SDRLog2InvGamma>
+				<HDRLog2InvGamma>0.000000</HDRLog2InvGamma>
+				<HDRPaperWhiteNits>200.000000</HDRPaperWhiteNits>
+				<HDRMaxNits>1000.000000</HDRMaxNits>
+				<ManagedHDRBrightness>0.000000</ManagedHDRBrightness>
+			</DisplayCalibration>
+		</Graphics>
+	</xml_string>
+</XmlconfigRoot>

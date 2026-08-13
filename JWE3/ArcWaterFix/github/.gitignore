@@ -1,0 +1,20 @@
+dist/
+.staging-*/
+*.tmp
+*.bak
+*.log
+
+# Never commit proprietary game binaries or extracted game assets.
+JWE3.exe
+*.exe
+*.dll
+*.ovl
+*.arc
+*.dxil
+
+# Local tooling and editor files.
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,10 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Game_remote>
+			<ConsoleGraphics preset="Default" version="1">
+				<MotionBlurEnabled>false</MotionBlurEnabled>
+				<DepthOfFieldEnabled>false</DepthOfFieldEnabled>
+			</ConsoleGraphics>
+		</Game_remote>
+	</xml_string>
+</XmlconfigRoot>

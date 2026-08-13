@@ -1,0 +1,11 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Game_local>
+			<GUI preset="Default" location="local" version="2">
+				<Scale>1.000000</Scale>
+				<AutoScale>true</AutoScale>
+				<SafeFrame>0</SafeFrame>
+			</GUI>
+		</Game_local>
+	</xml_string>
+</XmlconfigRoot>

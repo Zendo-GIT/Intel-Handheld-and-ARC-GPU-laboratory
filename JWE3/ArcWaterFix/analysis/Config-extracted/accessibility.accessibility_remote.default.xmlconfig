@@ -1,0 +1,31 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Accessibility_remote>
+			<Accessibility preset="Default" version="1">
+				<HideSubtitlesInFullscreenUI>false</HideSubtitlesInFullscreenUI>
+				<SubtitlesSize>3</SubtitlesSize>
+				<SubtitlesBackgroundOpacity>80</SubtitlesBackgroundOpacity>
+				<SubtitlesColour>0</SubtitlesColour>
+				<SubtitlesUseSpeakerColors>false</SubtitlesUseSpeakerColors>
+				<ColourBlindnessUI>0</ColourBlindnessUI>
+				<ColourBlindness>0</ColourBlindness>
+				<HUDOpacity>80</HUDOpacity>
+				<HUDScale>80</HUDScale>
+				<HUDScaleConsole>100</HUDScaleConsole>
+				<CapitaliseText>false</CapitaliseText>
+				<CapitaliseTextSteamDeck>true</CapitaliseTextSteamDeck>
+				<ResetGameSpeedWhenCalamityOccurs>false</ResetGameSpeedWhenCalamityOccurs>
+				<EnableGlitchEffects>true</EnableGlitchEffects>
+				<ToggleShortcutMenu>true</ToggleShortcutMenu>
+				<DinosaurHighlight>false</DinosaurHighlight>
+				<DinosaurHighlightACUDistance>500</DinosaurHighlightACUDistance>
+				<DinosaurHighlightRangerDistance>220</DinosaurHighlightRangerDistance>
+				<DinosaurHighlightOpacity>100</DinosaurHighlightOpacity>
+				<DinosaurHighlightColourBlindness>0</DinosaurHighlightColourBlindness>
+				<GuestCamReticle>false</GuestCamReticle>
+				<HighlightOnHover>false</HighlightOnHover>
+				<HighlightOnHoverScenerySelection>true</HighlightOnHoverScenerySelection>
+			</Accessibility>
+		</Accessibility_remote>
+	</xml_string>
+</XmlconfigRoot>

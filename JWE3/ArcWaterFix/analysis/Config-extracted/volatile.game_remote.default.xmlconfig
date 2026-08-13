@@ -1,0 +1,10 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Game_remote>
+			<Volatile preset="Default" version="19">
+				<MuteCarRadio>false</MuteCarRadio>
+				<ShowSpeciesCompatibility>true</ShowSpeciesCompatibility>
+			</Volatile>
+		</Game_remote>
+	</xml_string>
+</XmlconfigRoot>

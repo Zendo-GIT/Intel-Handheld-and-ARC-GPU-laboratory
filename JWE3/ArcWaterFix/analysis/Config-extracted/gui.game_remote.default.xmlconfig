@@ -1,0 +1,26 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Game_remote>
+			<GUI preset="Default" version="7">
+				<LockCursorToWindow>false</LockCursorToWindow>
+				<LockCursorToFullscreen>true</LockCursorToFullscreen>
+				<ShowIconsOverBuildings>true</ShowIconsOverBuildings>
+				<ShowIconsOverDinosaurs>true</ShowIconsOverDinosaurs>
+				<ShowIconsOverVehicles>true</ShowIconsOverVehicles>
+				<DisableOnceOnlyHelp>false</DisableOnceOnlyHelp>
+				<IconFadeStart>200.000000</IconFadeStart>
+				<IconFadeDistance>400.000000</IconFadeDistance>
+				<ZoomIntoSelectedBuilding>true</ZoomIntoSelectedBuilding>
+				<ZoomIntoSelectedVehicle>true</ZoomIntoSelectedVehicle>
+				<ShowTerrainContoursDuringTerrainEdit>false</ShowTerrainContoursDuringTerrainEdit>
+				<ShowTerrainContoursDuringConstruction>false</ShowTerrainContoursDuringConstruction>
+				<MinimiseNotifications>false</MinimiseNotifications>
+				<ShowComplexityInPause>false</ShowComplexityInPause>
+				<ShowTaskTimerPreview>true</ShowTaskTimerPreview>
+				<ShowControlsPromptBox>true</ShowControlsPromptBox>
+				<AutosaveInterval>5</AutosaveInterval>
+				<NextGenPresentInterval>1</NextGenPresentInterval>
+			</GUI>
+		</Game_remote>
+	</xml_string>
+</XmlconfigRoot>

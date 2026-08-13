@@ -1,0 +1,18 @@
+<XmlconfigRoot game="Jurassic World Evolution 3">
+	<xml_string>
+		<Graphics>
+			<Terrain preset="Low" location="local" version="6">
+				<QualityOverride>Low</QualityOverride>
+				<FirstDistanceMultiplier>1.0</FirstDistanceMultiplier>
+				<IntervalBase>1.0</IntervalBase>
+				<MinIntervalMultiplier>2.5</MinIntervalMultiplier>
+				<MaxIntervalMultiplier>2.5</MaxIntervalMultiplier>
+				<LODTransitionRate>16</LODTransitionRate>
+				<HeightVariance>
+					<ReducedResolutionFactor>8</ReducedResolutionFactor>
+					<ReducedSamplingFactor>2</ReducedSamplingFactor>
+				</HeightVariance>
+			</Terrain>
+		</Graphics>
+	</xml_string>
+</XmlconfigRoot>
