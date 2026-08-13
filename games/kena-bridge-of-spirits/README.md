@@ -4,6 +4,14 @@ A minimal, reversible DirectX 12 compatibility fix for the bright cyan or
 white water flashes seen in *Kena: Bridge of Spirits* on affected Intel Arc
 graphics systems.
 
+## Download
+
+[Download Kena Intel Arc Water Flash Fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip)
+
+[Release notes and SHA-256 file](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0)
+
+The ZIP already contains the correct `Kena/Content/Paks/~Mods` installation structure.
+
 ## What it changes
 
 The diagnosed Forest Path water uses this material instance:

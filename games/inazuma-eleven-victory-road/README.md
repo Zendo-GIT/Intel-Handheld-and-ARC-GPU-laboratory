@@ -14,6 +14,14 @@ This fix modifies `nie.exe`. It is **not compatible with Easy Anti-Cheat or onli
 
 If you want normal EAC or online operation, run `UNINSTALL_RESTORE_ONLINE.bat` first and verify that `CHECK_STATUS.bat` reports `ORIGINAL` and `DISABLED`.
 
+## Download
+
+[Download IEVR Offline Stutter Fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip)
+
+[Release notes and SHA-256 file](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0)
+
+Downloading the package does not change the safety boundary: this remains an offline-only executable patch that is incompatible with EAC and online play.
+
 ## What the fix changes
 
 The supported game build performs a recurring Steam/EOS status query in a secondary game thread. ETW analysis showed that this thread repeatedly wakes the main game thread during the visible hitches. The patch changes four bytes in the identified routine so that the already-established valid state is used without repeating the synchronous Steam/EOS query.

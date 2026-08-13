@@ -7,6 +7,14 @@ corruption affecting *Jurassic World Evolution 3* on some Intel Arc drivers.
 ![Game](https://img.shields.io/badge/JWE3-1.4.2.0-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Download
+
+[Download JWE3 Intel Arc Water Glitch Fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/jwe3-v1.0.0/JWE3-Intel-Arc-Water-Glitch-Fix-1.0.0.zip)
+
+[Release notes and SHA-256 file](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/jwe3-v1.0.0)
+
+The installer rejects every executable other than the supported build documented below.
+
 ## What it fixes
 
 Affected systems can display large flashing squares, triangles and holes across

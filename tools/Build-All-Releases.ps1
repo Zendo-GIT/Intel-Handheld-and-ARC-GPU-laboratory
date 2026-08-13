@@ -37,6 +37,12 @@ $centralPackages = foreach ($result in $results) {
     }
     $destination = Join-Path $distRoot ([IO.Path]::GetFileName($sourceArchive))
     Copy-Item -LiteralPath $sourceArchive -Destination $destination -Force
+    $hash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    [IO.File]::WriteAllText(
+        "$destination.sha256.txt",
+        "$hash *$([IO.Path]::GetFileName($destination))`r`n",
+        [Text.Encoding]::ASCII
+    )
     Get-Item -LiteralPath $destination
 }
 
