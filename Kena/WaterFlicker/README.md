@@ -3,10 +3,12 @@
 ## Status
 
 The issue is reproduced and a native DirectX 12 fix has been validated on the
-reference Intel Arc system. The validated PAK disables only the subtle animated
-foam contribution on the affected Forest Path water material. The bright water
-flashes disappeared, while the tester could not identify a visible loss of
-foam during normal play.
+reference Intel Arc system. Disabling the subtle animated foam contribution on
+the affected Forest Path material eliminated the bright water flashes, while
+the tester could not identify a visible loss of foam during normal play. The
+release extends this same scalar correction to all 31 active-foam UIWS
+surface-water instances in the tested build; true waterfalls/cascades remain
+untouched.
 
 The required end result is a local, reversible fix that works on Intel Arc with
 native DirectX 12. OptiScaler, fakenvapi, GPU vendor spoofing, and a DirectX 11
@@ -206,9 +208,22 @@ was restored byte-for-byte after testing. Because the witness itself never
 appeared, these attempts do not establish whether disabling distortion affects
 the water flash. No configuration-only probe is currently installed.
 
-The final material override changes only the confirmed Forest Path instance's
-`Foam_Opacity` from `0.2` to `0`. In-game validation eliminated the flashing;
-no identifiable visual loss was reported.
+The successful material override changes only the confirmed Forest Path
+instance's `Foam_Opacity` from `0.2` to `0`. In-game validation eliminated the
+flashing; no identifiable visual loss was reported.
+
+The release PAK applies `Foam_Opacity -> 0` to every instance in the tested
+build that resolves to `M_Water_UIWS` or `M_River_UIWS` and has `Foam?`
+enabled: 15 water surfaces and 16 river surfaces. It contains no
+`M_Waterfall_*` asset. Eight UIWS instances with foam already disabled and two
+opaque instances without the parameter are left untouched. All 31 packaged
+assets passed a semantic JSON-to-binary-to-JSON round-trip; the only material
+data change per asset is the scalar value.
+
+The complete PAK then loaded the test save successfully, kept the confirmed
+Forest Path water free of flashes, and produced no obvious visual regression
+during the validation pass. A complete location-by-location playthrough has
+not been claimed.
 
 ## Release artifacts
 
@@ -221,11 +236,11 @@ no identifiable visual loss was reported.
 Release ZIP SHA-256:
 
 ```text
-997CD9C24BD9896B796867228543D8C037160E38FEEBA5C0FA6D99D4335BC832
+C9134327672EE28F4C6C9766B86E699B552D4FC715BA67A36027E6674B9B1C33
 ```
 
-The ZIP contains five entries, no nested archive, and no executable or DLL. Its
-embedded PAK is byte-identical to the file validated in game.
+The final ZIP is required to contain no nested archive and no executable or
+DLL. Its embedded PAK must match the verified 31-asset release PAK.
 
 ## PAK policy
 

@@ -31,9 +31,28 @@ Foam_Opacity: 0.2 -> 0.0
 ```
 
 The flashing disappeared on the reference Intel Arc system. The tester could
-not distinguish a visible foam loss in ordinary gameplay. The serialized
-material retained the same export size and import/export counts, and the PAK
-contains only the `.uasset` and `.uexp` for the confirmed instance.
+not distinguish a visible foam loss in ordinary gameplay.
+
+The final release extends the same scalar correction to every cooked UIWS
+surface instance in the tested build whose `Foam?` static switch is enabled.
+The scope was derived from all 41 material instances in
+`/Game/Mochi/MaterialLibrary/Water/UIWS`:
+
+- 31 active-foam surface instances are patched;
+- 8 instances already have `Foam? = false` and remain untouched;
+- 2 opaque instances do not expose `Foam_Opacity` and remain untouched;
+- waterfall/cascade materials use `M_Waterfall_*` outside the UIWS family and
+  are not packaged.
+
+All 31 reconstructed assets passed a JSON-to-binary-to-JSON semantic
+round-trip. For each asset, the only material-data change is
+`Foam_Opacity -> 0`; parent references, static switches, all other parameters,
+imports, exports, and compiled permutation data are preserved.
+
+The complete 31-asset PAK subsequently loaded the test save successfully. The
+confirmed Forest Path water remained free of flashes and no obvious visual
+regression was reported during that validation pass. This is not presented as
+a complete location-by-location playthrough.
 
 ## Interpretation
 
@@ -56,11 +75,11 @@ Mount point: ../../../
 PAK version: V11
 Compression: Zlib
 Path-hash seed: 02E20257
-Files: 2
+Files: 62 (31 .uasset + 31 .uexp)
 ```
 
 Release PAK SHA-256:
 
 ```text
-2273313BA261F3CCC7F9D80806C0D5A1991C6AF062700F26F28E1C389FE53398
+6B8A19873CB65EA6CA33BA8A50CC90581A32F62A6A24C20E03A245A150CAD072
 ```

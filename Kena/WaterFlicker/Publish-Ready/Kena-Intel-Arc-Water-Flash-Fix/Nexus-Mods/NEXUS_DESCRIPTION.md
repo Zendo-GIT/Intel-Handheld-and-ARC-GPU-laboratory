@@ -6,11 +6,16 @@ DirectX 12.
 
 ## What the mod does
 
-The mod changes one parameter on the confirmed Forest Path shallow-water
-material: `Foam_Opacity` is changed from `0.2` to `0.0`. This disables a subtle
-procedural foam contribution that triggered the flashing on the affected Intel
-rendering path. During validation, the flashes disappeared and no visible loss
-of foam could be identified in normal play.
+The confirmed Forest Path material was fixed by changing `Foam_Opacity` from
+`0.2` to `0.0`. This disables a subtle procedural foam contribution that
+triggered the flashing on the affected Intel rendering path. During
+validation, the flashes disappeared and no visible loss of foam could be
+identified in normal play.
+
+Version 1.0.0 applies the same correction to all 31 UIWS surface-water
+instances in the tested build that enable the `Foam?` branch. This includes
+still water and horizontally animated river/ocean surfaces. True waterfalls
+and cascades use a separate material family and are not touched.
 
 It does not change water color, transparency, waves, normals, refraction,
 lighting, or blend mode.
@@ -47,8 +52,13 @@ OptiScaler, fakenvapi, DirectX 11, and a driver rollback are not required.
 
 ## Current limits
 
-Version 1.0.0 targets the confirmed `MI_WaterClean_Shallow` material. Other
-water materials, game builds, GPUs, and drivers remain unverified.
+Flash elimination was visually validated on `MI_WaterClean_Shallow` in Forest
+Path. The other 30 packaged assets use the same active foam contribution and
+passed structural and semantic round-trip verification. The complete PAK also
+loaded the test save successfully, kept the confirmed water free of flashes,
+and produced no obvious visual regression during the validation pass. A
+complete location-by-location playthrough has not been performed. Other game
+builds, GPUs, and drivers remain unverified.
 
 ## Credits
 

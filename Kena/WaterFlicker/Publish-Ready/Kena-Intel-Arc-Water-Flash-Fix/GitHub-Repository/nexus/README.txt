@@ -7,8 +7,7 @@ WHAT IT FIXES
 This mod removes the bright cyan or white water flashes reproduced in Kena:
 Bridge of Spirits on an affected Intel Arc system running native DirectX 12.
 
-The fix changes only one existing value on the confirmed Forest Path shallow-
-water material:
+The successful Forest Path test changed one existing value:
 
   Foam_Opacity: 0.2 -> 0.0
 
@@ -16,6 +15,11 @@ The procedural foam layer is normally subtle. During validation, the flashes
 disappeared and no visible loss of foam could be identified in ordinary play.
 Water color, transparency, waves, normals, refraction, lighting, and blend mode
 are unchanged.
+
+The release applies the same Foam_Opacity -> 0 correction to all 31 UIWS
+surface-water instances in the tested build that enable the Foam? branch. This
+includes still water and horizontally animated river/ocean surfaces. True
+waterfalls and cascades use a separate material family and are not modified.
 
 VALIDATED SYSTEM
 
@@ -59,13 +63,17 @@ SAFETY
 
 COMPATIBILITY AND LIMITS
 
-Release 1.0.0 is validated only on the system and game build listed above. It
-targets MI_WaterClean_Shallow, the confirmed affected Forest Path material.
-Other water materials, builds, GPUs, and drivers remain unverified.
+Flash elimination was visually validated on MI_WaterClean_Shallow in Forest
+Path. The other 30 packaged assets use the same active foam contribution and
+passed structural and semantic round-trip verification. The complete PAK also
+loaded the test save successfully, kept the confirmed water free of flashes,
+and produced no obvious visual regression during the validation pass. A
+complete location-by-location playthrough has not been performed. Other game
+builds, GPUs, and drivers remain unverified.
 
 PAK SHA-256
 
-2273313BA261F3CCC7F9D80806C0D5A1991C6AF062700F26F28E1C389FE53398
+6B8A19873CB65EA6CA33BA8A50CC90581A32F62A6A24C20E03A245A150CAD072
 
 CREDITS
 

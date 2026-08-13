@@ -6,8 +6,7 @@ graphics systems.
 
 ## What it changes
 
-The fix overrides one confirmed material instance and changes one existing
-scalar parameter:
+The diagnosed Forest Path water uses this material instance:
 
 ```text
 /Game/Mochi/MaterialLibrary/Water/UIWS/MI_WaterClean_Shallow
@@ -19,6 +18,14 @@ Arc system, the flashes disappeared and the tester could not identify a visible
 loss of foam during normal play. Water color, transparency, waves, normals,
 refraction, lighting, blend mode, and the compiled shader permutation are not
 changed.
+
+The release applies the identical `Foam_Opacity -> 0` correction to all 31
+cooked UIWS surface-water instances in Steam build `10345375` that actually
+enable the `Foam?` branch: 15 `M_Water_UIWS` surfaces and 16
+`M_River_UIWS` surfaces. This includes still water and horizontally animated
+rivers or ocean surfaces. True waterfalls and cascades use the separate
+`M_Waterfall_*` family and are not included. See [Coverage](docs/COVERAGE.md)
+for the exact asset list.
 
 The result identifies the foam branch as the trigger. It does not claim to
 identify the exact faulty Intel driver instruction or compiler behavior.
@@ -71,17 +78,22 @@ The official game PAK is never modified.
 
 ## Compatibility limits
 
-Release 1.0.0 is validated only on the system and game build listed above. It
-targets the confirmed `MI_WaterClean_Shallow` material. Other water materials,
-game builds, GPUs, and drivers remain unverified.
+The defect and correction were visually validated on
+`MI_WaterClean_Shallow` in Forest Path. The other 30 assets use the same active
+foam contribution and have been structurally verified. The complete 31-asset
+PAK also loaded the test save successfully, kept the confirmed water free of
+flashes, and produced no obvious visual regression during the validation pass.
+A complete location-by-location playthrough has not been performed. Other game
+builds, GPUs, and drivers remain unverified.
 
 Intel also documents strong light flashes on the water surface in this game as
 a known graphics issue:
 
 <https://www.intel.com/content/www/us/en/support/articles/000095373/graphics.html>
 
-See [Technical details](docs/TECHNICAL_DETAILS.md) and
-[Compatibility](docs/COMPATIBILITY.md) for the evidence and current limits.
+See [Technical details](docs/TECHNICAL_DETAILS.md),
+[Coverage](docs/COVERAGE.md), and [Compatibility](docs/COMPATIBILITY.md) for
+the evidence and current limits.
 
 ## Building the Nexus release
 
@@ -91,7 +103,7 @@ On Windows PowerShell or PowerShell 7:
 .\tools\Build-Release.ps1 -Version 1.0.0
 ```
 
-The builder verifies the exact validated PAK, stages the required game-relative
+The builder verifies the exact release PAK, stages the required game-relative
 directory structure, generates a file manifest, and writes the ZIP and release
 SHA-256 under `dist`.
 

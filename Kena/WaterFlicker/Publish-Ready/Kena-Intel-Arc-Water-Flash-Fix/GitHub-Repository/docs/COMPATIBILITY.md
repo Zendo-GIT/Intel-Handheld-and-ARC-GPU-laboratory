@@ -7,7 +7,9 @@
 - Intel Graphics driver `32.0.101.8864`
 - *Kena: Bridge of Spirits* Steam build `10345375`
 - Native DirectX 12
-- Forest Path water using `MI_WaterClean_Shallow`
+- Flash elimination on Forest Path water using `MI_WaterClean_Shallow`
+- Structural and semantic verification of all 31 packaged UIWS instances
+- Successful save loading and confirmed-scene retest with the complete PAK
 
 ## Not required
 
@@ -24,19 +26,20 @@
 - Other Intel, AMD, or NVIDIA GPUs
 - Epic Games Store builds
 - Future game builds
-- Water surfaces that use another material instance
+- Location-by-location visual results for the additional 30 packaged instances
 
-The override is intentionally narrow. A future release should add another
-material only after reproducing the same defect and validating the same
-one-parameter correction on that material.
+The release covers every active-foam UIWS surface instance found in the tested
+Steam build. This includes still water and horizontally animated river/ocean
+surfaces. It intentionally excludes true waterfalls and cascades, which use a
+different material family and did not exhibit the reported flash.
 
 ## Conflicts
 
-Any mod that overrides either of these paths will conflict with this fix:
+Any mod overriding one of the 31 assets listed in [Coverage](COVERAGE.md) will
+conflict with that part of the fix. All affected paths share this prefix:
 
 ```text
-Kena/Content/Mochi/MaterialLibrary/Water/UIWS/MI_WaterClean_Shallow.uasset
-Kena/Content/Mochi/MaterialLibrary/Water/UIWS/MI_WaterClean_Shallow.uexp
+Kena/Content/Mochi/MaterialLibrary/Water/UIWS/
 ```
 
 Remove all older `ClawLabWater...Probe` PAK files. Load order cannot merge two
