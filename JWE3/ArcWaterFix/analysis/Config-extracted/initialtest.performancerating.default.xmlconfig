@@ -1,9 +1,0 @@
-<XmlconfigRoot game="Jurassic World Evolution 3">
-	<xml_string>
-		<PerformanceRating>
-			<InitialTest preset="Default" location="local" version="1">
-				<Performed>false</Performed>
-			</InitialTest>
-		</PerformanceRating>
-	</xml_string>
-</XmlconfigRoot>

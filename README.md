@@ -1,33 +1,80 @@
 # MSI Claw Game Optimization Lab
 
-This repository collects **game-specific** diagnostics and fixes for MSI Claw
-handhelds. It is independent from Clawptimize and ClawTweaks.
+Game-specific compatibility fixes and evidence-driven performance investigations for MSI Claw handhelds, with a focus on Intel Arc graphics.
+
+The laboratory publishes narrow, reversible fixes for defects that cannot be solved reliably through ordinary in-game settings. Every release documents the exact affected build, validation hardware, technical scope, restoration path, and anti-cheat boundary.
+
+## Published projects
+
+| Game | Problem | Fix | Status | Safety model |
+|---|---|---|---|---|
+| [Jurassic World Evolution 3](games/jurassic-world-evolution-3/README.md) | Polygonal, flashing, or missing lake water on Intel Arc | Forces the engine's existing VS/SM60 fallback instead of the broken mesh-shader path | 1.0.0 validated | Local executable patch; normal Steam launch; no anti-cheat interaction |
+| [Kena: Bridge of Spirits](games/kena-bridge-of-spirits/README.md) | Cyan/white flashing on calm and surface water under native DX12 | Data-only Unreal PAK neutralizing the active procedural foam contribution | 1.0.0 validated | Data-only PAK; no executable modification |
+| [INAZUMA ELEVEN: Victory Road](games/inazuma-eleven-victory-road/README.md) | Recurring one-to-two-second Steam/EOS synchronization hitch | Four-byte synchronization-path patch with automatic game-network isolation | 1.0.0 validated | **Offline only; incompatible with EAC and online play** |
+
+## Start here
+
+Open the folder for the game you want to fix and read its safety and compatibility sections before downloading or building anything. The projects deliberately use different mechanisms because the underlying defects are different.
+
+```text
+games/
+├── jurassic-world-evolution-3/
+├── kena-bridge-of-spirits/
+└── inazuma-eleven-victory-road/
+```
+
+Each game folder contains its own installer or PAK, technical documentation, changelog, compatibility matrix, and reproducible release builder.
 
 ## Laboratory principles
 
-- Never require a global driver rollback to repair one game.
-- Prefer local, reversible, and verifiable fixes.
-- Do not inject code into game processes or bypass anti-cheat systems.
-- Keep a bit-identical backup and verify restoration whenever a local fix must
-  modify an official file.
-- Separate genuine frame-time stutter from stutter caused by Alt+Tab.
-- Treat third-party wrappers and GPU spoofing as diagnostic instruments, not as
-  mandatory dependencies for public fixes.
-- Publish only fixes that have been reproduced and validated on the reference
-  hardware and exact game build.
-
-## Cases
-
-- [Jurassic World Evolution 3 — Intel Arc water corruption](JWE3/ArcWaterFix/README.md):
-  fix validated; release 1.0.0 prepared for Nexus Mods and GitHub.
-- [Kena: Bridge of Spirits — Intel Arc water flicker](Kena/WaterFlicker/README.md):
-  minimal native DirectX 12 material fix validated on Intel Arc; release 1.0.0
-  prepared for Nexus Mods and GitHub.
+- Diagnose before modifying.
+- Prefer the smallest game-local change that removes the reproduced defect.
+- Reject unknown builds instead of applying heuristic executable patches.
+- Preserve and verify vanilla recovery for every official file modification.
+- Separate periodic engine stalls, cold-start shader warm-up, Alt+Tab effects, and ordinary GPU saturation.
+- Never require a global graphics-driver rollback for one game when a verified local fix is possible.
+- Never bundle proprietary game executables, unmodified game assets, trainers, injectors, launchers, or anti-cheat bypasses.
+- Describe observed results without claiming compatibility that was not tested.
 
 ## Anti-cheat policy
 
-The laboratory does not assume that a technique proven safe for one
-single-player title is safe for another game. DLL injection, runtime hooks,
-anti-cheat bypasses, and generic executable patches are not acceptable default
-solutions. Every public fix must document its exact scope, installation method,
-reversibility, and compatibility limitations.
+Fixes for games with anti-cheat receive a separate safety assessment. A technique that is acceptable for an unprotected single-player title is not automatically acceptable for a protected game.
+
+The Inazuma patch is an explicit offline-only research result. It modifies the protected executable, cannot be called EAC-compatible, and must be removed before normal EAC or online use. Its installer blocks game-directory executables before patching and restores a verified vanilla executable before returning their network access. The project does not provide or link to an anti-cheat bypass.
+
+See [Anti-cheat policy](docs/ANTI_CHEAT_POLICY.md) and each game's own documentation.
+
+## Reference platform
+
+Primary real-hardware validation was performed on:
+
+- MSI Claw 8 AI+ Polar Tempest
+- Intel Core Ultra 7 258V
+- Intel Arc 140V
+- 32 GB RAM
+- Intel Graphics driver `32.0.101.8864`
+- Windows 11
+
+This reference does not imply that every fix is exclusive to that model. It defines what was actually tested.
+
+## Repository versus releases
+
+The repository contains readable source, documentation, and reproducible release tooling. End users should normally download the game-specific ZIP from GitHub Releases or Nexus Mods rather than clone the entire laboratory.
+
+Run the shared release builder from the repository root to reproduce all current packages:
+
+```powershell
+.\tools\Build-All-Releases.ps1
+```
+
+Generated archives are written inside each game's ignored `dist` directory and collected in the root `dist` directory with a shared checksum manifest. See [Release guide](docs/RELEASES.md).
+
+## Independence
+
+This laboratory is self-contained and does not modify external system-profile or optimization applications. Any global power, display, or driver setting mentioned in a game guide is a manually validated companion profile, not a dependency on another project.
+
+## Credits
+
+ClawLab — diagnosis, controlled testing, real-hardware validation, implementation, and packaging. Developed collaboratively with OpenAI Codex assistance.
+
+This project is not affiliated with or endorsed by the game publishers, Valve, Epic Games, MSI, Intel, Microsoft, or Nexus Mods. Game names and trademarks belong to their respective owners.

@@ -1,1 +1,0 @@
-18e38608f4d27cc0071e2abfa2a08af9600f670987ab4398aa4f75218995fbb9 *JWE3-Intel-Arc-Water-Glitch-Fix-1.0.0.zip

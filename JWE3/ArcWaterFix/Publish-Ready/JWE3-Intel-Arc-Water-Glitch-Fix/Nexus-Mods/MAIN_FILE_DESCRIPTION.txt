@@ -1,8 +1,0 @@
-JWE3 Intel Arc Water Glitch Fix 1.0.0
-
-Manual installer, uninstaller and readable PowerShell source. Supports only
-JWE3.exe 1.4.2.0 with SHA-256
-04FA75D84683DE73AAFF7C0D5C28D8FDC5B4E900E5968022995CF84039F0A79F.
-
-Extract the ZIP, close the game, then run INSTALL_FIX.bat. Do not install with
-Vortex. No game files are included.

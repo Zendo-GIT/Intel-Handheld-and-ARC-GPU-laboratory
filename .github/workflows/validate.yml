@@ -1,0 +1,32 @@
+name: Validate and build releases
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate public source tree
+        shell: pwsh
+        run: ./tools/Validate-Repository.ps1
+
+      - name: Build all release archives
+        shell: pwsh
+        run: ./tools/Build-All-Releases.ps1 -SkipValidation
+
+      - name: Upload reproducible packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-fix-packages
+          path: dist/*
+          if-no-files-found: error

@@ -1,7 +1,0 @@
-<XmlconfigRoot game="Jurassic World Evolution 3">
-	<xml_string>
-		<Controls_remote>
-			<ControlBindings preset="Default" version="4" />
-		</Controls_remote>
-	</xml_string>
-</XmlconfigRoot>

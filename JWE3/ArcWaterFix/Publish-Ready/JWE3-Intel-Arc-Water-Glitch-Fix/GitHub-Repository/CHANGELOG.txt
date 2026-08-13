@@ -1,9 +1,0 @@
-1.0.0 - 2026-08-13
-
-- Initial public release.
-- Forces JWE3 1.4.2.0 to use its classic VS/SM60 rendering path.
-- Fix validated on Intel Arc 140V with graphics driver 32.0.101.8864.
-- Automatic Steam-library detection.
-- Exact-version and byte verification before patching.
-- Verified original backup and one-click uninstall.
-- No DLL injection or runtime memory modification.

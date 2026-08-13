@@ -1,9 +1,0 @@
-<XmlconfigRoot game="Jurassic World Evolution 3">
-	<xml_string>
-		<Init>
-			<Config preset="Default" location="local" version="1">
-				<MinGPUMBs>0</MinGPUMBs>
-			</Config>
-		</Init>
-	</xml_string>
-</XmlconfigRoot>

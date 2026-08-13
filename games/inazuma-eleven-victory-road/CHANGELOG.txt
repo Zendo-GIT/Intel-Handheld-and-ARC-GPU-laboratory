@@ -1,0 +1,7 @@
+VERSION 1.0.0 - 2026-08-14
+
+- Initial public offline-only release.
+- Exact four-byte fix for Steam build 24370575.
+- Verified vanilla backup and restoration.
+- Automatic game-directory firewall isolation and network restoration.
+- No game executable, game data, EAC bypass, or bypass link included.

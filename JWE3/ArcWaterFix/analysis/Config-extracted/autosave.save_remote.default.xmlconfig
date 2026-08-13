@@ -1,7 +1,0 @@
-<XmlconfigRoot game="Jurassic World Evolution 3">
-	<xml_string>
-		<Save_remote>
-			<Autosave preset="Default" version="1" />
-		</Save_remote>
-	</xml_string>
-</XmlconfigRoot>

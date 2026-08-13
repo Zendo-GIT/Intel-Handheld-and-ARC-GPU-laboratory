@@ -1,0 +1,68 @@
+name: Game fix bug report
+description: Report a problem with an existing fix.
+title: "[Game] "
+labels: [bug]
+body:
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Jurassic World Evolution 3
+        - Kena: Bridge of Spirits
+        - INAZUMA ELEVEN: Victory Road
+    validations:
+      required: true
+  - type: input
+    id: fix_version
+    attributes:
+      label: Fix version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: game_build
+    attributes:
+      label: Game build or executable SHA-256
+      description: Include the Steam build ID or the hash reported by the status tool.
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: GPU and device
+      placeholder: MSI Claw 8 AI+, Intel Arc 140V
+    validations:
+      required: true
+  - type: input
+    id: driver
+    attributes:
+      label: Intel graphics driver
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Explain the visible symptom, when it occurs, and whether uninstalling restores vanilla behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |-
+        1. Start the game...
+        2. Load...
+        3. Observe...
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I did not use an offline-only executable patch with anti-cheat or online play.
+          required: true
+        - label: I removed unrelated injectors, overlays, and modifications before reproducing the problem.
+          required: true

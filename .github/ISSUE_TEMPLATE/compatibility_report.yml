@@ -1,0 +1,46 @@
+name: Compatibility report
+description: Share a confirmed working or non-working hardware, driver, and game-build combination.
+title: "[Compatibility] "
+labels: [compatibility]
+body:
+  - type: input
+    id: project
+    attributes:
+      label: Game and fix version
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Game build or executable SHA-256
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device, CPU, and GPU
+    validations:
+      required: true
+  - type: input
+    id: driver
+    attributes:
+      label: Graphics driver
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Working
+        - Partially working
+        - Not working
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Observations and evidence
+      description: Include exact settings, reproduction scene, and frametime or visual evidence when available.
+    validations:
+      required: true
