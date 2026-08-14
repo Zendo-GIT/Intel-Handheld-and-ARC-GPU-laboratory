@@ -25,8 +25,12 @@ $requiredFiles = @(
     'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
     'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_30_120_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat'
 )
@@ -54,7 +58,7 @@ if ($forbiddenFiles.Count -gt 0) {
     throw "Forbidden binary, trace, backup, shader dump, or archive found in the public tree:`n$($forbiddenFiles.FullName -join "`n")"
 }
 
-$textExtensions = @('.md', '.txt', '.ps1', '.bat', '.cmd', '.yml', '.yaml', '.json')
+$textExtensions = @('.md', '.txt', '.ps1', '.bat', '.cmd', '.vbs', '.yml', '.yaml', '.json')
 foreach ($file in @($publicFiles | Where-Object { $_.Extension.ToLowerInvariant() -in $textExtensions })) {
     $text = Get-Content -LiteralPath $file.FullName -Raw
     if ($text -match '(?i)https?://[^\s)>]*(wemod|anti.?cheat.?bypass)') {
@@ -116,12 +120,29 @@ $requiredVrrValues = @(
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
     'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
-    'ctlSetIntelArcSyncProfile'
+    '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
+    '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
+    'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    'ctlSetIntelArcSyncProfile',
+    'Get-AuthenticodeSignature',
+    'Start-ManagedIntelGraphicsSoftware',
+    "'Intel' + [char]0x00AE + ' Graphics Software'"
 )
 foreach ($value in $requiredVrrValues) {
     if ($vrrScript -notmatch [regex]::Escape($value)) {
         throw "VRR utility no longer contains required integrity value: $value"
+    }
+}
+
+$vrrLauncher = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs') -Raw
+foreach ($value in @(
+    '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe',
+    'shell.Run(command, 0, True)',
+    '-Action ApplyStartup'
+)) {
+    if ($vrrLauncher -notmatch [regex]::Escape($value)) {
+        throw "VRR windowless launcher no longer contains required value: $value"
     }
 }
 
@@ -147,5 +168,5 @@ if ($nestedGitDirectories.Count -gt 0) {
     KenaPakSha256 = $actualKenaPakHash
     InazumaKnownHashes = $requiredInazumaHashes.Count
     DetroitIntegrityValues = $requiredDetroitValues.Count
-    VrrIntegrityValues = $requiredVrrValues.Count
+    VrrIntegrityValues = $requiredVrrValues.Count + 3
 }

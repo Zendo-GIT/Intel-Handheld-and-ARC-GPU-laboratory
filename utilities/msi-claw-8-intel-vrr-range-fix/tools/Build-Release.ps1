@@ -18,8 +18,12 @@ $hashPath = Join-Path $distRoot 'RELEASE_SHA256.txt'
 
 $releaseFiles = @(
     'MSI-Claw-VRR-Fix.ps1',
+    'ClawLab-VRR-Startup.vbs',
     'INSTALL_48_120_VRR.bat',
     'INSTALL_EXPERIMENTAL_30_120_VRR.bat',
+    'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
+    'Collect-Claw-Display-Diagnostics.ps1',
     'RESTORE_ORIGINAL_VRR.bat',
     'CHECK_STATUS.bat',
     'EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat',
@@ -45,12 +49,30 @@ $requiredIntegrityValues = @(
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
     'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
-    'ctlSetIntelArcSyncProfile'
+    '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
+    '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
+    'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    'ctlSetIntelArcSyncProfile',
+    'Get-AuthenticodeSignature',
+    'Start-ManagedIntelGraphicsSoftware',
+    "'Intel' + [char]0x00AE + ' Graphics Software'"
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
         throw "Required integrity value is missing from the release source: $value"
+    }
+}
+
+$launcherPath = Join-Path $projectRoot 'ClawLab-VRR-Startup.vbs'
+$launcherText = Get-Content -LiteralPath $launcherPath -Raw
+foreach ($value in @(
+    '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe',
+    'shell.Run(command, 0, True)',
+    '-Action ApplyStartup'
+)) {
+    if ($launcherText -notmatch [regex]::Escape($value)) {
+        throw "Windowless launcher no longer contains required value: $value"
     }
 }
 

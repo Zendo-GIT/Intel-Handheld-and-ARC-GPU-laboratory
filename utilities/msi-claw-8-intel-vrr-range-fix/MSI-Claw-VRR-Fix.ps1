@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]
+    [ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]
     [string]$Action = 'Status'
 )
 
@@ -14,18 +14,30 @@ $targetPanelName = 'PN8007QB1-2'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
+$experimentalMaximumHz = 144.0
 $profileExcellent = 2
 $profileCustom = 7
 $stateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $backupPath = Join-Path $stateRoot 'original-profile.json'
 $experimentalStatePath = Join-Path $stateRoot 'experimental-edid.json'
 $installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
+$startupLauncherName = 'ClawLab-VRR-Startup.vbs'
+$installedLauncherPath = Join-Path $stateRoot $startupLauncherName
 $startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
 $startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
+$intelStartupBackupPath = Join-Path $stateRoot 'intel-graphics-startup.json'
+$intelStartupRegistryPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
+$intelStartupValueName = 'Intel' + [char]0x00AE + ' Graphics Software'
 $validatedPhysicalEdidSha256 = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
-$validatedExperimentalEdidSha256 = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
-$validatedExperimentalBlock0Sha256 = '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698'
-$validatedExperimentalBlock1Sha256 = 'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743'
+$validated30_120EdidSha256 = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
+$validated30_120Block0Sha256 = '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698'
+$validated30_120Block1Sha256 = 'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743'
+$validated48_144EdidSha256 = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
+$validated48_144Block0Sha256 = '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172'
+$validated48_144Block1Sha256 = 'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2'
+$validated30_144EdidSha256 = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
+$validated30_144Block0Sha256 = '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D'
+$validated30_144Block1Sha256 = '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640'
 
 function Convert-WmiText {
     param([AllowNull()][object]$Values)
@@ -100,6 +112,21 @@ function Test-ByteArrayEqual {
     return $true
 }
 
+function Get-KnownOverrideHashes {
+    param([Parameter(Mandatory)][string]$EdidSha256)
+
+    if ($EdidSha256 -eq $validated30_120EdidSha256) {
+        return [pscustomobject]@{ Block0 = $validated30_120Block0Sha256; Block1 = $validated30_120Block1Sha256 }
+    }
+    if ($EdidSha256 -eq $validated48_144EdidSha256) {
+        return [pscustomobject]@{ Block0 = $validated48_144Block0Sha256; Block1 = $validated48_144Block1Sha256 }
+    }
+    if ($EdidSha256 -eq $validated30_144EdidSha256) {
+        return [pscustomobject]@{ Block0 = $validated30_144Block0Sha256; Block1 = $validated30_144Block1Sha256 }
+    }
+    throw "Unknown ClawLab experimental EDID hash: $EdidSha256"
+}
+
 function Get-PanelRegistryContext {
     param([Parameter(Mandatory)][object]$Panel)
 
@@ -113,9 +140,38 @@ function Get-PanelRegistryContext {
         throw 'The validated panel registry key is missing.'
     }
 
-    $physicalEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $deviceParameters -Name 'EDID' -ErrorAction Stop)
-    if ($physicalEdid.Length -ne 256) {
-        throw "Unexpected panel EDID length: $($physicalEdid.Length) bytes."
+    $reportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $deviceParameters -Name 'EDID' -ErrorAction Stop)
+    if ($reportedEdid.Length -ne 256) {
+        throw "Unexpected panel EDID length: $($reportedEdid.Length) bytes."
+    }
+
+    # After the Intel display device reloads an override, Windows can expose the
+    # exact overridden EDID through the EDID value itself. Reconstruct the
+    # validated physical baseline only from one of our three exact, pinned
+    # experimental hashes. No arbitrary EDID is accepted or normalized.
+    $reportedHash = Get-ByteArraySha256 -Bytes $reportedEdid
+    $physicalEdid = [byte[]]$reportedEdid.Clone()
+    if ($reportedHash -ne $validatedPhysicalEdidSha256) {
+        if ($reportedHash -notin @(
+                $validated30_120EdidSha256,
+                $validated48_144EdidSha256,
+                $validated30_144EdidSha256
+            )) {
+            throw "Unsupported panel EDID: $reportedHash. Experimental mode is restricted to the validated EDID."
+        }
+
+        $physicalEdid[95] = 48
+        $physicalEdid[96] = 120
+        $physicalEdid[142] = 48
+        $physicalEdid[143] = 120
+        foreach ($offset in 156..178) {
+            $physicalEdid[$offset] = 0
+        }
+        Set-EdidChecksum -Edid $physicalEdid -Start 0
+        Set-EdidChecksum -Edid $physicalEdid -Start 128
+        if ((Get-ByteArraySha256 -Bytes $physicalEdid) -ne $validatedPhysicalEdidSha256) {
+            throw 'The known experimental EDID could not be reduced to the validated physical baseline.'
+        }
     }
 
     [pscustomobject]@{
@@ -123,19 +179,42 @@ function Get-PanelRegistryContext {
         DeviceParametersPath = $deviceParameters
         OverridePath = Join-Path $deviceParameters 'EDID_OVERRIDE'
         PhysicalEdid = $physicalEdid
-        PhysicalEdidSha256 = Get-ByteArraySha256 -Bytes $physicalEdid
+        PhysicalEdidSha256 = $validatedPhysicalEdidSha256
+        ReportedEdidSha256 = $reportedHash
     }
 }
 
-function New-ExperimentalEdid {
-    param([Parameter(Mandatory)][byte[]]$PhysicalEdid)
+function Set-EdidChecksum {
+    param(
+        [Parameter(Mandatory)][byte[]]$Edid,
+        [Parameter(Mandatory)][int]$Start
+    )
+
+    $sum = 0
+    for ($offset = $Start; $offset -lt ($Start + 127); $offset++) {
+        $sum += $Edid[$offset]
+    }
+    $Edid[$Start + 127] = [byte]((256 - ($sum % 256)) % 256)
+}
+
+function New-ExperimentalEdidVariant {
+    param(
+        [Parameter(Mandatory)][byte[]]$PhysicalEdid,
+        [Parameter(Mandatory)][string]$State,
+        [Parameter(Mandatory)][float]$MinimumHz,
+        [Parameter(Mandatory)][float]$MaximumHz,
+        [Parameter(Mandatory)][string]$ExpectedEdidSha256,
+        [Parameter(Mandatory)][string]$ExpectedBlock0Sha256,
+        [Parameter(Mandatory)][string]$ExpectedBlock1Sha256
+    )
 
     $physicalHash = Get-ByteArraySha256 -Bytes $PhysicalEdid
     if ($physicalHash -ne $validatedPhysicalEdidSha256) {
         throw "Unsupported panel EDID: $physicalHash. Experimental mode is restricted to the validated EDID."
     }
-    if ($PhysicalEdid[95] -ne 48 -or $PhysicalEdid[142] -ne 48) {
-        throw 'The validated EDID no longer contains the expected 48 Hz range fields.'
+    if ($PhysicalEdid[95] -ne 48 -or $PhysicalEdid[96] -ne 120 -or
+        $PhysicalEdid[142] -ne 48 -or $PhysicalEdid[143] -ne 120) {
+        throw 'The validated EDID no longer contains the expected 48-120 Hz range fields.'
     }
 
     foreach ($start in @(0, 128)) {
@@ -149,43 +228,89 @@ function New-ExperimentalEdid {
     }
 
     $modified = [byte[]]$PhysicalEdid.Clone()
-    $modified[95] = [byte]$experimentalMinimumHz
-    $modified[127] = 0
-    $sum = 0
-    for ($offset = 0; $offset -lt 127; $offset++) {
-        $sum += $modified[$offset]
-    }
-    $modified[127] = [byte]((256 - ($sum % 256)) % 256)
+    $modified[95] = [byte]$MinimumHz
+    $modified[96] = [byte]$MaximumHz
+    $modified[142] = [byte]$MinimumHz
+    $modified[143] = [byte]$MaximumHz
 
-    $modified[142] = [byte]$experimentalMinimumHz
-    $modified[255] = 0
-    $sum = 0
-    for ($offset = 128; $offset -lt 255; $offset++) {
-        $sum += $modified[$offset]
+    if ([Math]::Abs($MaximumHz - $experimentalMaximumHz) -le 0.1) {
+        foreach ($offset in 156..178) {
+            if ($PhysicalEdid[$offset] -ne 0) {
+                throw 'The validated DisplayID extension no longer has the empty slot required for the 144 Hz timing.'
+            }
+        }
+
+        # DisplayID 2.0 Type VII detailed timing: 1920x1200 @ 144 Hz.
+        # The 2080x1264 totals match the validated native 120 Hz timing.
+        $timingBlock = [byte[]]@(
+            0x22, 0x00, 0x14,
+            0xE0, 0xC6, 0x05, 0x00,
+            0x7F, 0x07, 0x9F, 0x00,
+            0x2F, 0x00, 0x1F, 0x00,
+            0xAF, 0x04, 0x3F, 0x00,
+            0x35, 0x00, 0x05, 0x00
+        )
+        [Array]::Copy($timingBlock, 0, $modified, 156, $timingBlock.Length)
     }
-    $modified[255] = [byte]((256 - ($sum % 256)) % 256)
+
+    Set-EdidChecksum -Edid $modified -Start 0
+    Set-EdidChecksum -Edid $modified -Start 128
 
     $modifiedHash = Get-ByteArraySha256 -Bytes $modified
-    if ($modifiedHash -ne $validatedExperimentalEdidSha256) {
-        throw "Internal experimental EDID verification failed: $modifiedHash"
+    $block0 = [byte[]]$modified[0..127]
+    $block1 = [byte[]]$modified[128..255]
+    if ($modifiedHash -ne $ExpectedEdidSha256 -or
+        (Get-ByteArraySha256 -Bytes $block0) -ne $ExpectedBlock0Sha256 -or
+        (Get-ByteArraySha256 -Bytes $block1) -ne $ExpectedBlock1Sha256) {
+        throw "Internal $State EDID verification failed: $modifiedHash"
     }
 
     [pscustomobject]@{
+        State = $State
+        MinimumHz = $MinimumHz
+        MaximumHz = $MaximumHz
         Complete = $modified
-        Block0 = [byte[]]$modified[0..127]
-        Block1 = [byte[]]$modified[128..255]
+        Block0 = $block0
+        Block1 = $block1
         Sha256 = $modifiedHash
+        Block0Sha256 = $ExpectedBlock0Sha256
+        Block1Sha256 = $ExpectedBlock1Sha256
     }
+}
+
+function Get-ExperimentalEdidCatalog {
+    param([Parameter(Mandatory)][byte[]]$PhysicalEdid)
+
+    return @(
+        New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -State 'CLAWLAB_30_120' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz $targetMaximumHz `
+            -ExpectedEdidSha256 $validated30_120EdidSha256 `
+            -ExpectedBlock0Sha256 $validated30_120Block0Sha256 `
+            -ExpectedBlock1Sha256 $validated30_120Block1Sha256
+        New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -State 'CLAWLAB_48_144' `
+            -MinimumHz $targetMinimumHz -MaximumHz $experimentalMaximumHz `
+            -ExpectedEdidSha256 $validated48_144EdidSha256 `
+            -ExpectedBlock0Sha256 $validated48_144Block0Sha256 `
+            -ExpectedBlock1Sha256 $validated48_144Block1Sha256
+        New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -State 'CLAWLAB_30_144' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz $experimentalMaximumHz `
+            -ExpectedEdidSha256 $validated30_144EdidSha256 `
+            -ExpectedBlock0Sha256 $validated30_144Block0Sha256 `
+            -ExpectedBlock1Sha256 $validated30_144Block1Sha256
+    )
 }
 
 function Get-EdidOverrideState {
     param(
         [Parameter(Mandatory)][object]$RegistryContext,
-        [Parameter(Mandatory)][object]$ExperimentalEdid
+        [Parameter(Mandatory)][object[]]$ExperimentalEdids
     )
 
     if (-not (Test-Path -LiteralPath $RegistryContext.OverridePath -PathType Container)) {
-        return [pscustomobject]@{ State = 'NONE'; Block0 = $null; Block1 = $null }
+        return [pscustomobject]@{
+            State = 'NONE'; Block0 = $null; Block1 = $null
+            MinimumHz = $targetMinimumHz; MaximumHz = $targetMaximumHz; Variant = $null
+        }
     }
 
     $block0 = $null
@@ -193,18 +318,31 @@ function Get-EdidOverrideState {
     try { $block0 = [byte[]](Get-ItemPropertyValue -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction Stop) } catch {}
     try { $block1 = [byte[]](Get-ItemPropertyValue -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction Stop) } catch {}
 
-    $state = if ($null -eq $block0 -and $null -eq $block1) {
-        'NONE'
-    }
-    elseif ((Test-ByteArrayEqual -Left $block0 -Right $ExperimentalEdid.Block0) -and
-        (Test-ByteArrayEqual -Left $block1 -Right $ExperimentalEdid.Block1)) {
-        'CLAWLAB_30_120'
-    }
-    else {
-        'UNKNOWN_OVERRIDE'
+    if ($null -eq $block0 -and $null -eq $block1) {
+        return [pscustomobject]@{
+            State = 'NONE'; Block0 = $null; Block1 = $null
+            MinimumHz = $targetMinimumHz; MaximumHz = $targetMaximumHz; Variant = $null
+        }
     }
 
-    return [pscustomobject]@{ State = $state; Block0 = $block0; Block1 = $block1 }
+    foreach ($variant in $ExperimentalEdids) {
+        if ((Test-ByteArrayEqual -Left $block0 -Right $variant.Block0) -and
+            (Test-ByteArrayEqual -Left $block1 -Right $variant.Block1)) {
+            return [pscustomobject]@{
+                State = $variant.State
+                Block0 = $block0
+                Block1 = $block1
+                MinimumHz = $variant.MinimumHz
+                MaximumHz = $variant.MaximumHz
+                Variant = $variant
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        State = 'UNKNOWN_OVERRIDE'; Block0 = $block0; Block1 = $block1
+        MinimumHz = $null; MaximumHz = $null; Variant = $null
+    }
 }
 
 function Confirm-AdministratorOrRelaunch {
@@ -224,37 +362,51 @@ function Get-StartupReapplyState {
     if ($null -eq $task) {
         return 'NOT_INSTALLED'
     }
-    if (-not (Test-Path -LiteralPath $installedScriptPath -PathType Leaf)) {
-        return 'TASK_WITHOUT_SCRIPT'
+    if (-not (Test-Path -LiteralPath $installedScriptPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
+        return 'TASK_WITHOUT_FILES'
     }
     return [string]$task.State
 }
 
 function Install-StartupReapply {
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    $sourceLauncherPath = Join-Path (Split-Path $PSCommandPath -Parent) $startupLauncherName
+    if (-not (Test-Path -LiteralPath $sourceLauncherPath -PathType Leaf)) {
+        throw "The windowless startup launcher is missing: $startupLauncherName"
+    }
     [IO.File]::Copy($PSCommandPath, $installedScriptPath, $true)
+    [IO.File]::Copy($sourceLauncherPath, $installedLauncherPath, $true)
 
     $sourceHash = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     $installedHash = (Get-FileHash -LiteralPath $installedScriptPath -Algorithm SHA256).Hash
-    if ($sourceHash -ne $installedHash) {
-        throw 'The installed startup script failed its integrity check.'
+    $sourceLauncherHash = (Get-FileHash -LiteralPath $sourceLauncherPath -Algorithm SHA256).Hash
+    $installedLauncherHash = (Get-FileHash -LiteralPath $installedLauncherPath -Algorithm SHA256).Hash
+    if ($sourceHash -ne $installedHash -or $sourceLauncherHash -ne $installedLauncherHash) {
+        throw 'The installed startup files failed their integrity check.'
     }
 
-    $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $arguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$installedScriptPath`" -Action ApplyStartup"
+    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $arguments = "//B //Nologo `"$installedLauncherPath`""
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
-    $trigger.Delay = 'PT45S'
-    $taskAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $arguments
+    $taskAction = New-ScheduledTaskAction -Execute $wscriptPath -Argument $arguments
     $principal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 3)
     $task = New-ScheduledTask -Action $taskAction -Trigger $trigger -Principal $principal `
-        -Settings $settings -Description 'Reapplies the verified MSI Claw Intel Arc Sync VRR profile after sign-in.'
-    Register-ScheduledTask -TaskName $startupTaskName -InputObject $task -Force | Out-Null
-
-    if ((Get-StartupReapplyState) -eq 'NOT_INSTALLED') {
-        throw 'The startup reapply task could not be verified.'
+        -Settings $settings -Description 'Silently applies MSI Claw Intel Arc Sync VRR, then starts Intel Graphics Software.'
+    try {
+        Register-ScheduledTask -TaskName $startupTaskName -InputObject $task -Force | Out-Null
+        if ((Get-StartupReapplyState) -eq 'NOT_INSTALLED') {
+            throw 'The startup reapply task could not be verified.'
+        }
+        Set-ManagedIntelStartupOrder
+    }
+    catch {
+        try { Restore-IntelStartupOrder } catch { Write-Warning "Intel startup rollback failed: $($_.Exception.Message)" }
+        try { Remove-StartupReapply } catch {}
+        throw
     }
 }
 
@@ -264,6 +416,7 @@ function Remove-StartupReapply {
         Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
     }
     [IO.File]::Delete($installedScriptPath)
+    [IO.File]::Delete($installedLauncherPath)
     [IO.File]::Delete($startupStatusPath)
     if ((Get-StartupReapplyState) -ne 'NOT_INSTALLED') {
         throw 'The startup reapply task could not be removed completely.'
@@ -289,6 +442,168 @@ function Write-StartupResult {
         ($result | ConvertTo-Json),
         [Text.UTF8Encoding]::new($false)
     )
+}
+
+function Resolve-IntelGraphicsStartupCommand {
+    param([Parameter(Mandatory)][string]$Command)
+
+    $match = [regex]::Match(
+        $Command,
+        '^"(?<Executable>[A-Za-z]:\\[^"]+\\IntelGraphicsSoftware\.exe)"\s+(?<Arguments>-s)$'
+    )
+    if (-not $match.Success) {
+        throw "Unexpected Intel Graphics Software startup command: $Command"
+    }
+
+    $executable = [IO.Path]::GetFullPath($match.Groups['Executable'].Value)
+    $expectedRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'Intel\Intel Graphics Software'))
+    if (-not $executable.StartsWith($expectedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Intel Graphics Software is outside its expected installation directory: $executable"
+    }
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        throw "Intel Graphics Software executable is missing: $executable"
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $executable
+    if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $signature.SignerCertificate -or
+        $signature.SignerCertificate.Subject -notmatch '(^|, )O=Intel Corporation(,|$)') {
+        throw 'Intel Graphics Software does not have the expected valid Intel signature.'
+    }
+
+    [pscustomobject]@{
+        Command = $Command
+        Executable = $executable
+        Arguments = $match.Groups['Arguments'].Value
+        SignerThumbprint = $signature.SignerCertificate.Thumbprint
+    }
+}
+
+function Get-IntelStartupBackup {
+    if (-not (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf)) {
+        return $null
+    }
+    $backup = [IO.File]::ReadAllText($intelStartupBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @('RegistryPath', 'ValueName', 'Command', 'Executable', 'Arguments')) {
+        if ($property -notin $backup.PSObject.Properties.Name) {
+            throw "The saved Intel startup entry is invalid: missing $property."
+        }
+    }
+    if ([string]$backup.RegistryPath -ne $intelStartupRegistryPath -or
+        [string]$backup.ValueName -ne $intelStartupValueName) {
+        throw 'The saved Intel startup registry target is invalid.'
+    }
+    $resolved = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
+    if ($resolved.Executable -ne [string]$backup.Executable -or
+        $resolved.Arguments -ne [string]$backup.Arguments) {
+        throw 'The saved Intel startup command no longer passes verification.'
+    }
+    return $backup
+}
+
+function Get-IntelStartupRegistryValue {
+    try {
+        $key = Get-Item -LiteralPath $intelStartupRegistryPath -ErrorAction Stop
+        if ($intelStartupValueName -notin @($key.GetValueNames())) {
+            return $null
+        }
+        return [string]$key.GetValue(
+            $intelStartupValueName,
+            $null,
+            [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+        )
+    }
+    catch [Management.Automation.ItemNotFoundException] {
+        return $null
+    }
+}
+
+function Get-IntelStartupOrderState {
+    $backup = Get-IntelStartupBackup
+    $current = Get-IntelStartupRegistryValue
+    if ($null -eq $backup) {
+        if ([string]::IsNullOrEmpty($current)) {
+            return 'MISSING_WITHOUT_BACKUP'
+        }
+        [void](Resolve-IntelGraphicsStartupCommand -Command $current)
+        return 'INTEL_DEFAULT'
+    }
+    if ([string]::IsNullOrEmpty($current)) {
+        return 'CLAWLAB_ORDERED'
+    }
+    if ($current -eq [string]$backup.Command) {
+        return 'ORIGINAL_STILL_PRESENT'
+    }
+    return 'UNKNOWN_STARTUP_ENTRY'
+}
+
+function Set-ManagedIntelStartupOrder {
+    $backup = Get-IntelStartupBackup
+    $current = Get-IntelStartupRegistryValue
+
+    if ($null -eq $backup) {
+        if ([string]::IsNullOrEmpty($current)) {
+            throw 'The original Intel Graphics Software startup entry is missing. Nothing was changed.'
+        }
+        $resolved = Resolve-IntelGraphicsStartupCommand -Command $current
+        [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+        $backupData = [ordered]@{
+            SchemaVersion = 1
+            FixVersion = $fixVersion
+            SavedAt = (Get-Date).ToString('o')
+            RegistryPath = $intelStartupRegistryPath
+            ValueName = $intelStartupValueName
+            Command = $resolved.Command
+            Executable = $resolved.Executable
+            Arguments = $resolved.Arguments
+            SignerThumbprint = $resolved.SignerThumbprint
+        }
+        [IO.File]::WriteAllText(
+            $intelStartupBackupPath,
+            ($backupData | ConvertTo-Json),
+            [Text.UTF8Encoding]::new($false)
+        )
+        $backup = Get-IntelStartupBackup
+    }
+    elseif (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
+        throw 'An unknown Intel Graphics Software startup entry is present. It was not modified.'
+    }
+
+    if (-not [string]::IsNullOrEmpty($current)) {
+        Remove-ItemProperty -LiteralPath $intelStartupRegistryPath -Name $intelStartupValueName -ErrorAction Stop
+    }
+    if ((Get-IntelStartupOrderState) -ne 'CLAWLAB_ORDERED') {
+        throw 'Could not establish the verified ClawLab Intel startup order.'
+    }
+}
+
+function Restore-IntelStartupOrder {
+    $backup = Get-IntelStartupBackup
+    if ($null -eq $backup) {
+        return
+    }
+    $current = Get-IntelStartupRegistryValue
+    if (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
+        throw 'An unknown Intel Graphics Software startup entry is present. The saved entry was not restored.'
+    }
+    New-ItemProperty -LiteralPath $intelStartupRegistryPath -Name $intelStartupValueName `
+        -PropertyType String -Value ([string]$backup.Command) -Force | Out-Null
+    if ((Get-IntelStartupRegistryValue) -ne [string]$backup.Command) {
+        throw 'The original Intel Graphics Software startup entry could not be verified after restoration.'
+    }
+    [IO.File]::Delete($intelStartupBackupPath)
+}
+
+function Start-ManagedIntelGraphicsSoftware {
+    $backup = Get-IntelStartupBackup
+    if ($null -eq $backup) {
+        return
+    }
+    if ($null -ne (Get-Process -Name 'IntelGraphicsSoftware' -ErrorAction SilentlyContinue)) {
+        return
+    }
+    $resolved = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
+    Start-Process -FilePath $resolved.Executable -ArgumentList $resolved.Arguments -WindowStyle Hidden
 }
 
 function Add-ArcSyncControlType {
@@ -601,9 +916,15 @@ function Get-TargetSnapshot {
                     }
             )
             if ($candidates.Count -eq 1) {
-                if ([Math]::Abs($candidates[0].MonitorMaximumHz - $targetMaximumHz) -gt 0.1 -or
-                    ([Math]::Abs($candidates[0].MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -and
-                    [Math]::Abs($candidates[0].MonitorMinimumHz - $experimentalMinimumHz) -gt 0.1)) {
+                $knownMinimum = (
+                    [Math]::Abs($candidates[0].MonitorMinimumHz - $targetMinimumHz) -le 0.1 -or
+                    [Math]::Abs($candidates[0].MonitorMinimumHz - $experimentalMinimumHz) -le 0.1
+                )
+                $knownMaximum = (
+                    [Math]::Abs($candidates[0].MonitorMaximumHz - $targetMaximumHz) -le 0.1 -or
+                    [Math]::Abs($candidates[0].MonitorMaximumHz - $experimentalMaximumHz) -le 0.1
+                )
+                if (-not $knownMinimum -or -not $knownMaximum) {
                     throw "Unexpected Arc Sync monitor range: $($candidates[0].MonitorMinimumHz)-$($candidates[0].MonitorMaximumHz) Hz."
                 }
                 return $candidates[0]
@@ -625,7 +946,7 @@ function Get-OriginalProfile {
     if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
         return $null
     }
-    $backup = Get-Content -LiteralPath $backupPath -Raw | ConvertFrom-Json
+    $backup = [IO.File]::ReadAllText($backupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
     foreach ($property in @(
         'ProfileId',
         'ProfileName',
@@ -722,6 +1043,126 @@ function Restore-SnapshotProfile {
     }
 }
 
+function Install-ExperimentalMode {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$RegistryContext,
+        [Parameter(Mandatory)][object[]]$ExperimentalEdids,
+        [Parameter(Mandatory)][object]$OverrideState,
+        [Parameter(Mandatory)][object]$Before,
+        [Parameter(Mandatory)][string]$DesiredState
+    )
+
+    $desired = @($ExperimentalEdids | Where-Object { $_.State -eq $DesiredState })
+    if ($desired.Count -ne 1) {
+        throw "Internal experimental profile lookup failed: $DesiredState"
+    }
+    $variant = $desired[0]
+
+    if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
+        throw 'An unknown EDID override is installed. Remove it with its original tool before using experimental mode.'
+    }
+    if ($OverrideState.State -ne 'NONE' -and $OverrideState.State -ne $DesiredState) {
+        throw "Another experimental mode is installed ($($OverrideState.State)). Run RESTORE_ORIGINAL_VRR.bat before changing modes."
+    }
+
+    Confirm-AdministratorOrRelaunch
+    Save-OriginalProfile -Snapshot $Before -Panel $Panel -Gpu $Gpu
+
+    if ($OverrideState.State -eq 'NONE') {
+        if (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf) {
+            throw 'A stale experimental state file exists without its EDID override. Run RESTORE_ORIGINAL_VRR.bat before retrying.'
+        }
+        if ([Math]::Abs($Before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
+            [Math]::Abs($Before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
+            throw "Experimental installation must start from the native 48-120 Hz EDID, but the driver reports $($Before.MonitorMinimumHz)-$($Before.MonitorMaximumHz) Hz."
+        }
+
+        Invoke-SetProfile -Target $Before -ProfileId $profileExcellent
+        $official = Get-TargetSnapshot -Attempts 10
+        if ($official.ProfileId -ne $profileExcellent -or
+            [Math]::Abs($official.ActiveMinimumHz - $targetMinimumHz) -gt 0.1 -or
+            [Math]::Abs($official.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
+            throw 'Could not establish the verified official 48-120 Hz baseline before applying the experimental EDID.'
+        }
+
+        [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+        $experimentalState = [ordered]@{
+            SchemaVersion = 2
+            FixVersion = $fixVersion
+            InstalledAt = (Get-Date).ToString('o')
+            Mode = $variant.State
+            PanelInstanceId = $RegistryContext.InstanceId
+            RegistryPath = $RegistryContext.OverridePath
+            PhysicalEdidSha256 = $RegistryContext.PhysicalEdidSha256
+            ExperimentalEdidSha256 = $variant.Sha256
+            Block0Sha256 = $variant.Block0Sha256
+            Block1Sha256 = $variant.Block1Sha256
+            ExperimentalMinimumHz = $variant.MinimumHz
+            MaximumHz = $variant.MaximumHz
+        }
+        [IO.File]::WriteAllText(
+            $experimentalStatePath,
+            ($experimentalState | ConvertTo-Json),
+            [Text.UTF8Encoding]::new($false)
+        )
+
+        try {
+            New-Item -Path $RegistryContext.OverridePath -Force | Out-Null
+            New-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '0' -PropertyType Binary -Value $variant.Block0 -Force | Out-Null
+            New-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -PropertyType Binary -Value $variant.Block1 -Force | Out-Null
+            $writtenState = Get-EdidOverrideState -RegistryContext $RegistryContext -ExperimentalEdids $ExperimentalEdids
+            if ($writtenState.State -ne $DesiredState) {
+                throw 'The experimental EDID registry write did not verify.'
+            }
+            Install-StartupReapply
+        }
+        catch {
+            Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction SilentlyContinue
+            Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction SilentlyContinue
+            [IO.File]::Delete($experimentalStatePath)
+            try { Restore-SnapshotProfile -Target $official -Profile $Before } catch {}
+            throw
+        }
+
+        Write-Host "Experimental $($variant.MinimumHz)-$($variant.MaximumHz) Hz EDID override is installed and verified." -ForegroundColor Yellow
+        if ([Math]::Abs($variant.MaximumHz - $experimentalMaximumHz) -le 0.1) {
+            Write-Host 'A short burst of stutter or line artifacts can occur while the Intel display link loads the 144 Hz timing.' -ForegroundColor Yellow
+        }
+        Write-Host 'Restart the PC to make Windows and the Intel driver reload the display EDID.' -ForegroundColor Yellow
+        $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $official -OverrideState $writtenState
+        $status.RestartRequired = $true
+        return $status
+    }
+
+    if (-not (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf)) {
+        throw 'The matching EDID override exists without its ClawLab state file. It was not adopted or modified.'
+    }
+
+    if ([Math]::Abs($Before.MonitorMinimumHz - $variant.MinimumHz) -le 0.1 -and
+        [Math]::Abs($Before.MonitorMaximumHz - $variant.MaximumHz) -le 0.1) {
+        Invoke-SetProfile -Target $Before -ProfileId $profileExcellent
+        $after = Get-TargetSnapshot -Attempts 10
+        if ($after.ProfileId -ne $profileExcellent -or
+            [Math]::Abs($after.ActiveMinimumHz - $variant.MinimumHz) -gt 0.1 -or
+            [Math]::Abs($after.ActiveMaximumHz - $variant.MaximumHz) -gt 0.1) {
+            throw "Experimental driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
+        }
+        Install-StartupReapply
+        Write-Host "Experimental $($variant.MinimumHz)-$($variant.MaximumHz) Hz mode is active and verified by the Intel driver." -ForegroundColor Yellow
+        $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $after -OverrideState $OverrideState
+        return $status
+    }
+
+    Install-StartupReapply
+    Write-Host 'The experimental override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
+    Write-Host 'Restart the PC, then run CHECK_STATUS.bat.' -ForegroundColor Yellow
+    $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $Before -OverrideState $OverrideState
+    $status.RestartRequired = $true
+    return $status
+}
+
 function Get-StatusObject {
     param(
         [Parameter(Mandatory)][object]$Panel,
@@ -735,18 +1176,19 @@ function Get-StatusObject {
         [Math]::Abs($Snapshot.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
         [Math]::Abs($Snapshot.ActiveMaximumHz - $targetMaximumHz) -le 0.1
     )
+    $knownExperimentalOverride = $OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')
     $experimentalRangeActive = (
-        $OverrideState.State -eq 'CLAWLAB_30_120' -and
+        $knownExperimentalOverride -and
         $Snapshot.ProfileId -eq $profileExcellent -and
-        [Math]::Abs($Snapshot.ActiveMinimumHz - $experimentalMinimumHz) -le 0.1 -and
-        [Math]::Abs($Snapshot.ActiveMaximumHz - $targetMaximumHz) -le 0.1
+        [Math]::Abs($Snapshot.ActiveMinimumHz - [float]$OverrideState.MinimumHz) -le 0.1 -and
+        [Math]::Abs($Snapshot.ActiveMaximumHz - [float]$OverrideState.MaximumHz) -le 0.1
     )
 
     $state = if ($experimentalRangeActive) {
-        'EXPERIMENTAL_30_120_ACTIVE'
+        'EXPERIMENTAL_{0}_{1}_ACTIVE' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
     }
-    elseif ($OverrideState.State -eq 'CLAWLAB_30_120') {
-        'EXPERIMENTAL_OVERRIDE_PENDING_RESTART'
+    elseif ($knownExperimentalOverride) {
+        'EXPERIMENTAL_{0}_{1}_PENDING_RESTART' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
     }
     elseif ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
         'UNKNOWN_EDID_OVERRIDE'
@@ -757,6 +1199,8 @@ function Get-StatusObject {
     else {
         'DRIVER_PROFILE_CONSTRAINED'
     }
+
+    $intelStartupState = Get-IntelStartupOrderState
 
     [pscustomobject]@{
         FixVersion = $fixVersion
@@ -771,9 +1215,13 @@ function Get-StatusObject {
         OriginalProfileSaved = Test-Path -LiteralPath $backupPath -PathType Leaf
         BackupPath = $backupPath
         StartupReapply = Get-StartupReapplyState
+        IntelGraphicsStartup = $intelStartupState
         EdidOverride = $OverrideState.State
-        RestartRequired = $OverrideState.State -eq 'CLAWLAB_30_120' -and -not $experimentalRangeActive
-        RegistryModified = $OverrideState.State -eq 'CLAWLAB_30_120'
+        RestartRequired = $knownExperimentalOverride -and -not $experimentalRangeActive
+        RegistryModified = (
+            $knownExperimentalOverride -or
+            $intelStartupState -eq 'CLAWLAB_ORDERED'
+        )
         DriverFilesModified = $false
     }
 }
@@ -784,7 +1232,7 @@ try {
         if (-not (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf)) {
             throw 'The ClawLab experimental EDID state file is missing. Nothing was removed.'
         }
-        $emergencyState = Get-Content -LiteralPath $experimentalStatePath -Raw | ConvertFrom-Json
+        $emergencyState = [IO.File]::ReadAllText($experimentalStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
         if ('RegistryPath' -notin $emergencyState.PSObject.Properties.Name) {
             throw 'The ClawLab experimental EDID state file is invalid. Nothing was removed.'
         }
@@ -792,10 +1240,14 @@ try {
         if ($emergencyOverridePath -notlike 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\DISPLAY\CSW0801\*\Device Parameters\EDID_OVERRIDE') {
             throw "Unsafe or unexpected EDID override path: $emergencyOverridePath"
         }
+        if ('ExperimentalEdidSha256' -notin $emergencyState.PSObject.Properties.Name) {
+            throw 'The ClawLab experimental state file has no EDID hash. Nothing was removed.'
+        }
+        $expectedEmergencyHashes = Get-KnownOverrideHashes -EdidSha256 ([string]$emergencyState.ExperimentalEdidSha256)
         $emergencyBlock0 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop)
         $emergencyBlock1 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop)
-        if ((Get-ByteArraySha256 -Bytes $emergencyBlock0) -ne $validatedExperimentalBlock0Sha256 -or
-            (Get-ByteArraySha256 -Bytes $emergencyBlock1) -ne $validatedExperimentalBlock1Sha256) {
+        if ((Get-ByteArraySha256 -Bytes $emergencyBlock0) -ne $expectedEmergencyHashes.Block0 -or
+            (Get-ByteArraySha256 -Bytes $emergencyBlock1) -ne $expectedEmergencyHashes.Block1) {
             throw 'The installed EDID override does not match ClawLab experimental mode. Nothing was removed.'
         }
         Remove-ItemProperty -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop
@@ -806,28 +1258,14 @@ try {
         exit 0
     }
 
-    if ($Action -eq 'ApplyStartup') {
-        $graphicsSoftwareDeadline = (Get-Date).AddSeconds(90)
-        $graphicsSoftwareSeen = $false
-        do {
-            $graphicsSoftwareSeen = $null -ne (Get-Process -Name 'IntelGraphicsSoftware' -ErrorAction SilentlyContinue)
-            if (-not $graphicsSoftwareSeen) {
-                Start-Sleep -Seconds 2
-            }
-        } while (-not $graphicsSoftwareSeen -and (Get-Date) -lt $graphicsSoftwareDeadline)
-
-        if ($graphicsSoftwareSeen) {
-            Start-Sleep -Seconds 10
-        }
-    }
-
     $panel = Get-ValidatedPanel
     $gpu = Get-IntelGpu
     $registryContext = Get-PanelRegistryContext -Panel $panel
-    $experimentalEdid = New-ExperimentalEdid -PhysicalEdid $registryContext.PhysicalEdid
-    $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdid $experimentalEdid
+    $experimentalEdids = @(Get-ExperimentalEdidCatalog -PhysicalEdid $registryContext.PhysicalEdid)
+    $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
     Add-ArcSyncControlType
-    $before = Get-TargetSnapshot -Attempts 5
+    $snapshotAttempts = if ($Action -eq 'ApplyStartup') { 180 } else { 5 }
+    $before = Get-TargetSnapshot -Attempts $snapshotAttempts
 
     switch ($Action) {
         'Status' {
@@ -838,14 +1276,10 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Startup reapply was cancelled.'
             }
-            $expectedMinimumHz = if ($overrideState.State -eq 'CLAWLAB_30_120') {
-                $experimentalMinimumHz
-            }
-            else {
-                $targetMinimumHz
-            }
+            $expectedMinimumHz = [float]$overrideState.MinimumHz
+            $expectedMaximumHz = [float]$overrideState.MaximumHz
             if ([Math]::Abs($before.MonitorMinimumHz - $expectedMinimumHz) -gt 0.1 -or
-                [Math]::Abs($before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
+                [Math]::Abs($before.MonitorMaximumHz - $expectedMaximumHz) -gt 0.1) {
                 throw "Startup reapply found an unexpected monitor range: $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
             }
 
@@ -853,10 +1287,11 @@ try {
             $after = Get-TargetSnapshot -Attempts 10
             if ($after.ProfileId -ne $profileExcellent -or
                 [Math]::Abs($after.ActiveMinimumHz - $expectedMinimumHz) -gt 0.1 -or
-                [Math]::Abs($after.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
+                [Math]::Abs($after.ActiveMaximumHz - $expectedMaximumHz) -gt 0.1) {
                 throw "Startup profile verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
             }
             Write-StartupResult -Success $true -Message ("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz)
+            Start-ManagedIntelGraphicsSoftware
             exit 0
         }
 
@@ -864,13 +1299,15 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }
-            if ($overrideState.State -eq 'CLAWLAB_30_120') {
-                throw 'Experimental 30-120 mode is installed. Run RESTORE_ORIGINAL_VRR.bat before installing official mode.'
+            if ($overrideState.State -ne 'NONE') {
+                throw "Experimental mode $($overrideState.State) is installed. Run RESTORE_ORIGINAL_VRR.bat before installing official mode."
             }
-            if ([Math]::Abs($before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1) {
+            if ([Math]::Abs($before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
+                [Math]::Abs($before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
                 throw "Official mode expected the panel's native 48-120 Hz range, but the driver reports $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
             }
 
+            Confirm-AdministratorOrRelaunch
             Save-OriginalProfile -Snapshot $before -Panel $panel -Gpu $gpu
             if ($before.ProfileId -eq $profileExcellent -and
                 [Math]::Abs($before.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
@@ -907,90 +1344,15 @@ try {
         }
 
         'Install30' {
-            if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
-                throw 'An unknown EDID override is installed. Remove it with its original tool before using experimental mode.'
-            }
+            Install-ExperimentalMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_30_120'
+        }
 
-            Confirm-AdministratorOrRelaunch
-            Save-OriginalProfile -Snapshot $before -Panel $panel -Gpu $gpu
-
-            if ($overrideState.State -eq 'NONE') {
-                if ([Math]::Abs($before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1) {
-                    throw "Experimental installation must start from the native 48-120 Hz EDID, but the driver reports $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
-                }
-
-                Invoke-SetProfile -Target $before -ProfileId $profileExcellent
-                $official = Get-TargetSnapshot -Attempts 10
-                if ($official.ProfileId -ne $profileExcellent -or
-                    [Math]::Abs($official.ActiveMinimumHz - $targetMinimumHz) -gt 0.1 -or
-                    [Math]::Abs($official.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
-                    throw 'Could not establish the verified official 48-120 Hz baseline before applying the experimental EDID.'
-                }
-
-                [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
-                $experimentalState = [ordered]@{
-                    SchemaVersion = 1
-                    FixVersion = $fixVersion
-                    InstalledAt = (Get-Date).ToString('o')
-                    PanelInstanceId = $registryContext.InstanceId
-                    RegistryPath = $registryContext.OverridePath
-                    PhysicalEdidSha256 = $registryContext.PhysicalEdidSha256
-                    ExperimentalEdidSha256 = $experimentalEdid.Sha256
-                    ExperimentalMinimumHz = $experimentalMinimumHz
-                    MaximumHz = $targetMaximumHz
-                }
-                [IO.File]::WriteAllText(
-                    $experimentalStatePath,
-                    ($experimentalState | ConvertTo-Json),
-                    [Text.UTF8Encoding]::new($false)
-                )
-
-                try {
-                    New-Item -Path $registryContext.OverridePath -Force | Out-Null
-                    New-ItemProperty -LiteralPath $registryContext.OverridePath -Name '0' -PropertyType Binary -Value $experimentalEdid.Block0 -Force | Out-Null
-                    New-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -PropertyType Binary -Value $experimentalEdid.Block1 -Force | Out-Null
-                    $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdid $experimentalEdid
-                    if ($overrideState.State -ne 'CLAWLAB_30_120') {
-                        throw 'The experimental EDID registry write did not verify.'
-                    }
-                }
-                catch {
-                    Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '0' -ErrorAction SilentlyContinue
-                    Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -ErrorAction SilentlyContinue
-                    [IO.File]::Delete($experimentalStatePath)
-                    try { Restore-SnapshotProfile -Target $official -Profile $before } catch {}
-                    throw
-                }
-
-                Install-StartupReapply
-                Write-Host 'Experimental 30-120 Hz EDID override is installed and verified.' -ForegroundColor Yellow
-                Write-Host 'Restart the PC to make Windows and the Intel driver reload the display EDID.' -ForegroundColor Yellow
-                $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $official -OverrideState $overrideState
-                $status.RestartRequired = $true
-                $status
-                break
-            }
-
-            if ([Math]::Abs($before.MonitorMinimumHz - $experimentalMinimumHz) -le 0.1) {
-                Invoke-SetProfile -Target $before -ProfileId $profileExcellent
-                $after = Get-TargetSnapshot -Attempts 10
-                if ($after.ProfileId -ne $profileExcellent -or
-                    [Math]::Abs($after.ActiveMinimumHz - $experimentalMinimumHz) -gt 0.1 -or
-                    [Math]::Abs($after.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
-                    throw "Experimental driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
-                }
-                Install-StartupReapply
-                Write-Host 'Experimental 30-120 Hz mode is active and verified by the Intel driver.' -ForegroundColor Yellow
-                Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState
-            }
-            else {
-                Install-StartupReapply
-                Write-Host 'The experimental override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
-                Write-Host 'Restart the PC, then run CHECK_STATUS.bat.' -ForegroundColor Yellow
-                $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
-                $status.RestartRequired = $true
-                $status
-            }
+        'Install48_144' {
+            Install-ExperimentalMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_48_144'
         }
 
         'Restore' {
@@ -1002,7 +1364,15 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. It was not created by this package and will not be removed.'
             }
-            if ($overrideState.State -eq 'CLAWLAB_30_120') {
+            $knownExperimentalOverride = $overrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')
+            if (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf) {
+                $startupOrderState = Get-IntelStartupOrderState
+                if ($startupOrderState -notin @('CLAWLAB_ORDERED', 'ORIGINAL_STILL_PRESENT')) {
+                    throw "Intel Graphics Software startup state is unsafe to restore: $startupOrderState. Nothing was changed."
+                }
+            }
+            if ($knownExperimentalOverride -or
+                (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf)) {
                 Confirm-AdministratorOrRelaunch
             }
 
@@ -1012,15 +1382,16 @@ try {
                 throw "Original profile verification failed: expected ID $($original.ProfileId), got $($after.ProfileId)."
             }
 
-            if ($overrideState.State -eq 'CLAWLAB_30_120') {
+            if ($knownExperimentalOverride) {
                 Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '0' -ErrorAction Stop
                 Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -ErrorAction Stop
-                $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdid $experimentalEdid
+                $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
                 if ($overrideState.State -ne 'NONE') {
                     throw 'The experimental EDID override could not be removed completely.'
                 }
             }
             Remove-StartupReapply
+            Restore-IntelStartupOrder
             [IO.File]::Delete($backupPath)
             [IO.File]::Delete($experimentalStatePath)
             Write-Host "Restored the original Intel Arc Sync profile: $($after.ProfileName)." -ForegroundColor Green
@@ -1034,6 +1405,7 @@ try {
 catch {
     if ($Action -eq 'ApplyStartup') {
         try { Write-StartupResult -Success $false -Message $_.Exception.Message } catch {}
+        try { Start-ManagedIntelGraphicsSoftware } catch {}
     }
     Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
     exit 1

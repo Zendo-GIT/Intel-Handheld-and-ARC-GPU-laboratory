@@ -3,11 +3,18 @@ MSI CLAW 8 AI+ / 8 EX AI+ VRR RANGE FIX - CHANGELOG
 
 1.0.1 - 2026-08-15
 ------------------
-- Adds a delayed current-user sign-in task after restart validation showed that
-  Intel restores RECOMMENDED / 60-120 Hz during startup initialization.
-- The task waits for Intel Graphics Software, applies EXCELLENT / 48-120 Hz
-  last, verifies the driver readback and exits.
-- Adds task status reporting and complete removal through normal restore.
+- Adds persistent EXCELLENT / 48-120 Hz reapply after restart validation showed
+  Intel restoring RECOMMENDED / 60-120 Hz during driver startup.
+- Adds a windowless current-user task that waits for the Intel display API,
+  applies and verifies the profile, then starts Intel Graphics Software.
+- Adds exact backup and restoration of Intel Graphics Software's verified,
+  Intel-signed machine-wide startup entry to guarantee launch order.
+- Adds task, startup-order and last-run status reporting.
+- Adds an optional 48-144 Hz DisplayID profile after guarded hardware testing
+  confirmed a stable 1920x1200 144 Hz mode and EXCELLENT / 48-144 Hz readback.
+- Withholds 30-144 Hz after visible flicker on the reference panel.
+- Adds a read-only display/EDID collector for unsupported Claw models such as
+  A1M. It is diagnostics only and does not apply a display fix.
 
 1.0.0 - 2026-08-14
 ------------------

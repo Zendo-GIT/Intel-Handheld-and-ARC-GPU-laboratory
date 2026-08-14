@@ -2,12 +2,19 @@
 
 ## 1.0.1 — 2026-08-15
 
-- Added a delayed current-user sign-in task after restart validation showed
-  that Intel restores `RECOMMENDED / 60-120 Hz` during startup initialization.
-- The task waits for Intel Graphics Software, applies `EXCELLENT / 48-120 Hz`
-  last, verifies the driver readback and exits.
-- Added task status reporting, a last-run result and complete removal through
-  the normal restore action.
+- Added persistent `EXCELLENT / 48-120 Hz` reapply after restart validation
+  showed Intel restoring `RECOMMENDED / 60-120 Hz` during driver startup.
+- Added a windowless current-user task that retries until the Intel display API
+  is ready, applies and verifies the profile, then starts Intel Graphics
+  Software.
+- Added exact backup and restoration of Intel Graphics Software's verified,
+  Intel-signed machine-wide startup entry to guarantee launch order.
+- Added task, startup-order and last-run status reporting.
+- Added an optional 48-144 Hz DisplayID profile after guarded hardware testing
+  confirmed 1920x1200 at 144 Hz and Intel `EXCELLENT / 48-144 Hz` readback.
+- Recorded and withheld 30-144 Hz after visible flicker on the reference panel.
+- Added a read-only display/EDID collector for unsupported Claw models such as
+  the A1M; this is diagnostics only, not an A1M compatibility claim.
 
 ## 1.0.0 — 2026-08-14
 

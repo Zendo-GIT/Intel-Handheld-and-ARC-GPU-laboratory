@@ -25,12 +25,22 @@ Reopening Intel Graphics Software did not revert the profile. A new direct query
 still returned `EXCELLENT / 48-120 Hz`, even though the application UI could
 continue showing `60-120 Hz`.
 
-A later full Windows restart did revert the driver to
-`RECOMMENDED / 60-120 Hz`. Process timing on the reference system showed Intel
-Graphics Software starting automatically after the driver services. Release
-installation therefore creates a delayed current-user sign-in task. It waits
-for that Intel process and applies `EXCELLENT` last, preventing the startup
-initialization from overwriting the requested range.
+A later full Windows restart did revert the direct driver state to
+`RECOMMENDED / 60-120 Hz`. Release installation therefore creates a
+current-user sign-in task that waits for the display API and applies
+`EXCELLENT` as soon as the driver becomes available.
+
+The task originally waited for Intel Graphics Software, but further testing
+showed that dependency was unnecessary. After task reapply, the direct driver
+state was already `48-120 Hz`; completely exiting and restarting the Intel
+Graphics Software tray process merely refreshed its cached current-range text
+from 60-120 to 48-120 Hz.
+
+To guarantee correct text on the application's first launch as well as correct
+driver state, installation backs up and removes Intel Graphics Software's exact
+machine-wide Run value. The windowless task applies and verifies the profile,
+then launches the previously verified Intel-signed command with its original
+`-s` argument. Normal restore writes the exact original Run value back.
 
 ## Why custom 30 Hz is not the official path
 
@@ -73,6 +83,30 @@ Both 128-byte blocks retain a checksum sum of zero modulo 256. The script writes
 them as separate Windows EDID override blocks, matching Microsoft's documented
 monitor-driver mechanism. The physical EEPROM remains unchanged.
 
+## Experimental 144 Hz timing and hardware result
+
+The 48-144 override leaves the 48 Hz floor unchanged, raises both pinned range
+maxima to 144, and inserts one DisplayID 2.0 Type VII timing:
+
+```text
+Active:       1920x1200
+Refresh:      144 Hz
+Totals:       2080x1264
+Pixel clock:  378.593 MHz
+EDID SHA-256: 4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E
+```
+
+The native 60 and 120 Hz detailed timings remain present. During guarded
+real-hardware testing, applying the mode caused transient stutter and line
+artifacts while the Intel device reloaded. Once active, 144 Hz remained stable,
+Windows exposed 1920x1200 at 144 Hz, and the Intel API read back
+`EXCELLENT / 48-144 Hz`. Automatic rollback restored the physical 48-120 EDID
+and `EXCELLENT / 48-120 Hz` profile.
+
+A separate guarded 30-144 test was also accepted by the Intel API as
+`EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. That
+combination failed visual validation and has no public installer.
+
 ## Restart model
 
 Windows reads monitor EDID override blocks while initializing the monitor
@@ -83,4 +117,5 @@ occurs without the user selecting `Y`.
 Official profile changes are live, but the driver does not persist them reliably
 through a full restart. The sign-in task reapplies the profile only after Intel
 startup initialization. The same restart choice is presented to validate that
-complete persistence path and clear stale display-control UI state.
+complete ordered-startup path. Stale text from a pre-installation session can be
+refreshed by fully exiting and restarting the tray process.

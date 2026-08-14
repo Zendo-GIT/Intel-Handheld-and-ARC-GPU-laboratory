@@ -47,6 +47,13 @@ store its range in different blocks and can have different electrical limits.
 
 ## Similar displays that are not supported
 
+The Intel-powered MSI Claw A1M has a different 7-inch `1920x1080 / 120 Hz`
+display. A model name and maximum refresh rate do not establish its panel
+identity, EDID layout, VRR floor or safe overclock limit. This release therefore
+refuses the A1M. Owners can run `COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat` to create
+a read-only JSON/EDID diagnostic bundle for future research. The collector does
+not apply a profile or prove compatibility.
+
 MSI specifies the AMD-powered Claw A8 BZ2EM with an 8-inch `1920x1200 /
 48-120 Hz VRR` display, but the official mode in this package depends on Intel
 Control Library and cannot run on its Radeon 890M. A dedicated A8 edition would
@@ -64,5 +71,9 @@ EDID, so it is deliberately excluded.
 - Experimental mode requires a restart before its EDID is active.
 - Experimental 30 Hz operation is outside MSI's stated 48-120 Hz range and may
   flicker or fail on individual panels even with the same model identifier.
+- Experimental 48-144 Hz is a panel overclock. It was stable on the reference
+  unit after transient reload artifacts but is not guaranteed on every unit.
+- Combined 30-144 Hz is intentionally unavailable because the reference panel
+  visibly flickered while that range was active.
 - The tool does not prove that every game presents frames through a VRR-capable
   swap chain.

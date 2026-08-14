@@ -11,9 +11,9 @@ Recommended metadata:
 
 Activates the compatible Claw 8 AI+ / Claw 8 EX AI+ panel's official 48-120 Hz
 Intel Arc Sync range instead of the driver's constrained 60-120 Hz recommended
-profile. Includes an optional, clearly separated experimental 30-120 Hz EDID
-override, delayed sign-in reapply, exact status reporting, backup, restore and
-Safe Mode recovery.
+profile. Includes clearly separated experimental 30-120 Hz and 48-144 Hz EDID
+options, delayed sign-in reapply, exact status reporting, backup, restore and
+Safe Mode recovery. The 144 Hz option is an unsupported panel overclock.
 
 ## Required disclosure
 
@@ -24,19 +24,24 @@ cause flicker or display instability. It is restricted to the exact validated
 sufficient: the installer refuses either Claw model if the display identity or
 EDID differs. The AMD-powered Claw A8 is not compatible with this Intel package.
 
-The archive contains no driver, Intel DLL, CRU executable, EDID dump, compiled
+The combined 30-144 range is not included because it visibly flickered during
+reference-hardware validation, despite being accepted by the Intel driver.
+
+The archive contains no driver, Intel DLL, CRU executable, prepackaged EDID dump, compiled
 binary, game file, injector or anti-cheat component. It modifies no monitor
 firmware. Experimental mode uses Windows' reversible EDID override mechanism.
 Official installation creates one documented current-user scheduled task
 because Intel restores its constrained profile during a full Windows restart.
-The task waits for Intel Graphics Software, applies the profile last and exits;
-normal restore removes the task and its installed readable script.
+Installation backs up and removes only Intel Graphics Software's exact signed
+automatic-startup entry. The windowless task applies and verifies the profile,
+then starts Intel Graphics Software with its original command. Normal restore
+removes the task and scripts and restores the exact Intel startup entry.
 
 The project includes AI-assisted code and documentation. Do not enter it in an
 event whose rules prohibit generative-AI-assisted submissions.
 
 ## Publishing recommendation
 
-GitHub should remain the canonical source and checksum location. Consider
-publishing the Nexus page only after experimental 30-120 mode has completed a
-post-restart visual and driver-readback validation on the reference Claw.
+GitHub should remain the canonical source and checksum location. Publish the
+48-144 profile only as an optional experimental file with an explicit panel
+overclock warning and immediate restore instructions.

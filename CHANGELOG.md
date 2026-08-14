@@ -2,10 +2,14 @@
 
 ## 2026-08-15
 
-- Updated MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix to 1.0.1 after full-restart
+- Finalized MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.1 after full-restart
   validation showed Intel restoring `RECOMMENDED / 60-120 Hz` during startup.
-  The fix now reapplies and verifies `EXCELLENT / 48-120 Hz` after Intel
-  Graphics Software initialization through a removable current-user task.
+  The windowless current-user task now applies and verifies
+  `EXCELLENT / 48-120 Hz` before launching Intel Graphics Software, with exact
+  backup and restoration of Intel's original startup entry.
+- Added guarded 48-144 Hz support after direct Intel-driver and display-mode
+  validation; rejected the combined 30-144 Hz range after visible panel flicker.
+- Added a read-only display/EDID collector for future Claw A1M research.
 
 ## 2026-08-14
 

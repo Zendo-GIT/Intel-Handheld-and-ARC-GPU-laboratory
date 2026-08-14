@@ -39,7 +39,7 @@ checks, safety model and restoration path.
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Activates the shared panel's documented 48-120 Hz Arc Sync range; includes a separate experimental 30-120 Hz option | Claw 8 AI+ validated; Claw 8 EX AI+ accepted only when the same panel and EDID are detected | Exact panel and EDID validation, original-profile backup, verified registry removal and Safe Mode recovery |
+| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Activates the documented 48-120 Hz Arc Sync range; includes separate experimental 30-120 and panel-overclocked 48-144 options | Claw 8 AI+ validated; Claw 8 EX AI+ accepted only when the same panel and EDID are detected; A1M diagnostics only | Exact panel/EDID validation, original-profile backup, verified registry removal and Safe Mode recovery |
 
 ## Start here
 
