@@ -9,6 +9,7 @@ $publicRoots = @(
     (Join-Path $repositoryRoot '.github'),
     (Join-Path $repositoryRoot 'docs'),
     (Join-Path $repositoryRoot 'games'),
+    (Join-Path $repositoryRoot 'utilities'),
     (Join-Path $repositoryRoot 'tools')
 )
 
@@ -22,7 +23,12 @@ $requiredFiles = @(
     'games\inazuma-eleven-victory-road\IEVR-Offline-Stutter-Fix.ps1',
     'games\detroit-become-human\Detroit-IntelArc-StabilityFix.ps1',
     'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
-    'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat'
+    'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
+    'utilities\msi-claw-8-ai-plus-vrr-48-120\MSI-Claw-VRR-Fix.ps1',
+    'utilities\msi-claw-8-ai-plus-vrr-48-120\INSTALL_48_120_VRR.bat',
+    'utilities\msi-claw-8-ai-plus-vrr-48-120\INSTALL_EXPERIMENTAL_30_120_VRR.bat',
+    'utilities\msi-claw-8-ai-plus-vrr-48-120\RESTORE_ORIGINAL_VRR.bat',
+    'utilities\msi-claw-8-ai-plus-vrr-48-120\EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat'
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath) -PathType Leaf)) {
@@ -104,12 +110,34 @@ foreach ($value in $requiredDetroitValues) {
     }
 }
 
+$vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-ai-plus-vrr-48-120\MSI-Claw-VRR-Fix.ps1') -Raw
+$requiredVrrValues = @(
+    'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
+    '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
+    '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
+    'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743',
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid')]",
+    'ctlSetIntelArcSyncProfile'
+)
+foreach ($value in $requiredVrrValues) {
+    if ($vrrScript -notmatch [regex]::Escape($value)) {
+        throw "VRR utility no longer contains required integrity value: $value"
+    }
+}
+
 $nestedGitDirectories = @(
-    Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'games') -Directory -Recurse -Force |
-        Where-Object { $_.Name -eq '.git' }
+    foreach ($root in @(
+        (Join-Path $repositoryRoot 'games'),
+        (Join-Path $repositoryRoot 'utilities')
+    )) {
+        if (Test-Path -LiteralPath $root -PathType Container) {
+            Get-ChildItem -LiteralPath $root -Directory -Recurse -Force |
+                Where-Object { $_.Name -eq '.git' }
+        }
+    }
 )
 if ($nestedGitDirectories.Count -gt 0) {
-    throw "Nested Git repository found under games/:`n$($nestedGitDirectories.FullName -join "`n")"
+    throw "Nested Git repository found in the public project tree:`n$($nestedGitDirectories.FullName -join "`n")"
 }
 
 [pscustomobject]@{
@@ -119,4 +147,5 @@ if ($nestedGitDirectories.Count -gt 0) {
     KenaPakSha256 = $actualKenaPakHash
     InazumaKnownHashes = $requiredInazumaHashes.Count
     DetroitIntegrityValues = $requiredDetroitValues.Count
+    VrrIntegrityValues = $requiredVrrValues.Count
 }

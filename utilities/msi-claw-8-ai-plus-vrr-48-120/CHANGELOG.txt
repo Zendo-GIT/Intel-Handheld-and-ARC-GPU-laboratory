@@ -1,0 +1,12 @@
+MSI CLAW 8 AI+ VRR RANGE FIX - CHANGELOG
+=========================================
+
+1.0.0 - 2026-08-14
+------------------
+- Adds direct Intel Arc Sync status reporting.
+- Adds verified official EXCELLENT / 48-120 Hz mode.
+- Adds an optional experimental 30-120 Hz EDID override for the exact validated
+  CSW0801 / PN8007QB1-2 panel and EDID.
+- Adds original-profile backup, verified restore and Safe Mode emergency EDID
+  removal.
+- Adds a user-confirmed PC restart prompt after every change.

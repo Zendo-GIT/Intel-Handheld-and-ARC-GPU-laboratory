@@ -14,6 +14,7 @@ Each project is distributed as an independent GitHub Release asset. You do not n
 | Kena: Bridge of Spirits | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip) | [kena-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0) |
 | INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip) | [ievr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0) |
 | Detroit: Become Human | [Download stability fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/detroit-v1.0.0/Detroit-Intel-Arc-Stability-Fix-1.0.0.zip) | [detroit-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/detroit-v1.0.0) |
+| MSI Claw 8 AI+ VRR Range Fix | [Download utility 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.0/MSI-Claw-8-AI-Plus-VRR-Range-Fix-1.0.0.zip) | [claw8-vrr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.0) |
 
 Read the linked game documentation before installation. The Inazuma fix is offline-only and must be uninstalled before EAC or online use.
 
@@ -26,6 +27,12 @@ Read the linked game documentation before installation. The Inazuma fix is offli
 | [INAZUMA ELEVEN: Victory Road](games/inazuma-eleven-victory-road/README.md) | Recurring one-to-two-second Steam/EOS synchronization hitch | Four-byte synchronization-path patch with automatic game-network isolation | 1.0.0 validated | **Offline only; incompatible with EAC and online play** |
 | [Detroit: Become Human](games/detroit-become-human/README.md) | Unsupported-GPU prompt, scaler corruption and persistent transition stalls on Intel Arc | Exact dialog suppression, safe graphics path, cache validation and chapter-only presentation recovery | 1.0.0 reference-platform validation | Six-byte patch plus optional locally compiled Steam wrapper; no DLL injection |
 
+## System utilities
+
+| Utility | Purpose | Status | Safety model |
+|---|---|---|---|
+| [MSI Claw 8 AI+ VRR Range Fix](utilities/msi-claw-8-ai-plus-vrr-48-120/README.md) | Activates the panel's documented 48-120 Hz Arc Sync range; includes a separate experimental 30-120 Hz option | Official 48-120 mode validated; 30-120 mode pending post-restart validation | Exact panel and EDID validation, original-profile backup, verified registry removal and Safe Mode recovery |
+
 ## Start here
 
 Open the folder for the game you want to fix and read its safety and compatibility sections before downloading or building anything. The projects deliberately use different mechanisms because the underlying defects are different.
@@ -36,6 +43,9 @@ games/
 ├── kena-bridge-of-spirits/
 ├── inazuma-eleven-victory-road/
 └── detroit-become-human/
+
+utilities/
+└── msi-claw-8-ai-plus-vrr-48-120/
 ```
 
 Each game folder contains its own installer or PAK, technical documentation, changelog, compatibility matrix, and reproducible release builder.
@@ -82,7 +92,7 @@ Run the shared release builder from the repository root to reproduce all current
 .\tools\Build-All-Releases.ps1
 ```
 
-Generated archives are written inside each game's ignored `dist` directory and collected in the root `dist` directory with a shared checksum manifest. See [Release guide](docs/RELEASES.md).
+Generated archives are written inside each project's ignored `dist` directory and collected in the root `dist` directory with a shared checksum manifest. See [Release guide](docs/RELEASES.md).
 
 ## Independence
 

@@ -11,5 +11,8 @@
   unsupported-GPU dialog suppression, cache-aware launch safeguards and
   transition presentation recovery, plus optional reversible Steam Play
   integration.
+- Added MSI Claw 8 AI+ VRR Range Fix 1.0.0 with a validated official
+  48-120 Hz Intel Arc Sync profile, exact status reporting, reversible recovery,
+  and a separately marked panel-specific experimental 30-120 Hz EDID override.
 
 Game-specific changes remain documented in each game folder.

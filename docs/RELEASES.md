@@ -8,7 +8,7 @@ From a Windows PowerShell prompt at the repository root:
 .\tools\Build-All-Releases.ps1
 ```
 
-The command validates the repository and invokes each game's pinned release builder. Each project keeps its own ignored `dist` directory, and the final ZIPs are also collected in the root `dist` directory with individual `.sha256.txt` files and a shared `SHA256SUMS.txt` manifest.
+The command validates the repository and invokes every pinned game and system-utility release builder. Each project keeps its own ignored `dist` directory, and the final ZIPs are also collected in the root `dist` directory with individual `.sha256.txt` files and a shared `SHA256SUMS.txt` manifest.
 
 ## GitHub release naming
 
@@ -18,6 +18,7 @@ Use game-scoped tags so versions can evolve independently:
 - `kena-v1.0.0`
 - `ievr-v1.0.0`
 - `detroit-v1.0.0`
+- `claw8-vrr-v1.0.0`
 
 Attach only the matching ZIP and checksum from `dist`. Do not attach the entire repository, source captures, backups, or publication workspace.
 
@@ -31,6 +32,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `kena-v1.0.0` | `Kena Intel Arc Water Flash Fix 1.0.0` | `Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `ievr-v1.0.0` | `IEVR Offline Stutter Fix 1.0.0` | `IEVR-Offline-Stutter-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `detroit-v1.0.0` | `Detroit Intel Arc Stability Fix 1.0.0` | `Detroit-Intel-Arc-Stability-Fix-1.0.0.zip` and its `.sha256.txt` file |
+| `claw8-vrr-v1.0.0` | `MSI Claw 8 AI+ VRR Range Fix 1.0.0` | `MSI-Claw-8-AI-Plus-VRR-Range-Fix-1.0.0.zip` and its `.sha256.txt` file |
 
 For each release:
 
@@ -41,8 +43,8 @@ For each release:
 5. Upload only the matching ZIP and `.sha256.txt` file from the root `dist` directory.
 6. Publish the release and test its direct download button from the root README.
 
-Do not mark game releases as **Latest** interchangeably. The game-scoped tags and direct asset URLs are the stable distribution identifiers.
+Do not mark unrelated releases as **Latest** interchangeably. The project-scoped tags and direct asset URLs are the stable distribution identifiers.
 
 ## Nexus Mods
 
-Nexus descriptions and checklists are maintained in the laboratory publication bundle, not embedded as extra main-file archives. The GitHub game folders contain the technical and installation documentation required to review each release.
+Nexus descriptions and checklists are maintained in each project's publication documentation, not embedded as extra main-file archives. The VRR utility includes an optional Nexus draft at `utilities/msi-claw-8-ai-plus-vrr-48-120/docs/NEXUS_MODS.md`; GitHub remains its canonical source and issue tracker.
