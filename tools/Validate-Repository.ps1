@@ -24,11 +24,11 @@ $requiredFiles = @(
     'games\detroit-become-human\Detroit-IntelArc-StabilityFix.ps1',
     'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
     'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
-    'utilities\msi-claw-8-ai-plus-vrr-48-120\MSI-Claw-VRR-Fix.ps1',
-    'utilities\msi-claw-8-ai-plus-vrr-48-120\INSTALL_48_120_VRR.bat',
-    'utilities\msi-claw-8-ai-plus-vrr-48-120\INSTALL_EXPERIMENTAL_30_120_VRR.bat',
-    'utilities\msi-claw-8-ai-plus-vrr-48-120\RESTORE_ORIGINAL_VRR.bat',
-    'utilities\msi-claw-8-ai-plus-vrr-48-120\EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat'
+    'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_30_120_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat'
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath) -PathType Leaf)) {
@@ -110,7 +110,7 @@ foreach ($value in $requiredDetroitValues) {
     }
 }
 
-$vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-ai-plus-vrr-48-120\MSI-Claw-VRR-Fix.ps1') -Raw
+$vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 $requiredVrrValues = @(
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',

@@ -32,7 +32,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `kena-v1.0.0` | `Kena Intel Arc Water Flash Fix 1.0.0` | `Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `ievr-v1.0.0` | `IEVR Offline Stutter Fix 1.0.0` | `IEVR-Offline-Stutter-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `detroit-v1.0.0` | `Detroit Intel Arc Stability Fix 1.0.0` | `Detroit-Intel-Arc-Stability-Fix-1.0.0.zip` and its `.sha256.txt` file |
-| `claw8-vrr-v1.0.0` | `MSI Claw 8 AI+ VRR Range Fix 1.0.0` | `MSI-Claw-8-AI-Plus-VRR-Range-Fix-1.0.0.zip` and its `.sha256.txt` file |
+| `claw8-vrr-v1.0.0` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.0` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.0.zip` and its `.sha256.txt` file |
 
 For each release:
 
@@ -47,4 +47,4 @@ Do not mark unrelated releases as **Latest** interchangeably. The project-scoped
 
 ## Nexus Mods
 
-Nexus descriptions and checklists are maintained in each project's publication documentation, not embedded as extra main-file archives. The VRR utility includes an optional Nexus draft at `utilities/msi-claw-8-ai-plus-vrr-48-120/docs/NEXUS_MODS.md`; GitHub remains its canonical source and issue tracker.
+Nexus descriptions and checklists are maintained in each project's publication documentation, not embedded as extra main-file archives. The VRR utility includes an optional Nexus draft at `utilities/msi-claw-8-intel-vrr-range-fix/docs/NEXUS_MODS.md`; GitHub remains its canonical source and issue tracker.

@@ -1,6 +1,16 @@
 # Compatibility
 
-## Validated configuration
+## Targeted Intel model family
+
+- MSI Claw 8 AI+ A2VM / A2VMX
+- MSI Claw 8 EX AI+ CG3EM / CG3EMX
+
+Both model families are accepted only when the internal display returns the
+exact `CSW0801 / PN8007QB1-2` identity and validated physical EDID below. The
+installer does not infer compatibility from a model name or public display
+specification alone.
+
+## Real-hardware validation configuration
 
 - MSI Claw 8 AI+ Polar Tempest
 - Intel Core Ultra 7 258V
@@ -18,6 +28,9 @@ The release checks the WMI monitor identity, physical EDID length, full physical
 EDID SHA-256, both EDID checksums, Intel Arc Sync support and connected-output
 count. Any mismatch is rejected without modification.
 
+This permits another Claw configuration using the exact validated display to
+pass while still rejecting a future panel revision whose EDID differs.
+
 Disconnect external VRR displays while installing. The public build requires
 exactly one active Intel Arc Sync output because the current Intel API does not
 provide a stable user-facing monitor identifier in the profile call.
@@ -26,11 +39,22 @@ provide a stable user-facing monitor identifier in the profile call.
 
 The official `EXCELLENT` profile is part of Intel Control Library and is not
 specific to Arc 140V. The underlying technique may therefore work on other
-Intel Arc Sync systems. This release remains Claw-panel-specific because only
+Intel Arc Sync systems. This release remains exact-panel-specific because only
 that full hardware path has been validated.
 
 The experimental EDID transformation is never generic. A different monitor can
 store its range in different blocks and can have different electrical limits.
+
+## Similar displays that are not supported
+
+MSI specifies the AMD-powered Claw A8 BZ2EM with an 8-inch `1920x1200 /
+48-120 Hz VRR` display, but the official mode in this package depends on Intel
+Control Library and cannot run on its Radeon 890M. A dedicated A8 edition would
+need a physical EDID capture and AMD-driver validation first.
+
+The Lenovo Legion Go S also has similar published display characteristics. No
+reliable source currently establishes that it uses the exact same panel and
+EDID, so it is deliberately excluded.
 
 ## Known limits
 

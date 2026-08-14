@@ -14,7 +14,7 @@ Each project is distributed as an independent GitHub Release asset. You do not n
 | Kena: Bridge of Spirits | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip) | [kena-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0) |
 | INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip) | [ievr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0) |
 | Detroit: Become Human | [Download stability fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/detroit-v1.0.0/Detroit-Intel-Arc-Stability-Fix-1.0.0.zip) | [detroit-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/detroit-v1.0.0) |
-| MSI Claw 8 AI+ VRR Range Fix | [Download utility 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.0/MSI-Claw-8-AI-Plus-VRR-Range-Fix-1.0.0.zip) | [claw8-vrr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.0) |
+| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.0/MSI-Claw-8-Intel-VRR-Range-Fix-1.0.0.zip) | [claw8-vrr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.0) |
 
 Read the linked game documentation before installation. The Inazuma fix is offline-only and must be uninstalled before EAC or online use.
 
@@ -31,7 +31,7 @@ Read the linked game documentation before installation. The Inazuma fix is offli
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw 8 AI+ VRR Range Fix](utilities/msi-claw-8-ai-plus-vrr-48-120/README.md) | Activates the panel's documented 48-120 Hz Arc Sync range; includes a separate experimental 30-120 Hz option | Official 48-120 mode validated; 30-120 mode pending post-restart validation | Exact panel and EDID validation, original-profile backup, verified registry removal and Safe Mode recovery |
+| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Activates the shared panel's documented 48-120 Hz Arc Sync range; includes a separate experimental 30-120 Hz option | Claw 8 AI+ validated; Claw 8 EX AI+ accepted only when the same panel and EDID are detected | Exact panel and EDID validation, original-profile backup, verified registry removal and Safe Mode recovery |
 
 ## Start here
 
@@ -45,7 +45,7 @@ games/
 └── detroit-become-human/
 
 utilities/
-└── msi-claw-8-ai-plus-vrr-48-120/
+└── msi-claw-8-intel-vrr-range-fix/
 ```
 
 Each game folder contains its own installer or PAK, technical documentation, changelog, compatibility matrix, and reproducible release builder.

@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
-$packageName = 'MSI-Claw-8-AI-Plus-VRR-Range-Fix'
+$packageName = 'MSI-Claw-8-Intel-VRR-Range-Fix'
 $distRoot = Join-Path $projectRoot 'dist'
 $stagingRoot = Join-Path $distRoot ".staging-$packageName-$Version"
 $stagedPackageRoot = Join-Path $stagingRoot $packageName

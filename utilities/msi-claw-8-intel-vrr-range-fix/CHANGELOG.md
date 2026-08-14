@@ -2,6 +2,8 @@
 
 ## 1.0.0 — 2026-08-14
 
+- Targeted compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations through
+  exact panel and EDID validation rather than model-name assumptions.
 - Added direct Intel Arc Sync monitor and profile diagnostics through the
   official Intel Control Library.
 - Added verified official `EXCELLENT / 48-120 Hz` installation.

@@ -1,10 +1,15 @@
-MSI CLAW 8 AI+ INTEL ARC SYNC VRR RANGE FIX 1.0.0
-==================================================
+MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 1.0.0
+====================================================
 
-VALIDATED PANEL
+SUPPORTED PANEL
 ---------------
 CSW0801 / PN8007QB1-2, physical EDID SHA-256:
 E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0
+
+The utility targets Claw 8 AI+ and Claw 8 EX AI+ configurations only when this
+exact internal panel and physical EDID are detected. Model names alone are not
+used as a safety check. The AMD-powered Claw A8 is not compatible with this
+Intel Control Library package.
 
 OFFICIAL MODE - RECOMMENDED
 ---------------------------

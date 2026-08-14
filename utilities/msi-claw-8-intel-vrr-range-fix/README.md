@@ -1,7 +1,7 @@
-# MSI Claw 8 AI+ Intel Arc Sync VRR Range Fix
+# MSI Claw 8 AI+ / 8 EX AI+ Intel VRR Range Fix
 
 A transparent and reversible utility for the `CSW0801 / PN8007QB1-2` internal
-panel used by the validated MSI Claw 8 AI+ configuration.
+panel used by compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations.
 
 ![Version](https://img.shields.io/badge/release-1.0.0-blue)
 ![Official mode](https://img.shields.io/badge/official-48--120_Hz-green)
@@ -22,10 +22,12 @@ EXCELLENT profile: 48-120 Hz
 ```
 
 Intel defines `EXCELLENT` as the unconstrained profile that can use the full
-monitor VRR range. MSI documents the Claw 8 AI+ display as `48-120 Hz VRR`.
+monitor VRR range. MSI documents both Claw Intel models with an 8-inch
+`48-120 Hz VRR` display.
 
 - [Intel Graphics Control Library Arc Sync API](https://intel.github.io/drivers.gpu.control-library/Control/api.html)
 - [MSI Claw 8 AI+ specifications](https://www.msi.com/Handheld/Claw-8-AI-Plus-A2VMX/Specification)
+- [MSI Claw 8 EX AI+ specifications](https://www.msi.com/Handheld/Claw-8-EX-AI-Plus-CG3EMX/Specification)
 
 ## Two deliberately separate modes
 
@@ -40,7 +42,7 @@ or any game.
 
 ### Experimental mode: 30-120 Hz
 
-`INSTALL_EXPERIMENTAL_30_120_VRR.bat` is an optional Claw-panel-only EDID
+`INSTALL_EXPERIMENTAL_30_120_VRR.bat` is an optional validated-panel-only EDID
 override comparable in purpose to configuring the range with ToastyX Custom
 Resolution Utility (CRU). It changes the minimum from 48 to 30 in copies of the
 base EDID range descriptor and DisplayID Adaptive-Sync block, recalculates both
@@ -110,7 +112,8 @@ regular restore script to restore the saved Intel profile.
 ## Compatibility boundary
 
 The official Intel API mechanism may be useful on other Intel Arc Sync systems,
-but this release intentionally accepts only:
+but model names alone are never trusted. This release intentionally accepts
+only:
 
 ```text
 Panel ID: CSW0801
@@ -120,8 +123,17 @@ E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0
 ```
 
 This is a display-specific safeguard, not a claim that other Intel Arc GPUs are
-incapable. A future generic edition needs separate monitor selection and
-validation. The experimental mode must never be copied blindly to another EDID.
+incapable. A Claw 8 EX AI+ is accepted only when Windows reports the exact panel
+and physical EDID above. A future generic edition needs separate monitor
+selection and validation. The experimental mode must never be copied blindly to
+another EDID.
+
+The AMD-powered Claw A8 has the same published `1920x1200 / 48-120 Hz VRR`
+display specification, but it cannot use Intel Control Library. It is therefore
+not compatible with this Intel package. It requires separate AMD-driver and
+physical-EDID validation before a dedicated edition can be published. The same
+restriction applies to the Lenovo Legion Go S, whose public display
+specification is similar but whose exact panel identity has not been verified.
 
 ## Anti-cheat boundary
 
