@@ -1,10 +1,10 @@
-# MSI Claw Game Optimization Lab
+# Intel Handheld and Arc GPU Laboratory
 
-Game-specific compatibility fixes and evidence-driven performance investigations for MSI Claw handhelds, with a focus on Intel Arc graphics.
+Game-specific compatibility fixes, system utilities and evidence-driven performance investigations for MSI Claw handhelds and Intel Arc graphics.
 
 The laboratory publishes narrow, reversible fixes for defects that cannot be solved reliably through ordinary in-game settings. Every release documents the exact affected build, validation hardware, technical scope, restoration path, and anti-cheat boundary.
 
-## Download a fix
+## Download a game fix
 
 Each project is distributed as an independent GitHub Release asset. You do not need to clone the repository or download the complete laboratory.
 
@@ -14,9 +14,17 @@ Each project is distributed as an independent GitHub Release asset. You do not n
 | Kena: Bridge of Spirits | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip) | [kena-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0) |
 | INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip) | [ievr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0) |
 | Detroit: Become Human | [Download stability fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/detroit-v1.0.0/Detroit-Intel-Arc-Stability-Fix-1.0.0.zip) | [detroit-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/detroit-v1.0.0) |
-| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.0/MSI-Claw-8-Intel-VRR-Range-Fix-1.0.0.zip) | [claw8-vrr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.0) |
 
 Read the linked game documentation before installation. The Inazuma fix is offline-only and must be uninstalled before EAC or online use.
+
+## Download a system utility
+
+System utilities are independent of the game fixes and have their own hardware
+checks, safety model and restoration path.
+
+| Utility | Direct download | Release page |
+|---|---|---|
+| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.1/MSI-Claw-8-Intel-VRR-Range-Fix-1.0.1.zip) | [claw8-vrr-v1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.1) |
 
 ## Published projects
 

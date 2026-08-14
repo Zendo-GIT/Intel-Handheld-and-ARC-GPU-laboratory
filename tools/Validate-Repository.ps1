@@ -116,7 +116,7 @@ $requiredVrrValues = @(
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
     'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid')]",
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile'
 )
 foreach ($value in $requiredVrrValues) {

@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid')]
+    [ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]
     [string]$Action = 'Status'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '1.0.0'
+$fixVersion = '1.0.1'
 $targetManufacturer = 'CSW'
 $targetProductCode = '0801'
 $targetPanelName = 'PN8007QB1-2'
@@ -19,6 +19,9 @@ $profileCustom = 7
 $stateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $backupPath = Join-Path $stateRoot 'original-profile.json'
 $experimentalStatePath = Join-Path $stateRoot 'experimental-edid.json'
+$installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
+$startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
+$startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
 $validatedPhysicalEdidSha256 = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
 $validatedExperimentalEdidSha256 = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
 $validatedExperimentalBlock0Sha256 = '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698'
@@ -214,6 +217,78 @@ function Confirm-AdministratorOrRelaunch {
     $arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Action $Action"
     $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments -Wait -PassThru
     exit $process.ExitCode
+}
+
+function Get-StartupReapplyState {
+    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
+    if ($null -eq $task) {
+        return 'NOT_INSTALLED'
+    }
+    if (-not (Test-Path -LiteralPath $installedScriptPath -PathType Leaf)) {
+        return 'TASK_WITHOUT_SCRIPT'
+    }
+    return [string]$task.State
+}
+
+function Install-StartupReapply {
+    [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    [IO.File]::Copy($PSCommandPath, $installedScriptPath, $true)
+
+    $sourceHash = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
+    $installedHash = (Get-FileHash -LiteralPath $installedScriptPath -Algorithm SHA256).Hash
+    if ($sourceHash -ne $installedHash) {
+        throw 'The installed startup script failed its integrity check.'
+    }
+
+    $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $arguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$installedScriptPath`" -Action ApplyStartup"
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+    $trigger.Delay = 'PT45S'
+    $taskAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $arguments
+    $principal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 3)
+    $task = New-ScheduledTask -Action $taskAction -Trigger $trigger -Principal $principal `
+        -Settings $settings -Description 'Reapplies the verified MSI Claw Intel Arc Sync VRR profile after sign-in.'
+    Register-ScheduledTask -TaskName $startupTaskName -InputObject $task -Force | Out-Null
+
+    if ((Get-StartupReapplyState) -eq 'NOT_INSTALLED') {
+        throw 'The startup reapply task could not be verified.'
+    }
+}
+
+function Remove-StartupReapply {
+    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
+    if ($null -ne $task) {
+        Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
+    }
+    [IO.File]::Delete($installedScriptPath)
+    [IO.File]::Delete($startupStatusPath)
+    if ((Get-StartupReapplyState) -ne 'NOT_INSTALLED') {
+        throw 'The startup reapply task could not be removed completely.'
+    }
+}
+
+function Write-StartupResult {
+    param(
+        [Parameter(Mandatory)][bool]$Success,
+        [Parameter(Mandatory)][string]$Message
+    )
+
+    [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    $result = [ordered]@{
+        SchemaVersion = 1
+        FixVersion = $fixVersion
+        Timestamp = (Get-Date).ToString('o')
+        Success = $Success
+        Message = $Message
+    }
+    [IO.File]::WriteAllText(
+        $startupStatusPath,
+        ($result | ConvertTo-Json),
+        [Text.UTF8Encoding]::new($false)
+    )
 }
 
 function Add-ArcSyncControlType {
@@ -695,6 +770,7 @@ function Get-StatusObject {
         DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.ActiveMinimumHz, $Snapshot.ActiveMaximumHz
         OriginalProfileSaved = Test-Path -LiteralPath $backupPath -PathType Leaf
         BackupPath = $backupPath
+        StartupReapply = Get-StartupReapplyState
         EdidOverride = $OverrideState.State
         RestartRequired = $OverrideState.State -eq 'CLAWLAB_30_120' -and -not $experimentalRangeActive
         RegistryModified = $OverrideState.State -eq 'CLAWLAB_30_120'
@@ -730,6 +806,21 @@ try {
         exit 0
     }
 
+    if ($Action -eq 'ApplyStartup') {
+        $graphicsSoftwareDeadline = (Get-Date).AddSeconds(90)
+        $graphicsSoftwareSeen = $false
+        do {
+            $graphicsSoftwareSeen = $null -ne (Get-Process -Name 'IntelGraphicsSoftware' -ErrorAction SilentlyContinue)
+            if (-not $graphicsSoftwareSeen) {
+                Start-Sleep -Seconds 2
+            }
+        } while (-not $graphicsSoftwareSeen -and (Get-Date) -lt $graphicsSoftwareDeadline)
+
+        if ($graphicsSoftwareSeen) {
+            Start-Sleep -Seconds 10
+        }
+    }
+
     $panel = Get-ValidatedPanel
     $gpu = Get-IntelGpu
     $registryContext = Get-PanelRegistryContext -Panel $panel
@@ -741,6 +832,32 @@ try {
     switch ($Action) {
         'Status' {
             Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
+        }
+
+        'ApplyStartup' {
+            if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
+                throw 'An unknown EDID override is installed. Startup reapply was cancelled.'
+            }
+            $expectedMinimumHz = if ($overrideState.State -eq 'CLAWLAB_30_120') {
+                $experimentalMinimumHz
+            }
+            else {
+                $targetMinimumHz
+            }
+            if ([Math]::Abs($before.MonitorMinimumHz - $expectedMinimumHz) -gt 0.1 -or
+                [Math]::Abs($before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
+                throw "Startup reapply found an unexpected monitor range: $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
+            }
+
+            Invoke-SetProfile -Target $before -ProfileId $profileExcellent
+            $after = Get-TargetSnapshot -Attempts 10
+            if ($after.ProfileId -ne $profileExcellent -or
+                [Math]::Abs($after.ActiveMinimumHz - $expectedMinimumHz) -gt 0.1 -or
+                [Math]::Abs($after.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
+                throw "Startup profile verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
+            }
+            Write-StartupResult -Success $true -Message ("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz)
+            exit 0
         }
 
         'Install48' {
@@ -758,6 +875,7 @@ try {
             if ($before.ProfileId -eq $profileExcellent -and
                 [Math]::Abs($before.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
                 [Math]::Abs($before.ActiveMaximumHz - $targetMaximumHz) -le 0.1) {
+                Install-StartupReapply
                 Write-Host 'Official Intel Arc Sync 48-120 Hz mode is already active.' -ForegroundColor Green
                 Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
                 break
@@ -782,7 +900,9 @@ try {
                 throw
             }
 
+            Install-StartupReapply
             Write-Host 'Official Intel Arc Sync 48-120 Hz mode is active and verified.' -ForegroundColor Green
+            Write-Host 'Automatic reapply is installed for future Windows sign-ins.' -ForegroundColor Green
             Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState
         }
 
@@ -842,6 +962,7 @@ try {
                     throw
                 }
 
+                Install-StartupReapply
                 Write-Host 'Experimental 30-120 Hz EDID override is installed and verified.' -ForegroundColor Yellow
                 Write-Host 'Restart the PC to make Windows and the Intel driver reload the display EDID.' -ForegroundColor Yellow
                 $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $official -OverrideState $overrideState
@@ -858,10 +979,12 @@ try {
                     [Math]::Abs($after.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
                     throw "Experimental driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
                 }
+                Install-StartupReapply
                 Write-Host 'Experimental 30-120 Hz mode is active and verified by the Intel driver.' -ForegroundColor Yellow
                 Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState
             }
             else {
+                Install-StartupReapply
                 Write-Host 'The experimental override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
                 Write-Host 'Restart the PC, then run CHECK_STATUS.bat.' -ForegroundColor Yellow
                 $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
@@ -897,6 +1020,7 @@ try {
                     throw 'The experimental EDID override could not be removed completely.'
                 }
             }
+            Remove-StartupReapply
             [IO.File]::Delete($backupPath)
             [IO.File]::Delete($experimentalStatePath)
             Write-Host "Restored the original Intel Arc Sync profile: $($after.ProfileName)." -ForegroundColor Green
@@ -908,6 +1032,9 @@ try {
     }
 }
 catch {
+    if ($Action -eq 'ApplyStartup') {
+        try { Write-StartupResult -Success $false -Message $_.Exception.Message } catch {}
+    }
     Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }

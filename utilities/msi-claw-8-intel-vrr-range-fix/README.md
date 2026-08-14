@@ -3,7 +3,7 @@
 A transparent and reversible utility for the `CSW0801 / PN8007QB1-2` internal
 panel used by compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations.
 
-![Version](https://img.shields.io/badge/release-1.0.0-blue)
+![Version](https://img.shields.io/badge/release-1.0.1-blue)
 ![Official mode](https://img.shields.io/badge/official-48--120_Hz-green)
 ![Experimental mode](https://img.shields.io/badge/experimental-30--120_Hz-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -37,6 +37,13 @@ monitor VRR range. MSI documents both Claw Intel models with an 8-inch
 through `ControlLib.dll`, then reads the profile back from the driver and
 requires an exact `48-120 Hz` result.
 
+A full Windows restart was observed restoring Intel's constrained
+`RECOMMENDED / 60-120 Hz` profile. The installer therefore stores a verified
+copy of its readable PowerShell script and creates a current-user scheduled
+task named `ClawLab MSI Claw 8 VRR Range`. It waits for the automatically
+started Intel Graphics Software process, then reapplies and verifies
+`EXCELLENT` after Intel has finished initializing.
+
 This mode does not modify the EDID, registry, graphics driver, monitor firmware
 or any game.
 
@@ -68,7 +75,9 @@ No CRU file is bundled or required.
    - run `INSTALL_EXPERIMENTAL_30_120_VRR.bat` for the optional experimental
      mode and accept its administrator prompt.
 4. Accept the final restart prompt, or restart the PC manually later.
-5. Run `CHECK_STATUS.bat` after Windows starts again.
+5. Wait about two minutes after signing in so Intel Graphics Software and the
+   delayed reapply can finish.
+6. Run `CHECK_STATUS.bat`.
 
 The experimental installer first establishes the verified official profile,
 then installs the EDID override. If status reports
@@ -91,11 +100,15 @@ DRIVER_PROFILE_CONSTRAINED
 UNKNOWN_EDID_OVERRIDE
 ```
 
+`StartupReapply` must show `Ready` or `Running` after installation. If it shows
+`NOT_INSTALLED`, the driver can return to 60-120 Hz on the next restart.
+
 ## Restore and emergency recovery
 
 Run `RESTORE_ORIGINAL_VRR.bat` to restore the first saved Intel Arc Sync profile
-and remove the experimental EDID override if this package installed it. Restart
-the PC when prompted.
+and remove the experimental EDID override if this package installed it. Restore
+also unregisters the delayed sign-in task and deletes its installed script.
+Restart the PC when prompted.
 
 The original profile is stored under:
 
@@ -139,8 +152,9 @@ specification is similar but whose exact panel identity has not been verified.
 
 The utility does not open, inject into, patch, monitor or control game
 processes. It modifies no game file and installs no runtime service, overlay or
-hook. Official mode changes a global display profile through Intel's public API;
-experimental mode installs a Windows monitor EDID override.
+hook. Its scheduled task runs once after sign-in and exits immediately after
+profile verification. Official mode changes a global display profile through
+Intel's public API; experimental mode installs a Windows monitor EDID override.
 
 This design has no direct interaction with anti-cheat software, but no project
 can guarantee third-party anti-cheat policy. Keep the package documentation
@@ -149,7 +163,7 @@ available when reporting compatibility.
 ## Building the release
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 1.0.0
+.\tools\Build-Release.ps1 -Version 1.0.1
 ```
 
 The ZIP contains only readable scripts and documentation. It contains no Intel

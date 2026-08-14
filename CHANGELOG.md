@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-15
+
+- Updated MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix to 1.0.1 after full-restart
+  validation showed Intel restoring `RECOMMENDED / 60-120 Hz` during startup.
+  The fix now reapplies and verifies `EXCELLENT / 48-120 Hz` after Intel
+  Graphics Software initialization through a removable current-user task.
+
 ## 2026-08-14
 
 - Rebuilt the public project as one unified MSI Claw Game Optimization Lab repository.

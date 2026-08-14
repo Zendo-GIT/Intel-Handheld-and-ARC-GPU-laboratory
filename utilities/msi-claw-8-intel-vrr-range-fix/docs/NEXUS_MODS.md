@@ -3,7 +3,7 @@
 Recommended metadata:
 
 - Title: **MSI Claw 8 AI+ / 8 EX AI+ Intel VRR Range Fix**
-- Version: **1.0.0**
+- Version: **1.0.1**
 - Category: **Utilities** or **Bug Fixes**
 - Installation: **Manual only**
 
@@ -12,7 +12,8 @@ Recommended metadata:
 Activates the compatible Claw 8 AI+ / Claw 8 EX AI+ panel's official 48-120 Hz
 Intel Arc Sync range instead of the driver's constrained 60-120 Hz recommended
 profile. Includes an optional, clearly separated experimental 30-120 Hz EDID
-override, exact status reporting, backup, restore and Safe Mode recovery.
+override, delayed sign-in reapply, exact status reporting, backup, restore and
+Safe Mode recovery.
 
 ## Required disclosure
 
@@ -26,6 +27,10 @@ EDID differs. The AMD-powered Claw A8 is not compatible with this Intel package.
 The archive contains no driver, Intel DLL, CRU executable, EDID dump, compiled
 binary, game file, injector or anti-cheat component. It modifies no monitor
 firmware. Experimental mode uses Windows' reversible EDID override mechanism.
+Official installation creates one documented current-user scheduled task
+because Intel restores its constrained profile during a full Windows restart.
+The task waits for Intel Graphics Software, applies the profile last and exits;
+normal restore removes the task and its installed readable script.
 
 The project includes AI-assisted code and documentation. Do not enter it in an
 event whose rules prohibit generative-AI-assisted submissions.

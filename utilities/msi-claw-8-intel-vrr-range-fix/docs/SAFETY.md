@@ -29,15 +29,30 @@ generated blocks. An existing unknown override is never replaced or deleted.
 Administrative elevation is requested only for experimental EDID installation
 or removal. Official profile installation does not require elevation.
 
+## Sign-in persistence
+
+Real-hardware testing showed the Intel driver restoring
+`RECOMMENDED / 60-120 Hz` during a full Windows restart. Official installation
+therefore registers one current-user scheduled task named
+`ClawLab MSI Claw 8 VRR Range`.
+
+The task starts 45 seconds after sign-in, waits up to 90 seconds for the
+automatically launched Intel Graphics Software process, allows ten additional
+seconds for initialization, applies the same verified Intel API profile and
+exits. If Intel Graphics Software is not configured to start automatically, the
+task applies the profile after its bounded wait instead. It is allowed on
+battery power and has a three-minute execution limit.
+
 ## Recovery
 
 The first original Intel profile is saved under the current user's local
 ClawLab state directory and is not overwritten by repeated installation.
 
 Normal restore verifies and removes only this package's EDID blocks, restores
-the saved Intel profile, and asks for a restart. Emergency restore uses the
-recorded exact registry path and hard-coded block SHA-256 values. It does not
-load Intel Control Library and can be used from Safe Mode.
+the saved Intel profile, unregisters the sign-in task, removes the installed
+script, and asks for a restart. Emergency restore uses the recorded exact
+registry path and hard-coded block SHA-256 values. It does not load Intel
+Control Library and can be used from Safe Mode.
 
 ## What it never does
 
@@ -47,5 +62,6 @@ load Intel Control Library and can be used from Safe Mode.
 - no unknown EDID-override removal;
 - no game executable, asset, process or memory modification;
 - no DLL injection, overlay, hook or background service;
+- one documented current-user scheduled task, removed by normal restore;
 - no power-plan, BIOS, network or anti-cheat modification;
 - no bundled Intel, MSI, Microsoft or CRU binary.

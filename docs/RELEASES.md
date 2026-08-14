@@ -18,7 +18,7 @@ Use game-scoped tags so versions can evolve independently:
 - `kena-v1.0.0`
 - `ievr-v1.0.0`
 - `detroit-v1.0.0`
-- `claw8-vrr-v1.0.0`
+- `claw8-vrr-v1.0.1`
 
 Attach only the matching ZIP and checksum from `dist`. Do not attach the entire repository, source captures, backups, or publication workspace.
 
@@ -32,7 +32,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `kena-v1.0.0` | `Kena Intel Arc Water Flash Fix 1.0.0` | `Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `ievr-v1.0.0` | `IEVR Offline Stutter Fix 1.0.0` | `IEVR-Offline-Stutter-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `detroit-v1.0.0` | `Detroit Intel Arc Stability Fix 1.0.0` | `Detroit-Intel-Arc-Stability-Fix-1.0.0.zip` and its `.sha256.txt` file |
-| `claw8-vrr-v1.0.0` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.0` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.0.zip` and its `.sha256.txt` file |
+| `claw8-vrr-v1.0.1` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.1` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.1.zip` and its `.sha256.txt` file |
 
 For each release:
 

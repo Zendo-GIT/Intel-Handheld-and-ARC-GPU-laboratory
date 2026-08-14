@@ -25,6 +25,13 @@ Reopening Intel Graphics Software did not revert the profile. A new direct query
 still returned `EXCELLENT / 48-120 Hz`, even though the application UI could
 continue showing `60-120 Hz`.
 
+A later full Windows restart did revert the driver to
+`RECOMMENDED / 60-120 Hz`. Process timing on the reference system showed Intel
+Graphics Software starting automatically after the driver services. Release
+installation therefore creates a delayed current-user sign-in task. It waits
+for that Intel process and applies `EXCELLENT` last, preventing the startup
+initialization from overwriting the requested range.
+
 ## Why custom 30 Hz is not the official path
 
 A direct call requesting `CUSTOM / 30-120 Hz` against the physical `48-120 Hz`
@@ -73,5 +80,7 @@ device. Experimental installation and removal therefore require a restart.
 Every mutating batch file presents an explicit `Y/N` restart choice. No restart
 occurs without the user selecting `Y`.
 
-Official profile changes are live, but the same restart choice is presented for
-a consistent installation flow and to clear stale display-control UI state.
+Official profile changes are live, but the driver does not persist them reliably
+through a full restart. The sign-in task reapplies the profile only after Intel
+startup initialization. The same restart choice is presented to validate that
+complete persistence path and clear stale display-control UI state.

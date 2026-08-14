@@ -1,6 +1,9 @@
 # Project scope
 
-The MSI Claw Game Optimization Lab investigates game-specific rendering defects, frame-time stalls, crashes, and compatibility failures that remain after ordinary settings and supported driver updates have been tested.
+The Intel Handheld and Arc GPU Laboratory investigates game-specific rendering
+defects, frame-time stalls, crashes, compatibility failures and narrowly scoped
+system-display issues that remain after ordinary settings and supported driver
+updates have been tested.
 
 ## In scope
 

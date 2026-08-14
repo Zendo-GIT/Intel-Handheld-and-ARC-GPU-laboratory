@@ -2,6 +2,8 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version = '1.0.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$VrrVersion = '1.0.1',
     [switch]$SkipValidation
 )
 
@@ -14,19 +16,20 @@ if (-not $SkipValidation) {
 }
 
 $builders = @(
-    'games\jurassic-world-evolution-3\tools\Build-Release.ps1',
-    'games\kena-bridge-of-spirits\tools\Build-Release.ps1',
-    'games\inazuma-eleven-victory-road\tools\Build-Release.ps1',
-    'games\detroit-become-human\tools\Build-Release.ps1',
-    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Build-Release.ps1'
+    [pscustomobject]@{ Path = 'games\jurassic-world-evolution-3\tools\Build-Release.ps1'; Version = $Version },
+    [pscustomobject]@{ Path = 'games\kena-bridge-of-spirits\tools\Build-Release.ps1'; Version = $Version },
+    [pscustomobject]@{ Path = 'games\inazuma-eleven-victory-road\tools\Build-Release.ps1'; Version = $Version },
+    [pscustomobject]@{ Path = 'games\detroit-become-human\tools\Build-Release.ps1'; Version = $Version },
+    [pscustomobject]@{ Path = 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Build-Release.ps1'; Version = $VrrVersion }
 )
 
-$results = foreach ($relativePath in $builders) {
+$results = foreach ($definition in $builders) {
+    $relativePath = [string]$definition.Path
     $builder = Join-Path $repositoryRoot $relativePath
     if (-not (Test-Path -LiteralPath $builder -PathType Leaf)) {
         throw "Release builder missing: $relativePath"
     }
-    & $builder -Version $Version
+    & $builder -Version ([string]$definition.Version)
 }
 
 $distRoot = Join-Path $repositoryRoot 'dist'
