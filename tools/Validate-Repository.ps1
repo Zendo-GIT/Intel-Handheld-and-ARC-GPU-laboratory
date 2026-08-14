@@ -19,7 +19,10 @@ $requiredFiles = @(
     'docs\ANTI_CHEAT_POLICY.md',
     'games\jurassic-world-evolution-3\JWE3-IntelArc-WaterFix.ps1',
     'games\kena-bridge-of-spirits\mod\Kena-WindowsNoEditor_IntelArcWaterFlashFix_P.pak',
-    'games\inazuma-eleven-victory-road\IEVR-Offline-Stutter-Fix.ps1'
+    'games\inazuma-eleven-victory-road\IEVR-Offline-Stutter-Fix.ps1',
+    'games\detroit-become-human\Detroit-IntelArc-StabilityFix.ps1',
+    'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
+    'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat'
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath) -PathType Leaf)) {
@@ -88,6 +91,19 @@ foreach ($hash in $requiredInazumaHashes) {
     }
 }
 
+$detroitScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'games\detroit-become-human\Detroit-IntelArc-StabilityFix.ps1') -Raw
+$requiredDetroitValues = @(
+    'ECF52321921387E683904E089082D76B973326FC093AF14E524056715519C1CF',
+    '1B31A15AC8AF8A236B3B7FB721DF439D03EB40ACAA5ECF59BC6BCF0CDF49D2AE',
+    '0x661E57',
+    'DetroitBecomeHuman.ClawLab.real.exe'
+)
+foreach ($value in $requiredDetroitValues) {
+    if ($detroitScript -notmatch [regex]::Escape($value)) {
+        throw "Detroit source no longer contains required integrity value: $value"
+    }
+}
+
 $nestedGitDirectories = @(
     Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'games') -Directory -Recurse -Force |
         Where-Object { $_.Name -eq '.git' }
@@ -102,4 +118,5 @@ if ($nestedGitDirectories.Count -gt 0) {
     PowerShellFiles = $powerShellFiles.Count
     KenaPakSha256 = $actualKenaPakHash
     InazumaKnownHashes = $requiredInazumaHashes.Count
+    DetroitIntegrityValues = $requiredDetroitValues.Count
 }

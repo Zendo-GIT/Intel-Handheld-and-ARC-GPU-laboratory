@@ -16,7 +16,8 @@ if (-not $SkipValidation) {
 $builders = @(
     'games\jurassic-world-evolution-3\tools\Build-Release.ps1',
     'games\kena-bridge-of-spirits\tools\Build-Release.ps1',
-    'games\inazuma-eleven-victory-road\tools\Build-Release.ps1'
+    'games\inazuma-eleven-victory-road\tools\Build-Release.ps1',
+    'games\detroit-become-human\tools\Build-Release.ps1'
 )
 
 $results = foreach ($relativePath in $builders) {

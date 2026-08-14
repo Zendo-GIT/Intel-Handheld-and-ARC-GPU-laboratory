@@ -13,6 +13,7 @@ Each project is distributed as an independent GitHub Release asset. You do not n
 | Jurassic World Evolution 3 | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/jwe3-v1.0.0/JWE3-Intel-Arc-Water-Glitch-Fix-1.0.0.zip) | [jwe3-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/jwe3-v1.0.0) |
 | Kena: Bridge of Spirits | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip) | [kena-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0) |
 | INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip) | [ievr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0) |
+| Detroit: Become Human | [Download stability fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/detroit-v1.0.0/Detroit-Intel-Arc-Stability-Fix-1.0.0.zip) | [detroit-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/detroit-v1.0.0) |
 
 Read the linked game documentation before installation. The Inazuma fix is offline-only and must be uninstalled before EAC or online use.
 
@@ -23,6 +24,7 @@ Read the linked game documentation before installation. The Inazuma fix is offli
 | [Jurassic World Evolution 3](games/jurassic-world-evolution-3/README.md) | Polygonal, flashing, or missing lake water on Intel Arc | Forces the engine's existing VS/SM60 fallback instead of the broken mesh-shader path | 1.0.0 validated | Local executable patch; normal Steam launch; no anti-cheat interaction |
 | [Kena: Bridge of Spirits](games/kena-bridge-of-spirits/README.md) | Cyan/white flashing on calm and surface water under native DX12 | Data-only Unreal PAK neutralizing the active procedural foam contribution | 1.0.0 validated | Data-only PAK; no executable modification |
 | [INAZUMA ELEVEN: Victory Road](games/inazuma-eleven-victory-road/README.md) | Recurring one-to-two-second Steam/EOS synchronization hitch | Four-byte synchronization-path patch with automatic game-network isolation | 1.0.0 validated | **Offline only; incompatible with EAC and online play** |
+| [Detroit: Become Human](games/detroit-become-human/README.md) | Unsupported-GPU prompt, scaler corruption and persistent transition stalls on Intel Arc | Exact dialog suppression, safe graphics path, cache validation and chapter-only presentation recovery | 1.0.0 reference-platform validation | Six-byte patch plus optional locally compiled Steam wrapper; no DLL injection |
 
 ## Start here
 
@@ -32,7 +34,8 @@ Open the folder for the game you want to fix and read its safety and compatibili
 games/
 ├── jurassic-world-evolution-3/
 ├── kena-bridge-of-spirits/
-└── inazuma-eleven-victory-road/
+├── inazuma-eleven-victory-road/
+└── detroit-become-human/
 ```
 
 Each game folder contains its own installer or PAK, technical documentation, changelog, compatibility matrix, and reproducible release builder.

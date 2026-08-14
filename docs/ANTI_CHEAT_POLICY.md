@@ -16,4 +16,6 @@ Anti-cheat compatibility is evaluated per game and per technique. File location,
 - Keep diagnostic tools outside the protected process whenever investigating an online-compatible solution.
 - Prefer a vendor report over a risky public workaround when an offline-only boundary cannot be enforced clearly.
 
-The Inazuma release is classified **offline only**. Jurassic World Evolution 3 is treated as an unprotected single-player executable patch. Kena uses a data-only PAK and does not modify an executable.
+The Inazuma release is classified **offline only**. Jurassic World Evolution 3
+and Detroit: Become Human are treated as unprotected single-player executable
+patches. Kena uses a data-only PAK and does not modify an executable.
