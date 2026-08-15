@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.0'
+    [string]$Version = '1.0.1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +30,11 @@ foreach ($relativePath in $releaseFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath) -PathType Leaf)) {
         throw "Release file missing: $relativePath"
     }
+}
+
+$fixScriptText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'IEVR-Offline-Stutter-Fix.ps1') -Raw
+if ($fixScriptText -notmatch [regex]::Escape('$rules = @(Get-IsolationRules)')) {
+    throw 'The single-firewall-rule uninstall safeguard is missing from the release source.'
 }
 
 $forbiddenExtensions = @('.exe', '.dll', '.bak', '.etl', '.dmp', '.zip', '.7z', '.rar')

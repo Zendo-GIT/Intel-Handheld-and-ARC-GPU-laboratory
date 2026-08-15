@@ -24,4 +24,4 @@ Restoration uses the verified backup when available. Otherwise, it reverses the 
 
 ## Updates
 
-Steam can replace `nie.exe` during an update or file verification. Run `CHECK_STATUS.bat` after every game update. Do not attempt to force version 1.0.0 onto a new hash. A new build requires a new analysis and release.
+Steam can replace `nie.exe` during an update or file verification. Run `CHECK_STATUS.bat` after every game update. Do not attempt to force version 1.0.1 onto a new hash. A new build requires a new analysis and release.

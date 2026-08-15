@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.2 — 2026-08-15
+
+- Removed the 48-144 and 30-144 installers, confirmation task and every public
+  144 Hz installation action.
+- Retained exact legacy 144 Hz hashes only for status, normal restore, factory
+  reset and Safe Mode recovery.
+- Refuses startup or LFC persistence for a retired 144 Hz managed profile and
+  directs the user to `RESTORE_ORIGINAL_VRR.bat`.
+- Reduced the supported public choices to corrected 30-120 and official
+  Intel/MSI 48-120.
+- Made LFC and startup-file cleanup idempotent when a previous installation
+  never created its local state directory.
+- Added an explicit schema-3 startup backup for systems where Intel Graphics
+  Software has no machine Run entry; normal restore now preserves that entry
+  as absent instead of blocking first installation.
+
 ## 2.0.1 — 2026-08-15
 
 - Integrated the community-validated Intel LFC x2 correction into all four

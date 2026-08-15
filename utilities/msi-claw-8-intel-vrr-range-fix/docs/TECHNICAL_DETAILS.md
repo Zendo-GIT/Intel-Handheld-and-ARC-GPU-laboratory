@@ -37,11 +37,13 @@ Graphics Software tray process merely refreshed its cached current-range text
 from 60-120 to 48-120 Hz.
 
 To guarantee correct text on the application's first launch as well as correct
-driver state, installation backs up and removes Intel Graphics Software's exact
-machine-wide Run value. The windowless task launches the previously verified
-Intel-signed command with its original `-s` argument, allows initialization to
-settle, then applies and verifies the profile. Normal restore writes the exact
-original Run value back.
+driver state, installation records Intel Graphics Software's machine-wide Run
+state. If the exact signed entry exists, it is backed up and removed; if it was
+already absent, schema 3 records that absence without inventing a registry
+value. The windowless task launches the verified Intel-signed canonical command
+with `-s`, allows initialization to settle, then applies and verifies the
+profile. Normal restore recreates the original entry only when it existed and
+otherwise verifies that it remains absent.
 
 ## Why custom 30 Hz is not the official path
 
@@ -79,7 +81,7 @@ backs up both original values before using them and operations 3 and 5 restore
 them. Every change is read back, and a range change or failed flag verification
 causes rollback.
 
-Release 2.0.1 integrates this same correction into all four installers. Before
+Release 2.0.2 integrates this correction into both supported installers. Before
 changing either flag, the shared script requires the exact managed-mode record,
 the exact physical or pinned custom EDID expected for that mode, and the exact
 active Intel range shown below:
@@ -88,13 +90,11 @@ active Intel range shown below:
 |---|---:|---|
 | `CLAWLAB_30_120` | 30-120 Hz | Default corrected profile |
 | `OFFICIAL_48_120` | 48-120 Hz | Official Intel/MSI range |
-| `CLAWLAB_48_144` | 48-144 Hz | Experimental overclock |
-| `CLAWLAB_30_144` | 30-144 Hz | Experimental overclock |
 
 The observed removal of LFC x2 has been validated on real hardware at 30-120
-Hz. The 48-120 and 144 Hz paths use the identical guarded flag operation and
-per-range readback, but this does not turn those configurations into claimed
-real-hardware LFC validation. Both 144 Hz profiles remain experimental.
+Hz. The 48-120 path uses the identical guarded flag operation and per-range
+readback, but this does not turn it into a separate claimed real-hardware LFC
+validation.
 
 This driver-private path is independent of both Intel Graphics Software and the
 legacy Intel Graphics Command Center application assemblies. It is transparent
@@ -134,67 +134,28 @@ Both 128-byte blocks retain a checksum sum of zero modulo 256. The script writes
 them as separate Windows EDID override blocks, matching Microsoft's documented
 monitor-driver mechanism. The physical EEPROM remains unchanged.
 
-## Experimental 48-144 Hz overclock
+## Retired 144 Hz recovery identifiers
 
-The 48-144 override leaves the 48 Hz floor unchanged, raises both
-pinned range maxima to 144, and inserted one DisplayID 2.0 Type VII timing:
-
-```text
-Active:       1920x1200
-Refresh:      144 Hz
-Totals:       2080x1264
-Pixel clock:  378.593 MHz
-EDID SHA-256: 4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E
-```
-
-The native 60 and 120 Hz detailed timings remained present. During guarded
-real-hardware testing, applying the mode caused transient stutter and line
-artifacts while the Intel device reloaded. Once active, the fixed 144 Hz image
-remained stable, Windows exposed 1920x1200 at 144 Hz, and the Intel API read
-back `EXCELLENT / 48-144 Hz`.
-
-A separate guarded 30-144 test was also accepted by the Intel API as
-`EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. Release
-2.0.1 therefore exposes it only as a prominently warned, self-rolling trial.
-
-Follow-up game testing did not reliably validate functioning VRR behavior at
-144 Hz. A stable fixed overclock and an API range readback do not prove that
-variable refresh is operating. Version 2.0.1 therefore keeps 48-144 only as an
-explicit experimental panel-refresh overclock: fixed 144 Hz was stable on
-tested panels, but VRR at 144 Hz or throughout the advertised range is not
-guaranteed.
-
-Both 144 Hz installers write the pinned override, install the shared LFC x2
-correction and register a temporary current-user confirmation task. At the next
-sign-in, the normal startup task selects 1920x1200 at 144 Hz and verifies Intel
-`EXCELLENT` at the requested range. The trial task also requires both Intel
-low/high-FPS solution flags to remain disabled, then observes that complete
-state for 20 seconds and asks the user whether to keep it. A No answer, closed
-dialog, 30-second timeout or verification failure restores the original LFC
-flags, selects 120 Hz, runs the normal restore path and restarts Windows. A Yes
-answer keeps the profile and removes only the temporary task.
-
-For the exact managed 48-144 state, startup first selects the enumerated
-1920x1200 at 144 Hz Windows mode, waits for the display path to settle, launches
-the verified Intel Graphics Software command, then applies and verifies Intel
-`EXCELLENT / 48-144 Hz`. The status result confirms the declared EDID, fixed
-mode and API range only; it deliberately makes no claim about per-game VRR.
-
-The 30-144 complete and per-block hashes are pinned for installation,
-verification, normal restore, emergency recovery and factory recovery. Unknown
-third-party data is still never removed.
+Version 2.0.2 contains no 144 Hz installer, installation action, fixed-refresh
+selector or confirmation task. Exact complete and per-block hashes from older
+ClawLab 48-144 and 30-144 releases remain pinned only to identify a known legacy
+override. Normal restore first selects safe 1920x1200 at 120 Hz; normal,
+factory and emergency recovery can then remove only those exact known blocks.
+Unknown third-party data is still never removed. Startup and LFC reapply refuse
+a retired 144 Hz managed record and direct the user to recovery.
 
 ## Signed Intel Graphics Software update detection
 
 The ordered startup path pins the exact Intel Graphics Software identity after
 validating its canonical path, `-s` argument and Windows Authenticode signature.
 Graphics-driver updates can legitimately replace that executable. Version
-2.0.1 compares the current SHA-256 and saved schema at every managed startup.
+2.0.2 compares the current SHA-256 and saved schema at every managed startup.
 
 When they differ, the task performs a fresh Authenticode validation, requires a
 valid signer whose certificate subject identifies Intel Corporation, recomputes
 the file hash to detect a concurrent replacement, and atomically stores schema
-2 identity metadata containing the signer thumbprint, file version and SHA-256.
+3 identity metadata containing the original entry-presence flag, signer
+thumbprint, file version and SHA-256.
 The identity is checked again before launch. Failure at any stage prevents the
 application launch and VRR reapply rather than trusting a hash change alone.
 

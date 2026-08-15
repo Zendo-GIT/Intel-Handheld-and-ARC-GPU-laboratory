@@ -1,3 +1,9 @@
+VERSION 1.0.1 - 2026-08-15
+
+- Fixes a false uninstaller failure when exactly one ClawLab firewall rule
+  remains after vanilla restoration.
+- Adds build validation for the single-rule cleanup safeguard.
+
 VERSION 1.0.0 - 2026-08-14
 
 - Initial public offline-only release.

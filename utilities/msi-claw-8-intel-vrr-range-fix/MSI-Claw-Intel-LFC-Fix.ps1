@@ -6,7 +6,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.1'
+$toolVersion = '2.0.2'
 
 # Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
@@ -41,6 +41,14 @@ function Convert-WmiText {
         return ''
     }
     return (-join @($Values | Where-Object { $_ -ne 0 } | ForEach-Object { [char]$_ }))
+}
+
+function Remove-FileIfPresent {
+    param([Parameter(Mandatory)][string]$LiteralPath)
+
+    if (Test-Path -LiteralPath $LiteralPath -PathType Leaf) {
+        [IO.File]::Delete($LiteralPath)
+    }
 }
 
 function Get-ByteArraySha256 {
@@ -97,6 +105,9 @@ $managedProfiles = @{
 $managedProfile = if ($managedProfiles.ContainsKey($managedModeName)) { $managedProfiles[$managedModeName] } else { $null }
 if ($Action -in @('Apply', 'ApplyStartup') -and $null -eq $managedProfile) {
     throw "The LFC fix requires one of the four ClawLab-managed profiles; current mode is $managedModeName."
+}
+if ($Action -in @('Apply', 'ApplyStartup') -and $managedModeName -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
+    throw 'The installed 144 Hz profile is retired and cannot receive persistence updates. Run RESTORE_ORIGINAL_VRR.bat.'
 }
 $expectedMinimumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MinimumHz }
 $expectedMaximumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MaximumHz }
@@ -325,9 +336,9 @@ function Remove-StartupPersistence {
     if ($null -ne $task) {
         Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
     }
-    [IO.File]::Delete($installedToolPath)
-    [IO.File]::Delete($installedDriverInterfacePath)
-    [IO.File]::Delete($installedLauncherPath)
+    Remove-FileIfPresent -LiteralPath $installedToolPath
+    Remove-FileIfPresent -LiteralPath $installedDriverInterfacePath
+    Remove-FileIfPresent -LiteralPath $installedLauncherPath
     if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
         throw 'The one-shot startup persistence task was not fully removed.'
     }
@@ -472,7 +483,7 @@ $state = switch ($Action) {
                 $after.HighFpsSolutionEnabled -ne [bool]$backup.OriginalHighFpsSolutionEnabled)) {
             throw "The restored Intel state did not verify: $($after | ConvertTo-Json -Compress)"
         }
-        [IO.File]::Delete($lfcBackupPath)
+        Remove-FileIfPresent -LiteralPath $lfcBackupPath
         [pscustomobject]@{
             State = 'ORIGINAL_LFC_STATE_RESTORED'
             Current = $after

@@ -16,9 +16,9 @@ If you want normal EAC or online operation, run `UNINSTALL_RESTORE_ONLINE.bat` f
 
 ## Download
 
-[Download IEVR Offline Stutter Fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip)
+[Download IEVR Offline Stutter Fix 1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.1/IEVR-Offline-Stutter-Fix-1.0.1.zip)
 
-[Release notes and SHA-256 file](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0)
+[Release notes and SHA-256 file](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.1)
 
 Downloading the package does not change the safety boundary: this remains an offline-only executable patch that is incompatible with EAC and online play.
 

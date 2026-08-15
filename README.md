@@ -12,7 +12,7 @@ Each project is distributed as an independent GitHub Release asset. You do not n
 |---|---|---|
 | Jurassic World Evolution 3 | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/jwe3-v1.0.0/JWE3-Intel-Arc-Water-Glitch-Fix-1.0.0.zip) | [jwe3-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/jwe3-v1.0.0) |
 | Kena: Bridge of Spirits | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip) | [kena-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0) |
-| INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.0/IEVR-Offline-Stutter-Fix-1.0.0.zip) | [ievr-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.0) |
+| INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.1/IEVR-Offline-Stutter-Fix-1.0.1.zip) | [ievr-v1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.1) |
 | Detroit: Become Human | [Download stability fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/detroit-v1.0.0/Detroit-Intel-Arc-Stability-Fix-1.0.0.zip) | [detroit-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/detroit-v1.0.0) |
 
 Read the linked game documentation before installation. The Inazuma fix is offline-only and must be uninstalled before EAC or online use.
@@ -24,7 +24,7 @@ checks, safety model and restoration path.
 
 | Utility | Direct download | Release page |
 |---|---|---|
-| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 2.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v2.0.1/MSI-Claw-8-Intel-VRR-Range-Fix-2.0.1.zip) | [claw8-vrr-v2.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v2.0.1) |
+| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 2.0.2](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v2.0.2/MSI-Claw-8-Intel-VRR-Range-Fix-2.0.2.zip) | [claw8-vrr-v2.0.2](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v2.0.2) |
 
 ## Published projects
 
@@ -32,14 +32,14 @@ checks, safety model and restoration path.
 |---|---|---|---|---|
 | [Jurassic World Evolution 3](games/jurassic-world-evolution-3/README.md) | Polygonal, flashing, or missing lake water on Intel Arc | Forces the engine's existing VS/SM60 fallback instead of the broken mesh-shader path | 1.0.0 validated | Local executable patch; normal Steam launch; no anti-cheat interaction |
 | [Kena: Bridge of Spirits](games/kena-bridge-of-spirits/README.md) | Cyan/white flashing on calm and surface water under native DX12 | Data-only Unreal PAK neutralizing the active procedural foam contribution | 1.0.0 validated | Data-only PAK; no executable modification |
-| [INAZUMA ELEVEN: Victory Road](games/inazuma-eleven-victory-road/README.md) | Recurring one-to-two-second Steam/EOS synchronization hitch | Four-byte synchronization-path patch with automatic game-network isolation | 1.0.0 validated | **Offline only; incompatible with EAC and online play** |
+| [INAZUMA ELEVEN: Victory Road](games/inazuma-eleven-victory-road/README.md) | Recurring one-to-two-second Steam/EOS synchronization hitch | Four-byte synchronization-path patch with automatic game-network isolation | 1.0.1 validated | **Offline only; incompatible with EAC and online play** |
 | [Detroit: Become Human](games/detroit-become-human/README.md) | Unsupported-GPU prompt, scaler corruption and persistent transition stalls on Intel Arc | Exact dialog suppression, safe graphics path, cache validation and chapter-only presentation recovery | 1.0.0 reference-platform validation | Six-byte patch plus optional locally compiled Steam wrapper; no DLL injection |
 
 ## System utilities
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Default corrected 30-120 Hz profile; official Intel/MSI 48-120 Hz; guarded 48-144 and 30-144 trials | Claw 8 AI+ reference validation; matching-panel Claw 8 EX community validation; 30-144 visibly flickered on the reference panel; VRR at 144 Hz is not guaranteed | Intel LFC x2 correction without game injection, exact panel/EDID validation, mandatory restore-before-switch interlock, 20-second 144 Hz confirmation/rollback, original backup, factory and Safe Mode recovery |
+| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Default corrected 30-120 Hz profile and official Intel/MSI 48-120 Hz | Claw 8 AI+ reference validation; matching-panel Claw 8 EX community validation | Intel LFC x2 correction without game injection, exact panel/EDID validation, mandatory restore-before-switch interlock, original backup, factory and Safe Mode recovery; retired 144 Hz modes are recovery-only |
 
 ## Start here
 

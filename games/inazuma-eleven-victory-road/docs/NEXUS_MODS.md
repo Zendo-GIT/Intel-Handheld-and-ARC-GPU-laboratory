@@ -3,7 +3,7 @@
 ## Suggested page
 
 - Title: `INAZUMA ELEVEN Victory Road Offline Stutter Fix`
-- Version: `1.0.0`
+- Version: `1.0.1`
 - Category: gameplay, utilities, or miscellaneous depending on the available game categories
 - Installation: manual
 

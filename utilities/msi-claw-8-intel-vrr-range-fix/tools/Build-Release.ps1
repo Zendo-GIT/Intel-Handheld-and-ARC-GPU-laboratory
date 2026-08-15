@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.0.1'
+    [string]$Version = '2.0.2'
 )
 
 Set-StrictMode -Version Latest
@@ -20,14 +20,10 @@ $releaseFiles = @(
     'MSI-Claw-VRR-Fix.ps1',
     'MSI-Claw-Intel-LFC-Fix.ps1',
     'Intel-VRR-LFC-Driver-Interface.ps1',
-    'Experimental-144-VRR-Trial.ps1',
     'ClawLab-VRR-Startup.vbs',
     'ClawLab-LFC-Startup.vbs',
-    'ClawLab-144-Trial-Startup.vbs',
     'INSTALL_48_120_VRR.bat',
     'INSTALL_30_120_VRR.bat',
-    'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
-    'INSTALL_EXPERIMENTAL_30_144_VRR.bat',
     'FACTORY_RESET_CLAWLAB_VRR.bat',
     'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
     'Collect-Claw-Display-Diagnostics.ps1',
@@ -42,12 +38,24 @@ $releaseFiles = @(
     'docs\SAFETY.md',
     'docs\TECHNICAL_DETAILS.md',
     'docs\NEXUS_MODS.md',
-    'docs\RELEASE_NOTES_2.0.1.md'
+    'docs\RELEASE_NOTES_2.0.2.md'
 )
 
 foreach ($relativePath in $releaseFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $relativePath) -PathType Leaf)) {
         throw "Release file missing: $relativePath"
+    }
+}
+
+$retiredPublicFiles = @(
+    'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'INSTALL_EXPERIMENTAL_30_144_VRR.bat',
+    'Experimental-144-VRR-Trial.ps1',
+    'ClawLab-144-Trial-Startup.vbs'
+)
+foreach ($relativePath in $retiredPublicFiles) {
+    if (Test-Path -LiteralPath (Join-Path $projectRoot $relativePath)) {
+        throw "Retired 144 Hz public file must not exist: $relativePath"
     }
 }
 
@@ -68,26 +76,33 @@ $requiredIntegrityValues = @(
     '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05',
     '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D',
     '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Install30_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
     'Write-IntelStartupBackupAtomically',
     'Set-IntelStartupTrustedIdentity',
+    'OriginalEntryPresent',
+    'SchemaVersion = 3',
+    'Remove-FileIfPresent',
     'IdentityVerifiedAt',
-    'ClawLab MSI Claw 144 Hz Trial Confirmation',
     'WindowsDisplayMode',
     'FileSha256',
     'Assert-ProfileTransitionAllowed',
     'managed-mode.json',
     "'FactoryReset'",
-    'Set-Experimental144DisplayMode',
+    'This retired 144 Hz profile is no longer reapplied',
     'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
         throw "Required integrity value is missing from the release source: $value"
+    }
+}
+foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function Set-Experimental144DisplayMode')) {
+    if ($scriptText -match [regex]::Escape($forbiddenMarker)) {
+        throw "Retired 144 Hz installation capability remains in the release source: $forbiddenMarker"
     }
 }
 
@@ -114,6 +129,7 @@ foreach ($value in @(
     '$managedProfiles.ContainsKey($managedModeName)',
     'OriginalLowFpsSolutionEnabled',
     'OriginalHighFpsSolutionEnabled',
+    'Remove-FileIfPresent',
     'ClawLab MSI Claw Intel LFC Fix'
 )) {
     if ($lfcScriptText -notmatch [regex]::Escape($value)) {
@@ -123,33 +139,12 @@ foreach ($value in @(
 
 $lfcInstallers = @(
     'INSTALL_30_120_VRR.bat',
-    'INSTALL_48_120_VRR.bat',
-    'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
-    'INSTALL_EXPERIMENTAL_30_144_VRR.bat'
+    'INSTALL_48_120_VRR.bat'
 )
 foreach ($installerName in $lfcInstallers) {
     $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
     if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
         throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
-    }
-}
-
-$trialScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'Experimental-144-VRR-Trial.ps1') -Raw
-foreach ($value in @(
-    "`$toolVersion = '$Version'",
-    "`$observationSeconds = 20",
-    "`$confirmationTimeoutSeconds = 30",
-    'CLAWLAB_48_144',
-    'CLAWLAB_30_144',
-    'Restore-ExperimentalProfile',
-    "-Action Restore",
-    'LowFpsSolutionEnabled',
-    'HighFpsSolutionEnabled',
-    'shared LFC x2 correction',
-    'ClawLab MSI Claw 144 Hz Trial Confirmation'
-)) {
-    if ($trialScriptText -notmatch [regex]::Escape($value)) {
-        throw "Required 144 Hz trial safety value is missing from the release source: $value"
     }
 }
 

@@ -1,6 +1,17 @@
 MSI CLAW 8 AI+ / 8 EX AI+ VRR RANGE FIX - CHANGELOG
 ====================================================
 
+2.0.2 - 2026-08-15
+------------------
+- Removes both 144 Hz installers and the temporary confirmation task.
+- Keeps legacy 144 Hz signatures only so older installations can be detected
+  and restored safely to 120 Hz.
+- Refuses persistence for retired 144 Hz profiles.
+- Leaves only corrected 30-120 and official Intel/MSI 48-120 as public choices.
+- Makes missing legacy LFC folders and files safe during restore.
+- Accepts an originally absent Intel Graphics Software Run entry and restores
+  it as absent instead of leaving a first install stuck.
+
 2.0.1 - 2026-08-15
 ------------------
 - Integrates the community-validated Intel LFC x2 correction into all four

@@ -3,7 +3,9 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version = '1.0.0',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$VrrVersion = '2.0.1',
+    [string]$IevrVersion = '1.0.1',
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$VrrVersion = '2.0.2',
     [switch]$SkipValidation
 )
 
@@ -18,7 +20,7 @@ if (-not $SkipValidation) {
 $builders = @(
     [pscustomobject]@{ Path = 'games\jurassic-world-evolution-3\tools\Build-Release.ps1'; Version = $Version },
     [pscustomobject]@{ Path = 'games\kena-bridge-of-spirits\tools\Build-Release.ps1'; Version = $Version },
-    [pscustomobject]@{ Path = 'games\inazuma-eleven-victory-road\tools\Build-Release.ps1'; Version = $Version },
+    [pscustomobject]@{ Path = 'games\inazuma-eleven-victory-road\tools\Build-Release.ps1'; Version = $IevrVersion },
     [pscustomobject]@{ Path = 'games\detroit-become-human\tools\Build-Release.ps1'; Version = $Version },
     [pscustomobject]@{ Path = 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Build-Release.ps1'; Version = $VrrVersion }
 )

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 — 2026-08-15
+
+- Fixed a strict-mode uninstaller error when exactly one ClawLab firewall rule
+  remained. Vanilla restoration already completed safely, but the false final
+  error could prevent the success status from being displayed.
+- Added repository and release-build validation for the single-rule cleanup.
+
 ## 1.0.0 — 2026-08-14
 
 - Added the validated four-byte offline synchronization patch for Steam build `24370575`.

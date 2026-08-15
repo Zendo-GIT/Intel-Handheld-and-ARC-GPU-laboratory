@@ -2,6 +2,16 @@
 
 ## 2026-08-15
 
+- Prepared MSI Claw VRR Range Fix 2.0.2, removing every public 144 Hz installer
+  and persistence path while retaining exact recovery support for older 144 Hz
+  installations. Only corrected 30-120 and official 48-120 remain. Also fixed
+  first-install recovery when the legacy LFC folder or Intel Graphics Software
+  machine startup entry is absent.
+
+- Prepared INAZUMA ELEVEN: Victory Road Offline Stutter Fix 1.0.1, correcting a
+  false strict-mode failure when the uninstaller encountered exactly one
+  remaining ClawLab firewall rule after restoring the vanilla executable.
+
 - Prepared MSI Claw VRR Range Fix 2.0.1 by extending the guarded Intel LFC x2
   correction to all four managed profiles. Added exact per-profile range/EDID
   verification, mode-bound backup, complete 144 Hz LFC/VRR rollback and build

@@ -259,7 +259,9 @@ function Enable-OfflineIsolation {
 }
 
 function Disable-OfflineIsolation {
-    $rules = Get-IsolationRules
+    # PowerShell unwraps a single pipeline object. Force an array so strict
+    # mode can always evaluate Count when exactly one firewall rule remains.
+    $rules = @(Get-IsolationRules)
     if ($rules.Count -gt 0) {
         $rules | Remove-NetFirewallRule
     }
