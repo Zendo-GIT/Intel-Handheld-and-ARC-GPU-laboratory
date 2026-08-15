@@ -1,5 +1,35 @@
-MSI CLAW 8 AI+ / 8 EX AI+ VRR RANGE FIX - CHANGELOG
-====================================================
+MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
+========================================
+
+2.1.0 - 2026-08-16
+------------------
+- Adds the event-driven Cursor Refresh Helper validated on the reference Claw.
+- Raw mouse movement animates a nearly transparent 2x2 WPF/DWM surface in the
+  extreme lower-right corner so the desktop rises to 120 Hz.
+- Stops 500 ms after mouse input and has no active animation timer at idle.
+- Suppresses animation for hidden cursors and supports Xbox Full Screen Experience.
+- Publishes rebuildable C# source and integrates install, sign-in launch,
+  integrity status and complete restore cleanup.
+- Does not change the existing Intel LFC fix.
+- Removes per-mouse-packet native allocations; the optimized helper no longer
+  causes the cursor micro-stutter reproduced during prototype testing.
+- Adds exact TMA2027 / TL070FVXS02-0 Claw A1M support with a pinned 128-byte
+  EDID, one-block 30-120 generator and offline checksum/hash test.
+- Keeps A1M real-device behavior explicitly community-validation pending.
+- Fixes one-shot sign-in completion: LFC waits for the direct VRR child but not
+  for the resident Cursor Refresh Helper launched by that child.
+- Requires reset-all.exe from the current official CRU release plus a restart
+  whenever CRU was ever used on the same Windows installation.
+
+2.0.3 - 2026-08-15
+------------------
+- Supports valid systems where Intel Graphics Software and its machine Run
+  entry are both absent.
+- Saves that absence directly instead of requiring a nonexistent canonical
+  executable.
+- Preserves an external Intel startup entry if one appears after installation.
+- Saves elevated failures to last-error.txt and shows them in the parent
+  console.
 
 2.0.2 - 2026-08-15
 ------------------

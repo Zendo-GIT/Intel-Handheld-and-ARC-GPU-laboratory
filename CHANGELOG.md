@@ -1,6 +1,24 @@
 # Changelog
 
-## 2026-08-15
+## 2026-08-16
+
+- Prepared MSI Claw VRR Range Fix 2.1.0 with the real-hardware-validated
+  event-driven Cursor Refresh Helper. Raw mouse activity briefly animates a
+  nearly transparent 2x2 WPF/DWM surface at the extreme lower-right corner,
+  raising the idle desktop from 30 Hz to 120 Hz without changing the LFC fix.
+  The timer stops at idle and the animation is suppressed for hidden cursors
+  while remaining compatible with Xbox Full Screen Experience. Installation, sign-in launch, status,
+  integrity verification, restore cleanup and rebuildable C# source are included.
+  The final helper removes per-input native allocations and was confirmed free
+  of the prototype cursor micro-stutter. Added strict Claw A1M support using its
+  exact `TMA2027 / TL070FVXS02-0` 128-byte EDID and a deterministic one-block
+  30-120 transformation; A1M real-device behavior remains validation pending.
+
+- Prepared MSI Claw VRR Range Fix 2.0.3 after a Claw 8 AI+ diagnostic proved
+  that Intel Graphics Software and its machine Run entry may both be absent on
+  a valid driver 8974 installation. The ordered startup backup now represents
+  that absence without requiring a nonexistent executable, and elevated errors
+  are persisted for support instead of disappearing with the UAC window.
 
 - Prepared MSI Claw VRR Range Fix 2.0.2, removing every public 144 Hz installer
   and persistence path while retaining exact recovery support for older 144 Hz

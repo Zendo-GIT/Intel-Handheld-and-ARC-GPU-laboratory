@@ -1,30 +1,46 @@
 # Optional Nexus Mods publication draft
 
-- Title: **MSI Claw 8 AI+ / 8 EX AI+ Intel VRR Range Fix**
-- Version: **2.0.2**
+- Title: **MSI Claw Intel VRR Range Fix**
+- Version: **2.1.0**
 - Category: **Utilities** or **Bug Fixes**
 - Installation: **Manual only**
 
 ## Short description
 
 Corrected 30-120 Hz and official Intel/MSI 48-120 Hz profiles with a shared
-Intel LFC x2 correction, exact panel/EDID checks, backup, windowless sign-in
-reapply and complete recovery.
+Intel LFC x2 correction, event-driven 120 Hz desktop cursor refresh, exact
+panel/EDID checks, backup, windowless sign-in reapply and complete recovery.
 
 ## Required disclosure
 
 The 30-120 profile is outside MSI's official 48 Hz floor and may flicker on an
-individual panel. The package is restricted to the exact validated
-`CSW0801 / PN8007QB1-2` identity and EDID. Unknown CRU overrides are refused.
+individual panel. The package is restricted to exact pinned Claw 8/8 EX
+`CSW0801 / PN8007QB1-2` and Claw A1M `TMA2027 / TL070FVXS02-0` identities and
+EDIDs. Unknown CRU overrides are refused. A1M EDID generation is verified, but
+real A1M driver/LFC and panel testing remains community-validation pending.
 
-The former 48-144 and 30-144 installers were removed in 2.0.2. Their signatures
-remain only to restore an older ClawLab installation safely to 120 Hz. Do not
-advertise 144 Hz as an available feature.
+The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.0
+also supports driver installations where Intel Graphics Software is absent.
+The retired signatures remain only to restore an older ClawLab installation
+safely to 120 Hz. Do not advertise 144 Hz as an available feature.
+
+State this installation requirement prominently: if CRU was ever used on the
+same Windows installation, no matter when or whether it now appears inactive,
+the user must obtain the current official
+[CRU release](https://www.monitortests.com/forum/Thread-Custom-Resolution-Utility-CRU),
+run its included `reset-all.exe`, and restart before installing ClawLab.
 
 The LFC correction uses a readable Windows D3DKMT request to Intel's
 driver-private display interface. It saves and disables both Intel low/high-FPS
-solutions, verifies the result and installs no continuous watcher. It never
+solutions, verifies the result and installs no continuous LFC watcher. It never
 opens, patches or injects into a game process.
 
-The archive contains no driver, Intel DLL, executable, CRU binary, EDID dump,
-game file, injector or anti-cheat component.
+The event-driven Cursor Refresh Helper raises the Windows desktop to 120 Hz
+during visible mouse movement by animating a nearly transparent 2x2 WPF/DWM
+surface at the extreme lower-right corner. It stops at idle, is suppressed for
+hidden cursors and supports Xbox Full Screen Experience. Its complete C# source
+and rebuild script are included.
+
+The archive contains no driver, Intel DLL, CRU binary, EDID dump, game file,
+injector or anti-cheat component. Its only executable is the 13 KB rebuildable
+.NET Framework Cursor Refresh Helper described above.

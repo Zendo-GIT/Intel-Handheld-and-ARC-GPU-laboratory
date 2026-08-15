@@ -1,25 +1,50 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.0.2'
+    [string]$Version = '2.1.0'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
-$packageName = 'MSI-Claw-8-Intel-VRR-Range-Fix'
+$packageName = 'MSI-Claw-Intel-VRR-Range-Fix'
 $distRoot = Join-Path $projectRoot 'dist'
 $stagingRoot = Join-Path $distRoot ".staging-$packageName-$Version"
 $stagedPackageRoot = Join-Path $stagingRoot $packageName
 $archiveName = "$packageName-$Version.zip"
 $archivePath = Join-Path $distRoot $archiveName
 $hashPath = Join-Path $distRoot 'RELEASE_SHA256.txt'
+$cursorHelperRelativePath = 'ClawLab-Cursor-Refresh-Helper.exe'
+$cursorHelperPath = Join-Path $projectRoot $cursorHelperRelativePath
+$cursorHelperBuilder = Join-Path $projectRoot 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'
+
+& $cursorHelperBuilder -OutputDirectory $projectRoot | Out-Host
+if (-not (Test-Path -LiteralPath $cursorHelperPath -PathType Leaf)) {
+    throw 'Cursor Refresh Helper build did not produce the expected executable.'
+}
+$cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
+if ($cursorHelperAssembly.Version.ToString() -ne "$Version.0") {
+    throw "Cursor Refresh Helper version $($cursorHelperAssembly.Version) does not match release $Version."
+}
+$cursorHelperSourcePath = Join-Path $projectRoot 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'
+$cursorHelperSourceText = Get-Content -LiteralPath $cursorHelperSourcePath -Raw
+foreach ($value in @('500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices')) {
+    if ($cursorHelperSourceText -notmatch [regex]::Escape($value)) {
+        throw "Cursor Refresh Helper source is missing the validated allocation-free marker: $value"
+    }
+}
+foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')) {
+    if ($cursorHelperSourceText -match [regex]::Escape($forbiddenMarker)) {
+        throw "Cursor Refresh Helper source reintroduced a per-packet native allocation path: $forbiddenMarker"
+    }
+}
 
 $releaseFiles = @(
     'MSI-Claw-VRR-Fix.ps1',
     'MSI-Claw-Intel-LFC-Fix.ps1',
     'Intel-VRR-LFC-Driver-Interface.ps1',
+    'ClawLab-Cursor-Refresh-Helper.exe',
     'ClawLab-VRR-Startup.vbs',
     'ClawLab-LFC-Startup.vbs',
     'INSTALL_48_120_VRR.bat',
@@ -38,7 +63,12 @@ $releaseFiles = @(
     'docs\SAFETY.md',
     'docs\TECHNICAL_DETAILS.md',
     'docs\NEXUS_MODS.md',
-    'docs\RELEASE_NOTES_2.0.2.md'
+    'docs\A1M_EDID_REFERENCE.md',
+    'docs\RELEASE_NOTES_2.1.0.md',
+    'tools\Test-A1M-Edid.ps1',
+    'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs',
+    'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
+    'tools\CursorRefreshHelper\README.md'
 )
 
 foreach ($relativePath in $releaseFiles) {
@@ -76,6 +106,9 @@ $requiredIntegrityValues = @(
     '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05',
     '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D',
     '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
+    '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1',
+    '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647',
+    "Name = 'TL070FVXS02-0'",
     "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
@@ -83,7 +116,9 @@ $requiredIntegrityValues = @(
     'Write-IntelStartupBackupAtomically',
     'Set-IntelStartupTrustedIdentity',
     'OriginalEntryPresent',
-    'SchemaVersion = 3',
+    'SchemaVersion = 4',
+    'Set-IntelStartupAbsentState',
+    'last-error.txt',
     'Remove-FileIfPresent',
     'IdentityVerifiedAt',
     'WindowsDisplayMode',
@@ -94,6 +129,10 @@ $requiredIntegrityValues = @(
     'This retired 144 Hz profile is no longer reapplied',
     'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
+    'Install-CursorRefreshHelper',
+    'Start-CursorRefreshHelper',
+    'Remove-CursorRefreshHelper',
+    'RUNNING_EVENT_DRIVEN'
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
@@ -104,6 +143,12 @@ foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function S
     if ($scriptText -match [regex]::Escape($forbiddenMarker)) {
         throw "Retired 144 Hz installation capability remains in the release source: $forbiddenMarker"
     }
+}
+
+$a1mCatalogTest = Join-Path $projectRoot 'tools\Test-A1M-Edid.ps1'
+$a1mResult = & $a1mCatalogTest
+if ($null -eq $a1mResult -or [string]$a1mResult.Result -ne 'PASS') {
+    throw 'The pinned Claw A1M EDID generator test failed.'
 }
 
 $launcherPath = Join-Path $projectRoot 'ClawLab-VRR-Startup.vbs'
@@ -120,7 +165,7 @@ foreach ($value in @(
 
 $lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '$Version'",
+    "`$toolVersion = '2.0.3'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -131,10 +176,17 @@ foreach ($value in @(
     'OriginalHighFpsSolutionEnabled',
     'Remove-FileIfPresent',
     'ClawLab MSI Claw Intel LFC Fix'
+    '$rangeProcess.WaitForExit()'
+    'TL070FVXS02-0'
+    '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
+    '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
 )) {
     if ($lfcScriptText -notmatch [regex]::Escape($value)) {
         throw "Required LFC safety value is missing from the release source: $value"
     }
+}
+if ($lfcScriptText -match [regex]::Escape('-WindowStyle Hidden -Wait -PassThru')) {
+    throw 'The LFC startup path must not wait for the resident helper process tree.'
 }
 
 $lfcInstallers = @(
@@ -151,7 +203,8 @@ foreach ($installerName in $lfcInstallers) {
 $forbiddenExtensions = @('.exe', '.dll', '.sys', '.bin', '.rom', '.zip', '.7z', '.rar', '.bak', '.dmp', '.etl')
 $forbiddenFiles = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File | Where-Object {
     $_.FullName -notmatch '[\\/]dist[\\/]' -and
-    $forbiddenExtensions -contains $_.Extension.ToLowerInvariant()
+    $forbiddenExtensions -contains $_.Extension.ToLowerInvariant() -and
+    -not $_.FullName.Equals($cursorHelperPath, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($forbiddenFiles.Count -gt 0) {
     throw "Forbidden binary, driver, EDID dump, trace, backup or archive found:`n$($forbiddenFiles.FullName -join "`n")"
@@ -197,7 +250,8 @@ $zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
 try {
     $entries = @($zip.Entries)
     $forbiddenEntries = @($entries | Where-Object {
-        [IO.Path]::GetExtension($_.FullName).ToLowerInvariant() -in $forbiddenExtensions
+        [IO.Path]::GetExtension($_.FullName).ToLowerInvariant() -in $forbiddenExtensions -and
+        -not $_.FullName.Replace('/', '\').EndsWith("\$cursorHelperRelativePath", [StringComparison]::OrdinalIgnoreCase)
     })
     if ($forbiddenEntries.Count -gt 0) {
         throw "Forbidden file detected in release ZIP:`n$($forbiddenEntries.FullName -join "`n")"

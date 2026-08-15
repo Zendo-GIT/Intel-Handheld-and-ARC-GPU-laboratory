@@ -22,6 +22,7 @@ Use game-scoped tags so versions can evolve independently:
 - `claw8-vrr-v1.0.2`
 - `claw8-vrr-v1.0.3`
 - `claw8-vrr-v2.0.0`
+- `claw-vrr-v2.1.0`
 
 Attach only the matching ZIP and checksum from `dist`. Do not attach the entire repository, source captures, backups, or publication workspace.
 
@@ -39,6 +40,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `claw8-vrr-v1.0.2` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.2` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.2.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v1.0.3` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.3` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.3.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v2.0.0` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 2.0.0` | `MSI-Claw-8-Intel-VRR-Range-Fix-2.0.0.zip` and its `.sha256.txt` file |
+| `claw-vrr-v2.1.0` | `MSI Claw Intel VRR Range Fix 2.1.0` | `MSI-Claw-Intel-VRR-Range-Fix-2.1.0.zip` and its `.sha256.txt` file |
 
 For each release:
 

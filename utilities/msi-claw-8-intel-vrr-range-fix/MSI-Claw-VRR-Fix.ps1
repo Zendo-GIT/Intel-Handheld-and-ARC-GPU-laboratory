@@ -7,10 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.0.2'
-$targetManufacturer = 'CSW'
-$targetProductCode = '0801'
-$targetPanelName = 'PN8007QB1-2'
+$fixVersion = '2.1.0'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
@@ -26,7 +23,11 @@ $installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
 $startupLauncherName = 'ClawLab-VRR-Startup.vbs'
 $installedLauncherPath = Join-Path $stateRoot $startupLauncherName
 $startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
+$lastErrorPath = Join-Path $stateRoot 'last-error.txt'
 $startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
+$cursorRefreshHelperName = 'ClawLab-Cursor-Refresh-Helper.exe'
+$installedCursorRefreshHelperPath = Join-Path $stateRoot $cursorRefreshHelperName
+$cursorRefreshHelperStatePath = Join-Path $stateRoot 'cursor-refresh-helper.json'
 $experimental144TrialTaskName = 'ClawLab MSI Claw 144 Hz Trial Confirmation'
 $experimental144TrialStatePath = Join-Path $stateRoot 'experimental-144-trial.json'
 $installedExperimental144TrialPath = Join-Path $stateRoot 'Experimental-144-VRR-Trial.ps1'
@@ -36,16 +37,60 @@ $intelStartupBackupPath = Join-Path $stateRoot 'intel-graphics-startup.json'
 $intelStartupRegistryPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
 $intelStartupValueName = 'Intel' + [char]0x00AE + ' Graphics Software'
 $script:intelStartupIdentityRenewed = $false
-$validatedPhysicalEdidSha256 = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
-$validated30_120EdidSha256 = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
-$validated30_120Block0Sha256 = '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698'
-$validated30_120Block1Sha256 = 'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743'
-$validated48_144EdidSha256 = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
-$validated48_144Block0Sha256 = '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172'
-$validated48_144Block1Sha256 = 'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2'
-$validated30_144EdidSha256 = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
-$validated30_144Block0Sha256 = '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D'
-$validated30_144Block1Sha256 = '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640'
+$script:activePanelDefinition = $null
+$panelCatalog = @(
+    [pscustomobject]@{
+        Key = 'CLAW_8_AI_PLUS'
+        Models = 'MSI Claw 8 AI+ / 8 EX AI+'
+        Manufacturer = 'CSW'
+        ProductCode = '0801'
+        Name = 'PN8007QB1-2'
+        Width = 1920
+        Height = 1200
+        EdidLength = 256
+        RangeOffsets = @(
+            [pscustomobject]@{ Minimum = 95; Maximum = 96 },
+            [pscustomobject]@{ Minimum = 142; Maximum = 143 }
+        )
+        ChecksumStarts = @(0, 128)
+        PhysicalEdidSha256 = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
+        Custom30EdidSha256 = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
+        Custom30Block0Sha256 = '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698'
+        Custom30Block1Sha256 = 'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743'
+        Legacy48_144EdidSha256 = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
+        Legacy48_144Block0Sha256 = '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172'
+        Legacy48_144Block1Sha256 = 'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2'
+        Legacy30_144EdidSha256 = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
+        Legacy30_144Block0Sha256 = '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D'
+        Legacy30_144Block1Sha256 = '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640'
+        SupportsLegacy144Recovery = $true
+    },
+    [pscustomobject]@{
+        Key = 'CLAW_A1M'
+        Models = 'MSI Claw A1M'
+        Manufacturer = 'TMA'
+        ProductCode = '2027'
+        Name = 'TL070FVXS02-0'
+        Width = 1920
+        Height = 1080
+        EdidLength = 128
+        RangeOffsets = @(
+            [pscustomobject]@{ Minimum = 95; Maximum = 96 }
+        )
+        ChecksumStarts = @(0)
+        PhysicalEdidSha256 = '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
+        Custom30EdidSha256 = '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
+        Custom30Block0Sha256 = '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
+        Custom30Block1Sha256 = $null
+        Legacy48_144EdidSha256 = $null
+        Legacy48_144Block0Sha256 = $null
+        Legacy48_144Block1Sha256 = $null
+        Legacy30_144EdidSha256 = $null
+        Legacy30_144Block0Sha256 = $null
+        Legacy30_144Block1Sha256 = $null
+        SupportsLegacy144Recovery = $false
+    }
+)
 
 function Convert-WmiText {
     param([AllowNull()][object]$Values)
@@ -65,26 +110,32 @@ function Remove-FileIfPresent {
 }
 
 function Get-ValidatedPanel {
-    $matches = @(
-        Get-CimInstance -Namespace 'root\wmi' -ClassName 'WmiMonitorID' -ErrorAction Stop |
-            ForEach-Object {
-                [pscustomobject]@{
-                    InstanceName = [string]$_.InstanceName
-                    Manufacturer = Convert-WmiText -Values $_.ManufacturerName
-                    ProductCode = Convert-WmiText -Values $_.ProductCodeID
-                    Name = Convert-WmiText -Values $_.UserFriendlyName
-                }
-            } |
-            Where-Object {
-                $_.Manufacturer -eq $targetManufacturer -and
-                $_.ProductCode -eq $targetProductCode -and
-                $_.Name -eq $targetPanelName
-            }
-    )
+    $matches = [Collections.Generic.List[object]]::new()
+    foreach ($monitor in @(Get-CimInstance -Namespace 'root\wmi' -ClassName 'WmiMonitorID' -ErrorAction Stop)) {
+        $manufacturer = Convert-WmiText -Values $monitor.ManufacturerName
+        $productCode = Convert-WmiText -Values $monitor.ProductCodeID
+        $name = Convert-WmiText -Values $monitor.UserFriendlyName
+        $definitions = @($panelCatalog | Where-Object {
+                $_.Manufacturer -eq $manufacturer -and
+                $_.ProductCode -eq $productCode -and
+                $_.Name -eq $name
+            })
+        foreach ($definition in $definitions) {
+            $matches.Add([pscustomobject]@{
+                    InstanceName = [string]$monitor.InstanceName
+                    Manufacturer = $manufacturer
+                    ProductCode = $productCode
+                    Name = $name
+                    Definition = $definition
+                })
+        }
+    }
 
     if ($matches.Count -ne 1) {
-        throw "The validated $targetPanelName panel was not found exactly once. No display setting was changed."
+        $supported = ($panelCatalog | ForEach-Object { "$($_.Manufacturer)$($_.ProductCode) / $($_.Name)" }) -join '; '
+        throw "A supported internal panel was not found exactly once. Expected one of: $supported. No display setting was changed."
     }
+    $script:activePanelDefinition = $matches[0].Definition
     return $matches[0]
 }
 
@@ -131,6 +182,9 @@ function Test-ByteArrayEqual {
         [AllowNull()][byte[]]$Right
     )
 
+    if ($null -eq $Left -and $null -eq $Right) {
+        return $true
+    }
     if ($null -eq $Left -or $null -eq $Right -or $Left.Length -ne $Right.Length) {
         return $false
     }
@@ -145,14 +199,20 @@ function Test-ByteArrayEqual {
 function Get-KnownOverrideHashes {
     param([Parameter(Mandatory)][string]$EdidSha256)
 
-    if ($EdidSha256 -eq $validated30_120EdidSha256) {
-        return [pscustomobject]@{ Block0 = $validated30_120Block0Sha256; Block1 = $validated30_120Block1Sha256 }
-    }
-    if ($EdidSha256 -eq $validated48_144EdidSha256) {
-        return [pscustomobject]@{ Block0 = $validated48_144Block0Sha256; Block1 = $validated48_144Block1Sha256 }
-    }
-    if ($EdidSha256 -eq $validated30_144EdidSha256) {
-        return [pscustomobject]@{ Block0 = $validated30_144Block0Sha256; Block1 = $validated30_144Block1Sha256 }
+    foreach ($definition in $panelCatalog) {
+        foreach ($candidate in @(
+                [pscustomobject]@{ Edid = $definition.Custom30EdidSha256; Block0 = $definition.Custom30Block0Sha256; Block1 = $definition.Custom30Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Legacy48_144EdidSha256; Block0 = $definition.Legacy48_144Block0Sha256; Block1 = $definition.Legacy48_144Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Legacy30_144EdidSha256; Block0 = $definition.Legacy30_144Block0Sha256; Block1 = $definition.Legacy30_144Block1Sha256 }
+            )) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$candidate.Edid) -and $EdidSha256 -eq $candidate.Edid) {
+                return [pscustomobject]@{
+                    Block0 = $candidate.Block0
+                    Block1 = $candidate.Block1
+                    Definition = $definition
+                }
+            }
+        }
     }
     throw "Unknown ClawLab custom EDID hash: $EdidSha256"
 }
@@ -160,8 +220,10 @@ function Get-KnownOverrideHashes {
 function Get-PanelRegistryContext {
     param([Parameter(Mandatory)][object]$Panel)
 
+    $definition = $Panel.Definition
     $instanceId = $Panel.InstanceName -replace '_\d+$', ''
-    if ($instanceId -notlike 'DISPLAY\CSW0801\*') {
+    $expectedInstancePattern = "DISPLAY\$($definition.Manufacturer)$($definition.ProductCode)\*"
+    if ($instanceId -notlike $expectedInstancePattern) {
         throw "Unexpected validated-panel instance ID: $instanceId"
     }
 
@@ -171,21 +233,21 @@ function Get-PanelRegistryContext {
     }
 
     $reportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $deviceParameters -Name 'EDID' -ErrorAction Stop)
-    if ($reportedEdid.Length -ne 256) {
+    if ($reportedEdid.Length -ne [int]$definition.EdidLength) {
         throw "Unexpected panel EDID length: $($reportedEdid.Length) bytes."
     }
 
     # After the Intel display device reloads an override, Windows can expose the
     # exact overridden EDID through the EDID value itself. Reconstruct the
-    # validated physical baseline only from one of our three exact, pinned
-    # experimental hashes. No arbitrary EDID is accepted or normalized.
+    # validated physical baseline only from an exact, pinned ClawLab hash. No
+    # arbitrary EDID is accepted or normalized.
     $reportedHash = Get-ByteArraySha256 -Bytes $reportedEdid
     $physicalEdid = [byte[]]$reportedEdid.Clone()
-    if ($reportedHash -ne $validatedPhysicalEdidSha256) {
+    if ($reportedHash -ne [string]$definition.PhysicalEdidSha256) {
         $knownCompleteOverride = $reportedHash -in @(
-                $validated30_120EdidSha256,
-                $validated48_144EdidSha256,
-                $validated30_144EdidSha256
+                $definition.Custom30EdidSha256,
+                $definition.Legacy48_144EdidSha256,
+                $definition.Legacy30_144EdidSha256
             )
         $recoverableClawLabBlocks = $false
         if (-not $knownCompleteOverride -and $Action -eq 'FactoryReset') {
@@ -197,15 +259,15 @@ function Get-PanelRegistryContext {
                 try { $block1 = [byte[]](Get-ItemPropertyValue -LiteralPath $overridePath -Name '1' -ErrorAction Stop) } catch {}
                 $knownBlock0 = $null -eq $block0 -or
                     (Get-ByteArraySha256 -Bytes $block0) -in @(
-                        $validated30_120Block0Sha256,
-                        $validated48_144Block0Sha256,
-                        $validated30_144Block0Sha256
+                        $definition.Custom30Block0Sha256,
+                        $definition.Legacy48_144Block0Sha256,
+                        $definition.Legacy30_144Block0Sha256
                     )
                 $knownBlock1 = $null -eq $block1 -or
                     (Get-ByteArraySha256 -Bytes $block1) -in @(
-                        $validated30_120Block1Sha256,
-                        $validated48_144Block1Sha256,
-                        $validated30_144Block1Sha256
+                        $definition.Custom30Block1Sha256,
+                        $definition.Legacy48_144Block1Sha256,
+                        $definition.Legacy30_144Block1Sha256
                     )
                 $recoverableClawLabBlocks = ($null -ne $block0 -or $null -ne $block1) -and $knownBlock0 -and $knownBlock1
             }
@@ -214,16 +276,19 @@ function Get-PanelRegistryContext {
             throw "Unsupported panel EDID: $reportedHash. Custom modes are restricted to the validated EDID."
         }
 
-        $physicalEdid[95] = 48
-        $physicalEdid[96] = 120
-        $physicalEdid[142] = 48
-        $physicalEdid[143] = 120
-        foreach ($offset in 156..178) {
-            $physicalEdid[$offset] = 0
+        foreach ($range in $definition.RangeOffsets) {
+            $physicalEdid[[int]$range.Minimum] = [byte]$targetMinimumHz
+            $physicalEdid[[int]$range.Maximum] = [byte]$targetMaximumHz
         }
-        Set-EdidChecksum -Edid $physicalEdid -Start 0
-        Set-EdidChecksum -Edid $physicalEdid -Start 128
-        if ((Get-ByteArraySha256 -Bytes $physicalEdid) -ne $validatedPhysicalEdidSha256) {
+        if ([bool]$definition.SupportsLegacy144Recovery) {
+            foreach ($offset in 156..178) {
+                $physicalEdid[$offset] = 0
+            }
+        }
+        foreach ($checksumStart in $definition.ChecksumStarts) {
+            Set-EdidChecksum -Edid $physicalEdid -Start ([int]$checksumStart)
+        }
+        if ((Get-ByteArraySha256 -Bytes $physicalEdid) -ne [string]$definition.PhysicalEdidSha256) {
             throw 'The known custom EDID could not be reduced to the validated physical baseline.'
         }
     }
@@ -233,8 +298,9 @@ function Get-PanelRegistryContext {
         DeviceParametersPath = $deviceParameters
         OverridePath = Join-Path $deviceParameters 'EDID_OVERRIDE'
         PhysicalEdid = $physicalEdid
-        PhysicalEdidSha256 = $validatedPhysicalEdidSha256
+        PhysicalEdidSha256 = [string]$definition.PhysicalEdidSha256
         ReportedEdidSha256 = $reportedHash
+        Definition = $definition
     }
 }
 
@@ -254,26 +320,30 @@ function Set-EdidChecksum {
 function New-ExperimentalEdidVariant {
     param(
         [Parameter(Mandatory)][byte[]]$PhysicalEdid,
+        [Parameter(Mandatory)][object]$Definition,
         [Parameter(Mandatory)][string]$State,
         [Parameter(Mandatory)][float]$MinimumHz,
         [Parameter(Mandatory)][float]$MaximumHz,
         [Parameter(Mandatory)][string]$ExpectedEdidSha256,
         [Parameter(Mandatory)][string]$ExpectedBlock0Sha256,
-        [Parameter(Mandatory)][string]$ExpectedBlock1Sha256
+        [AllowNull()][string]$ExpectedBlock1Sha256,
+        [switch]$AddLegacy144Timing
     )
 
     $physicalHash = Get-ByteArraySha256 -Bytes $PhysicalEdid
-    if ($physicalHash -ne $validatedPhysicalEdidSha256) {
+    if ($physicalHash -ne [string]$Definition.PhysicalEdidSha256) {
         throw "Unsupported panel EDID: $physicalHash. Custom modes are restricted to the validated EDID."
     }
-    if ($PhysicalEdid[95] -ne 48 -or $PhysicalEdid[96] -ne 120 -or
-        $PhysicalEdid[142] -ne 48 -or $PhysicalEdid[143] -ne 120) {
-        throw 'The validated EDID no longer contains the expected 48-120 Hz range fields.'
+    foreach ($range in $Definition.RangeOffsets) {
+        if ($PhysicalEdid[[int]$range.Minimum] -ne 48 -or
+            $PhysicalEdid[[int]$range.Maximum] -ne 120) {
+            throw 'The validated EDID no longer contains the expected 48-120 Hz range fields.'
+        }
     }
 
-    foreach ($start in @(0, 128)) {
+    foreach ($start in $Definition.ChecksumStarts) {
         $sum = 0
-        for ($offset = $start; $offset -lt ($start + 128); $offset++) {
+        for ($offset = [int]$start; $offset -lt ([int]$start + 128); $offset++) {
             $sum += $PhysicalEdid[$offset]
         }
         if (($sum % 256) -ne 0) {
@@ -282,12 +352,15 @@ function New-ExperimentalEdidVariant {
     }
 
     $modified = [byte[]]$PhysicalEdid.Clone()
-    $modified[95] = [byte]$MinimumHz
-    $modified[96] = [byte]$MaximumHz
-    $modified[142] = [byte]$MinimumHz
-    $modified[143] = [byte]$MaximumHz
+    foreach ($range in $Definition.RangeOffsets) {
+        $modified[[int]$range.Minimum] = [byte]$MinimumHz
+        $modified[[int]$range.Maximum] = [byte]$MaximumHz
+    }
 
-    if ([Math]::Abs($MaximumHz - $experimentalMaximumHz) -le 0.1) {
+    if ($AddLegacy144Timing) {
+        if (-not [bool]$Definition.SupportsLegacy144Recovery -or $PhysicalEdid.Length -ne 256) {
+            throw 'A retired 144 Hz recovery variant was requested for an incompatible panel definition.'
+        }
         foreach ($offset in 156..178) {
             if ($PhysicalEdid[$offset] -ne 0) {
                 throw 'The validated DisplayID extension no longer has the empty slot required for the 144 Hz timing.'
@@ -307,15 +380,17 @@ function New-ExperimentalEdidVariant {
         [Array]::Copy($timingBlock, 0, $modified, 156, $timingBlock.Length)
     }
 
-    Set-EdidChecksum -Edid $modified -Start 0
-    Set-EdidChecksum -Edid $modified -Start 128
+    foreach ($checksumStart in $Definition.ChecksumStarts) {
+        Set-EdidChecksum -Edid $modified -Start ([int]$checksumStart)
+    }
 
     $modifiedHash = Get-ByteArraySha256 -Bytes $modified
     $block0 = [byte[]]$modified[0..127]
-    $block1 = [byte[]]$modified[128..255]
+    $block1 = if ($modified.Length -eq 256) { [byte[]]$modified[128..255] } else { $null }
     if ($modifiedHash -ne $ExpectedEdidSha256 -or
         (Get-ByteArraySha256 -Bytes $block0) -ne $ExpectedBlock0Sha256 -or
-        (Get-ByteArraySha256 -Bytes $block1) -ne $ExpectedBlock1Sha256) {
+        ($null -ne $block1 -and (Get-ByteArraySha256 -Bytes $block1) -ne $ExpectedBlock1Sha256) -or
+        ($null -eq $block1 -and -not [string]::IsNullOrWhiteSpace($ExpectedBlock1Sha256))) {
         throw "Internal $State EDID verification failed: $modifiedHash"
     }
 
@@ -333,25 +408,30 @@ function New-ExperimentalEdidVariant {
 }
 
 function Get-ExperimentalEdidCatalog {
-    param([Parameter(Mandatory)][byte[]]$PhysicalEdid)
-
-    return @(
-        New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -State 'CLAWLAB_30_120' `
-            -MinimumHz $experimentalMinimumHz -MaximumHz $targetMaximumHz `
-            -ExpectedEdidSha256 $validated30_120EdidSha256 `
-            -ExpectedBlock0Sha256 $validated30_120Block0Sha256 `
-            -ExpectedBlock1Sha256 $validated30_120Block1Sha256
-        New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -State 'CLAWLAB_48_144' `
-            -MinimumHz $targetMinimumHz -MaximumHz $experimentalMaximumHz `
-            -ExpectedEdidSha256 $validated48_144EdidSha256 `
-            -ExpectedBlock0Sha256 $validated48_144Block0Sha256 `
-            -ExpectedBlock1Sha256 $validated48_144Block1Sha256
-        New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -State 'CLAWLAB_30_144' `
-            -MinimumHz $experimentalMinimumHz -MaximumHz $experimentalMaximumHz `
-            -ExpectedEdidSha256 $validated30_144EdidSha256 `
-            -ExpectedBlock0Sha256 $validated30_144Block0Sha256 `
-            -ExpectedBlock1Sha256 $validated30_144Block1Sha256
+    param(
+        [Parameter(Mandatory)][byte[]]$PhysicalEdid,
+        [Parameter(Mandatory)][object]$Definition
     )
+
+    $variants = [Collections.Generic.List[object]]::new()
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_120' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz $targetMaximumHz `
+            -ExpectedEdidSha256 $Definition.Custom30EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Custom30Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Custom30Block1Sha256))
+    if ([bool]$Definition.SupportsLegacy144Recovery) {
+        $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_48_144' `
+                -MinimumHz $targetMinimumHz -MaximumHz $experimentalMaximumHz `
+                -ExpectedEdidSha256 $Definition.Legacy48_144EdidSha256 `
+                -ExpectedBlock0Sha256 $Definition.Legacy48_144Block0Sha256 `
+                -ExpectedBlock1Sha256 $Definition.Legacy48_144Block1Sha256 -AddLegacy144Timing))
+        $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_144' `
+                -MinimumHz $experimentalMinimumHz -MaximumHz $experimentalMaximumHz `
+                -ExpectedEdidSha256 $Definition.Legacy30_144EdidSha256 `
+                -ExpectedBlock0Sha256 $Definition.Legacy30_144Block0Sha256 `
+                -ExpectedBlock1Sha256 $Definition.Legacy30_144Block1Sha256 -AddLegacy144Timing))
+    }
+    return @($variants)
 }
 
 function Get-EdidOverrideState {
@@ -402,7 +482,8 @@ function Get-EdidOverrideState {
 function Get-ClawLabRecoveryBlockState {
     param(
         [AllowNull()][byte[]]$Block0,
-        [AllowNull()][byte[]]$Block1
+        [AllowNull()][byte[]]$Block1,
+        [Parameter(Mandatory)][object]$Definition
     )
 
     $block0 = $Block0
@@ -411,18 +492,18 @@ function Get-ClawLabRecoveryBlockState {
         return [pscustomobject]@{ State = 'NONE'; Block0Present = $false; Block1Present = $false }
     }
 
-    $knownBlock0 = $null -eq $block0 -or
-        (Get-ByteArraySha256 -Bytes $block0) -in @(
-            $validated30_120Block0Sha256,
-            $validated48_144Block0Sha256,
-            $validated30_144Block0Sha256
-        )
-    $knownBlock1 = $null -eq $block1 -or
-        (Get-ByteArraySha256 -Bytes $block1) -in @(
-            $validated30_120Block1Sha256,
-            $validated48_144Block1Sha256,
-            $validated30_144Block1Sha256
-        )
+    $knownBlock0Hashes = @(
+        $Definition.Custom30Block0Sha256
+        $Definition.Legacy48_144Block0Sha256
+        $Definition.Legacy30_144Block0Sha256
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+    $knownBlock1Hashes = @(
+        $Definition.Custom30Block1Sha256
+        $Definition.Legacy48_144Block1Sha256
+        $Definition.Legacy30_144Block1Sha256
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+    $knownBlock0 = $null -eq $block0 -or (Get-ByteArraySha256 -Bytes $block0) -in $knownBlock0Hashes
+    $knownBlock1 = $null -eq $block1 -or (Get-ByteArraySha256 -Bytes $block1) -in $knownBlock1Hashes
     if (-not $knownBlock0 -or -not $knownBlock1) {
         return [pscustomobject]@{ State = 'UNKNOWN_THIRD_PARTY'; Block0Present = $null -ne $block0; Block1Present = $null -ne $block1 }
     }
@@ -442,7 +523,7 @@ function Get-ClawLabRecoveryOverrideState {
         try { $block0 = [byte[]](Get-ItemPropertyValue -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction Stop) } catch {}
         try { $block1 = [byte[]](Get-ItemPropertyValue -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction Stop) } catch {}
     }
-    return Get-ClawLabRecoveryBlockState -Block0 $block0 -Block1 $block1
+    return Get-ClawLabRecoveryBlockState -Block0 $block0 -Block1 $block1 -Definition $RegistryContext.Definition
 }
 
 function Get-ManagedArtifactSnapshot {
@@ -455,6 +536,8 @@ function Get-ManagedArtifactSnapshot {
         StartupStatus = Test-Path -LiteralPath $startupStatusPath -PathType Leaf
         IntelStartupBackup = Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf
         StartupTask = $null -ne $task
+        CursorRefreshHelper = Test-Path -LiteralPath $installedCursorRefreshHelperPath -PathType Leaf
+        CursorRefreshHelperState = Test-Path -LiteralPath $cursorRefreshHelperStatePath -PathType Leaf
     }
     $snapshot | Add-Member -NotePropertyName Any -NotePropertyValue (
         $snapshot.OriginalProfile -or
@@ -463,7 +546,9 @@ function Get-ManagedArtifactSnapshot {
         $snapshot.InstalledLauncher -or
         $snapshot.StartupStatus -or
         $snapshot.IntelStartupBackup -or
-        $snapshot.StartupTask
+        $snapshot.StartupTask -or
+        $snapshot.CursorRefreshHelper -or
+        $snapshot.CursorRefreshHelperState
     )
     return $snapshot
 }
@@ -598,6 +683,10 @@ function Confirm-AdministratorOrRelaunch {
 
     $arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Action $Action"
     $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments -Wait -PassThru
+    if ($process.ExitCode -ne 0 -and (Test-Path -LiteralPath $lastErrorPath -PathType Leaf)) {
+        Write-Host 'The elevated operation reported:' -ForegroundColor Red
+        Get-Content -LiteralPath $lastErrorPath | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+    }
     exit $process.ExitCode
 }
 
@@ -622,6 +711,123 @@ function Remove-Experimental144Trial {
     Remove-FileIfPresent -LiteralPath $installedExperimental144TrialPath
     Remove-FileIfPresent -LiteralPath $installedExperimental144TrialLauncherPath
     Remove-FileIfPresent -LiteralPath $installedExperimental144TrialDriverPath
+}
+
+function Get-CursorRefreshHelperProcesses {
+    $expectedPath = [IO.Path]::GetFullPath($installedCursorRefreshHelperPath)
+    return @(
+        Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($cursorRefreshHelperName)) -ErrorAction SilentlyContinue |
+            Where-Object {
+                try {
+                    $processPath = [IO.Path]::GetFullPath([string]$_.Path)
+                    $processPath.Equals($expectedPath, [StringComparison]::OrdinalIgnoreCase)
+                }
+                catch {
+                    $false
+                }
+            }
+    )
+}
+
+function Get-CursorRefreshHelperState {
+    $binaryPresent = Test-Path -LiteralPath $installedCursorRefreshHelperPath -PathType Leaf
+    $statePresent = Test-Path -LiteralPath $cursorRefreshHelperStatePath -PathType Leaf
+    if (-not $binaryPresent -and -not $statePresent) {
+        return 'NOT_INSTALLED'
+    }
+    if (-not $binaryPresent -or -not $statePresent) {
+        return 'INCOMPLETE'
+    }
+
+    try {
+        $record = [IO.File]::ReadAllText($cursorRefreshHelperStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        foreach ($property in @('SchemaVersion', 'FixVersion', 'FileName', 'FileSha256')) {
+            if ($property -notin $record.PSObject.Properties.Name) {
+                return 'INVALID_STATE'
+            }
+        }
+        if ([int]$record.SchemaVersion -ne 1 -or
+            [string]$record.FileName -ne $cursorRefreshHelperName) {
+            return 'INVALID_STATE'
+        }
+        $actualHash = (Get-FileHash -LiteralPath $installedCursorRefreshHelperPath -Algorithm SHA256).Hash
+        if ($actualHash -ne [string]$record.FileSha256) {
+            return 'HASH_MISMATCH'
+        }
+        if (@(Get-CursorRefreshHelperProcesses).Count -eq 1) {
+            return 'RUNNING_EVENT_DRIVEN'
+        }
+        return 'READY_AT_NEXT_SIGN_IN'
+    }
+    catch {
+        return 'INVALID_STATE'
+    }
+}
+
+function Stop-CursorRefreshHelper {
+    foreach ($process in @(Get-CursorRefreshHelperProcesses)) {
+        Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        try { $process.WaitForExit(3000) | Out-Null } catch {}
+    }
+}
+
+function Install-CursorRefreshHelper {
+    $sourcePath = Join-Path (Split-Path $PSCommandPath -Parent) $cursorRefreshHelperName
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "The Cursor Refresh Helper binary is missing: $cursorRefreshHelperName"
+    }
+
+    Stop-CursorRefreshHelper
+    [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    [IO.File]::Copy($sourcePath, $installedCursorRefreshHelperPath, $true)
+    $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+    $installedHash = (Get-FileHash -LiteralPath $installedCursorRefreshHelperPath -Algorithm SHA256).Hash
+    if ($sourceHash -ne $installedHash) {
+        throw 'The installed Cursor Refresh Helper failed its integrity check.'
+    }
+
+    $record = [ordered]@{
+        SchemaVersion = 1
+        FixVersion = $fixVersion
+        FileName = $cursorRefreshHelperName
+        FileSha256 = $sourceHash
+        InstalledAt = (Get-Date).ToString('o')
+        Activation = 'RAW_MOUSE_INPUT_EVENT_DRIVEN'
+        IdleBehavior = 'NO_ANIMATION_TIMER'
+    }
+    [IO.File]::WriteAllText(
+        $cursorRefreshHelperStatePath,
+        ($record | ConvertTo-Json),
+        [Text.UTF8Encoding]::new($false)
+    )
+    if ((Get-CursorRefreshHelperState) -ne 'READY_AT_NEXT_SIGN_IN') {
+        throw 'The Cursor Refresh Helper installation could not be verified.'
+    }
+}
+
+function Start-CursorRefreshHelper {
+    $state = Get-CursorRefreshHelperState
+    if ($state -eq 'RUNNING_EVENT_DRIVEN') {
+        return
+    }
+    if ($state -ne 'READY_AT_NEXT_SIGN_IN') {
+        throw "The Cursor Refresh Helper cannot start from state $state. Reinstall the current VRR profile."
+    }
+
+    $process = Start-Process -FilePath $installedCursorRefreshHelperPath -WindowStyle Hidden -PassThru
+    Start-Sleep -Milliseconds 500
+    if ($process.HasExited -or (Get-CursorRefreshHelperState) -ne 'RUNNING_EVENT_DRIVEN') {
+        throw 'The Cursor Refresh Helper did not remain active after launch.'
+    }
+}
+
+function Remove-CursorRefreshHelper {
+    Stop-CursorRefreshHelper
+    Remove-FileIfPresent -LiteralPath $installedCursorRefreshHelperPath
+    Remove-FileIfPresent -LiteralPath $cursorRefreshHelperStatePath
+    if ((Get-CursorRefreshHelperState) -ne 'NOT_INSTALLED') {
+        throw 'The Cursor Refresh Helper could not be removed completely.'
+    }
 }
 
 function Install-StartupReapply {
@@ -657,6 +863,7 @@ function Install-StartupReapply {
             throw 'The startup reapply task could not be verified.'
         }
         Set-ManagedIntelStartupOrder
+        Install-CursorRefreshHelper
     }
     catch {
         try { Restore-IntelStartupOrder } catch { Write-Warning "Intel startup rollback failed: $($_.Exception.Message)" }
@@ -671,6 +878,7 @@ function Remove-StartupReapply {
         Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
     }
     Remove-Experimental144Trial
+    Remove-CursorRefreshHelper
     Remove-FileIfPresent -LiteralPath $installedScriptPath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     Remove-FileIfPresent -LiteralPath $startupStatusPath
@@ -795,7 +1003,7 @@ function Set-IntelStartupTrustedIdentity {
         $OriginalEntryPresent = [bool]$ExistingBackup.OriginalEntryPresent
     }
     $record = [ordered]@{
-        SchemaVersion = 3
+        SchemaVersion = 4
         FixVersion = $fixVersion
         SavedAt = $savedAt
         IdentityVerifiedAt = (Get-Date).ToString('o')
@@ -812,7 +1020,7 @@ function Set-IntelStartupTrustedIdentity {
     Write-IntelStartupBackupAtomically -Backup $record
 
     $verified = [IO.File]::ReadAllText($intelStartupBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ([int]$verified.SchemaVersion -ne 3 -or
+    if ([int]$verified.SchemaVersion -ne 4 -or
         [bool]$verified.OriginalEntryPresent -ne $OriginalEntryPresent -or
         [string]$verified.Command -ne [string]$Resolved.Command -or
         [string]$verified.SignerThumbprint -ne [string]$Resolved.SignerThumbprint -or
@@ -823,12 +1031,39 @@ function Set-IntelStartupTrustedIdentity {
     return $verified
 }
 
+function Set-IntelStartupAbsentState {
+    $record = [ordered]@{
+        SchemaVersion = 4
+        FixVersion = $fixVersion
+        SavedAt = (Get-Date).ToString('o')
+        IdentityVerifiedAt = $null
+        OriginalEntryPresent = $false
+        RegistryPath = $intelStartupRegistryPath
+        ValueName = $intelStartupValueName
+        Command = $null
+        Executable = $null
+        Arguments = $null
+        SignerThumbprint = $null
+        FileSha256 = $null
+        FileVersion = $null
+    }
+    Write-IntelStartupBackupAtomically -Backup $record
+
+    $verified = [IO.File]::ReadAllText($intelStartupBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ([int]$verified.SchemaVersion -ne 4 -or
+        [bool]$verified.OriginalEntryPresent -or
+        -not [string]::IsNullOrEmpty([string]$verified.Command)) {
+        throw 'The absent Intel Graphics Software startup state could not be saved safely.'
+    }
+    return $verified
+}
+
 function Get-IntelStartupBackup {
     if (-not (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf)) {
         return $null
     }
     $backup = [IO.File]::ReadAllText($intelStartupBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    foreach ($property in @('RegistryPath', 'ValueName', 'Command', 'Executable', 'Arguments', 'SignerThumbprint')) {
+    foreach ($property in @('RegistryPath', 'ValueName')) {
         if ($property -notin $backup.PSObject.Properties.Name) {
             throw "The saved Intel startup entry is invalid: missing $property."
         }
@@ -838,8 +1073,24 @@ function Get-IntelStartupBackup {
         throw 'The saved Intel startup registry target is invalid.'
     }
     if ('SchemaVersion' -in $backup.PSObject.Properties.Name -and
-        [int]$backup.SchemaVersion -notin @(1, 2, 3)) {
+        [int]$backup.SchemaVersion -notin @(1, 2, 3, 4)) {
         throw 'The saved Intel startup entry uses an unsupported schema.'
+    }
+
+    $originalEntryPresent = Test-OriginalIntelStartupEntryPresent -Backup $backup
+    if (-not $originalEntryPresent) {
+        if ([int]$backup.SchemaVersion -eq 4 -and
+            [string]::IsNullOrEmpty([string]$backup.Command)) {
+            return $backup
+        }
+        # Version 2.0.2 could save an absent original entry together with a
+        # verified canonical Intel command. Keep supporting that schema.
+    }
+
+    foreach ($property in @('Command', 'Executable', 'Arguments', 'SignerThumbprint')) {
+        if ($property -notin $backup.PSObject.Properties.Name) {
+            throw "The saved Intel startup identity is invalid: missing $property."
+        }
     }
 
     $startupMode = $Action -eq 'ApplyStartup'
@@ -853,7 +1104,7 @@ function Get-IntelStartupBackup {
         'FileSha256' -in $backup.PSObject.Properties.Name -and
         'FileVersion' -in $backup.PSObject.Properties.Name -and
         'SchemaVersion' -in $backup.PSObject.Properties.Name -and
-        [int]$backup.SchemaVersion -in @(2, 3)
+        [int]$backup.SchemaVersion -in @(2, 3, 4)
     )
     $hashChanged = -not $hasPinnedIdentity -or
         $resolved.FileSha256 -ne [string]$backup.FileSha256
@@ -939,11 +1190,8 @@ function Set-ManagedIntelStartupOrder {
 
     if ($null -eq $backup) {
         if ([string]::IsNullOrEmpty($current)) {
-            $canonicalExecutable = Join-Path $env:ProgramFiles 'Intel\Intel Graphics Software\IntelGraphicsSoftware.exe'
-            $canonicalCommand = '"{0}" -s' -f $canonicalExecutable
-            $resolved = Resolve-IntelGraphicsStartupCommand -Command $canonicalCommand
             [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
-            [void](Set-IntelStartupTrustedIdentity -ExistingBackup $null -Resolved $resolved -OriginalEntryPresent $false)
+            [void](Set-IntelStartupAbsentState)
             $backup = Get-IntelStartupBackup
         }
         else {
@@ -971,10 +1219,11 @@ function Restore-IntelStartupOrder {
         return
     }
     $current = Get-IntelStartupRegistryValue
-    if (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
-        throw 'An unknown Intel Graphics Software startup entry is present. The saved entry was not restored.'
-    }
-    if (Test-OriginalIntelStartupEntryPresent -Backup $backup) {
+    $originalEntryPresent = Test-OriginalIntelStartupEntryPresent -Backup $backup
+    if ($originalEntryPresent) {
+        if (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
+            throw 'An unknown Intel Graphics Software startup entry is present. The saved entry was not restored.'
+        }
         New-ItemProperty -LiteralPath $intelStartupRegistryPath -Name $intelStartupValueName `
             -PropertyType String -Value ([string]$backup.Command) -Force | Out-Null
         if ((Get-IntelStartupRegistryValue) -ne [string]$backup.Command) {
@@ -983,10 +1232,7 @@ function Restore-IntelStartupOrder {
     }
     else {
         if (-not [string]::IsNullOrEmpty($current)) {
-            Remove-ItemProperty -LiteralPath $intelStartupRegistryPath -Name $intelStartupValueName -ErrorAction Stop
-        }
-        if (-not [string]::IsNullOrEmpty((Get-IntelStartupRegistryValue))) {
-            throw 'The originally absent Intel Graphics Software startup entry could not be restored safely.'
+            Write-Warning 'Intel Graphics Software gained a startup entry after installation. The external entry was preserved.'
         }
     }
     Remove-FileIfPresent -LiteralPath $intelStartupBackupPath
@@ -1003,6 +1249,9 @@ function Get-FactoryIntelStartupCommand {
         try {
             $backup = Get-IntelStartupBackup
             if ($null -ne $backup) {
+                if (-not (Test-OriginalIntelStartupEntryPresent -Backup $backup)) {
+                    return $null
+                }
                 return [string]$backup.Command
             }
         }
@@ -1012,13 +1261,23 @@ function Get-FactoryIntelStartupCommand {
     }
 
     $executable = Join-Path $env:ProgramFiles 'Intel\Intel Graphics Software\IntelGraphicsSoftware.exe'
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        return $null
+    }
     $command = '"{0}" -s' -f $executable
     [void](Resolve-IntelGraphicsStartupCommand -Command $command)
     return $command
 }
 
 function Set-FactoryIntelStartupCommand {
-    param([Parameter(Mandatory)][string]$Command)
+    param([AllowNull()][string]$Command)
+
+    if ([string]::IsNullOrEmpty($Command)) {
+        if (-not [string]::IsNullOrEmpty((Get-IntelStartupRegistryValue))) {
+            throw 'Factory reset expected Intel Graphics Software startup to remain absent, but an entry is present.'
+        }
+        return
+    }
 
     [void](Resolve-IntelGraphicsStartupCommand -Command $Command)
     $current = Get-IntelStartupRegistryValue
@@ -1037,6 +1296,9 @@ function Set-FactoryIntelStartupCommand {
 function Start-ManagedIntelGraphicsSoftware {
     $backup = Get-IntelStartupBackup
     if ($null -eq $backup) {
+        return
+    }
+    if (-not (Test-OriginalIntelStartupEntryPresent -Backup $backup)) {
         return
     }
     if ($null -ne (Get-Process -Name 'IntelGraphicsSoftware' -ErrorAction SilentlyContinue)) {
@@ -1469,12 +1731,17 @@ function Get-CurrentDisplayMode {
 }
 
 function Set-Safe120DisplayMode {
-    if (-not [ClawLab.VrrFix.DisplayModeControl]::HasMode(1920, 1200, 120)) {
-        throw 'The validated 1920x1200 120 Hz Windows display mode is not available.'
+    if ($null -eq $script:activePanelDefinition) {
+        throw 'The active panel definition is unavailable.'
+    }
+    $width = [int]$script:activePanelDefinition.Width
+    $height = [int]$script:activePanelDefinition.Height
+    if (-not [ClawLab.VrrFix.DisplayModeControl]::HasMode($width, $height, 120)) {
+        throw "The validated ${width}x${height} 120 Hz Windows display mode is not available."
     }
 
     $current = Get-CurrentDisplayMode
-    if ($current.Width -eq 1920 -and $current.Height -eq 1200 -and $current.RefreshHz -eq 120) {
+    if ($current.Width -eq $width -and $current.Height -eq $height -and $current.RefreshHz -eq 120) {
         return $current
     }
     $result = [ClawLab.VrrFix.DisplayModeControl]::SetRefresh(120)
@@ -1483,8 +1750,8 @@ function Set-Safe120DisplayMode {
     }
     Start-Sleep -Seconds 1
     $after = Get-CurrentDisplayMode
-    if ($after.Width -ne 1920 -or $after.Height -ne 1200 -or $after.RefreshHz -ne 120) {
-        throw "Factory reset did not activate 1920x1200 at 120 Hz; current mode is $($after.Width)x$($after.Height) at $($after.RefreshHz) Hz."
+    if ($after.Width -ne $width -or $after.Height -ne $height -or $after.RefreshHz -ne 120) {
+        throw "Factory reset did not activate ${width}x${height} at 120 Hz; current mode is $($after.Width)x$($after.Height) at $($after.RefreshHz) Hz."
     }
     return $after
 }
@@ -1704,7 +1971,9 @@ function Install-CustomEdidMode {
         try {
             New-Item -Path $RegistryContext.OverridePath -Force | Out-Null
             New-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '0' -PropertyType Binary -Value $variant.Block0 -Force | Out-Null
-            New-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -PropertyType Binary -Value $variant.Block1 -Force | Out-Null
+            if ($null -ne $variant.Block1) {
+                New-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -PropertyType Binary -Value $variant.Block1 -Force | Out-Null
+            }
             $writtenState = Get-EdidOverrideState -RegistryContext $RegistryContext -ExperimentalEdids $ExperimentalEdids
             if ($writtenState.State -ne $DesiredState) {
                 throw 'The custom EDID registry write did not verify.'
@@ -1826,6 +2095,7 @@ function Get-StatusObject {
         OriginalProfileSaved = Test-Path -LiteralPath $backupPath -PathType Leaf
         BackupPath = $backupPath
         StartupReapply = Get-StartupReapplyState
+        CursorRefreshHelper = Get-CursorRefreshHelperState
         IntelGraphicsStartup = $intelStartupState
         EdidOverride = $OverrideState.State
         RecoveryRequired = $false
@@ -1839,6 +2109,13 @@ function Get-StatusObject {
 }
 
 try {
+    if ($Action -notin @('Status', 'ApplyStartup')) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+        if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            Remove-FileIfPresent -LiteralPath $lastErrorPath
+        }
+    }
     if ($Action -eq 'EmergencyRestoreEdid') {
         Confirm-AdministratorOrRelaunch
         if (-not (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf)) {
@@ -1849,21 +2126,32 @@ try {
             throw 'The ClawLab custom EDID state file is invalid. Nothing was removed.'
         }
         $emergencyOverridePath = [string]$emergencyState.RegistryPath
-        if ($emergencyOverridePath -notlike 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\DISPLAY\CSW0801\*\Device Parameters\EDID_OVERRIDE') {
-            throw "Unsafe or unexpected EDID override path: $emergencyOverridePath"
-        }
         if ('ExperimentalEdidSha256' -notin $emergencyState.PSObject.Properties.Name) {
             throw 'The ClawLab custom-range state file has no EDID hash. Nothing was removed.'
         }
         $expectedEmergencyHashes = Get-KnownOverrideHashes -EdidSha256 ([string]$emergencyState.ExperimentalEdidSha256)
+        $expectedEmergencyPath = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\DISPLAY\$($expectedEmergencyHashes.Definition.Manufacturer)$($expectedEmergencyHashes.Definition.ProductCode)\*\Device Parameters\EDID_OVERRIDE"
+        if ($emergencyOverridePath -notlike $expectedEmergencyPath) {
+            throw "Unsafe or unexpected EDID override path: $emergencyOverridePath"
+        }
         $emergencyBlock0 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop)
-        $emergencyBlock1 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop)
+        $emergencyBlock1 = $null
+        try { $emergencyBlock1 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop) } catch {}
+        $emergencyBlock1Matches = if ([string]::IsNullOrWhiteSpace([string]$expectedEmergencyHashes.Block1)) {
+            $null -eq $emergencyBlock1
+        }
+        else {
+            $null -ne $emergencyBlock1 -and
+                (Get-ByteArraySha256 -Bytes $emergencyBlock1) -eq $expectedEmergencyHashes.Block1
+        }
         if ((Get-ByteArraySha256 -Bytes $emergencyBlock0) -ne $expectedEmergencyHashes.Block0 -or
-            (Get-ByteArraySha256 -Bytes $emergencyBlock1) -ne $expectedEmergencyHashes.Block1) {
+            -not $emergencyBlock1Matches) {
             throw 'The installed EDID override does not match a known ClawLab custom mode. Nothing was removed.'
         }
         Remove-ItemProperty -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop
-        Remove-ItemProperty -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop
+        if ($null -ne $emergencyBlock1) {
+            Remove-ItemProperty -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop
+        }
         Remove-FileIfPresent -LiteralPath $experimentalStatePath
         Write-Host 'Removed the verified ClawLab custom EDID override.' -ForegroundColor Green
         Write-Host 'Restart the PC. Then run RESTORE_ORIGINAL_VRR.bat in normal Windows to restore the saved Intel profile.' -ForegroundColor Yellow
@@ -1873,7 +2161,7 @@ try {
     $panel = Get-ValidatedPanel
     $gpu = Get-IntelGpu
     $registryContext = Get-PanelRegistryContext -Panel $panel
-    $experimentalEdids = @(Get-ExperimentalEdidCatalog -PhysicalEdid $registryContext.PhysicalEdid)
+    $experimentalEdids = @(Get-ExperimentalEdidCatalog -PhysicalEdid $registryContext.PhysicalEdid -Definition $registryContext.Definition)
     $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
     Add-ArcSyncControlType
     Add-DisplayModeControlType
@@ -1935,7 +2223,8 @@ try {
                 $displaySuffix = ", $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz"
             }
             $identitySuffix = if ($script:intelStartupIdentityRenewed) { ', signed Intel Graphics Software update trusted' } else { '' }
-            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix + $identitySuffix)
+            Start-CursorRefreshHelper
+            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz, event-driven cursor refresh active" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix + $identitySuffix)
             exit 0
         }
 
@@ -2038,7 +2327,7 @@ try {
             Remove-FileIfPresent -LiteralPath $intelStartupBackupPath
 
             Write-Host 'ClawLab VRR factory reset completed.' -ForegroundColor Green
-            Write-Host 'Windows is at 1920x1200 120 Hz and Intel RECOMMENDED is selected.' -ForegroundColor Green
+            Write-Host ("Windows is at {0}x{1} 120 Hz and Intel RECOMMENDED is selected." -f $safeMode.Width, $safeMode.Height) -ForegroundColor Green
             Write-Host 'Restart the PC to unload any previously active EDID override and restore the physical 48-120 Hz panel data.' -ForegroundColor Yellow
             [pscustomobject]@{
                 FixVersion = $fixVersion
@@ -2090,7 +2379,9 @@ try {
 
             if ($knownExperimentalOverride) {
                 Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '0' -ErrorAction Stop
-                Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -ErrorAction Stop
+                if ($null -ne $overrideState.Block1) {
+                    Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -ErrorAction Stop
+                }
                 $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
                 if ($overrideState.State -ne 'NONE') {
                     throw 'The ClawLab custom EDID override could not be removed completely.'
@@ -2113,6 +2404,21 @@ catch {
     if ($Action -eq 'ApplyStartup') {
         try { Write-StartupResult -Success $false -Message $_.Exception.Message } catch {}
         try { Start-ManagedIntelGraphicsSoftware } catch {}
+    }
+    else {
+        try {
+            [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+            $errorRecord = @(
+                "Timestamp: $((Get-Date).ToString('o'))"
+                "FixVersion: $fixVersion"
+                "Action: $Action"
+                "Message: $($_.Exception.Message)"
+                "Category: $($_.CategoryInfo.Category)"
+                "ScriptStackTrace: $($_.ScriptStackTrace)"
+            )
+            [IO.File]::WriteAllLines($lastErrorPath, $errorRecord, [Text.UTF8Encoding]::new($false))
+        }
+        catch {}
     }
     Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
     exit 1

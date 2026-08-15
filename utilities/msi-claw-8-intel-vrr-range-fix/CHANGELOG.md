@@ -1,5 +1,45 @@
 # Changelog
 
+## 2.1.0 — 2026-08-16
+
+- Added the real-hardware-validated Cursor Refresh Helper for the Windows
+  desktop. Raw mouse activity animates a nearly transparent 2x2 WPF/DWM surface
+  at the extreme lower-right corner so the panel rises from its idle VRR floor
+  to 120 Hz.
+- Stops the animation 500 milliseconds after mouse input; the high-frequency
+  timer is not running at idle.
+- Suppresses animation when the system cursor is hidden while remaining active
+  in Windows Xbox Full Screen Experience.
+- Uses standard Raw Input and desktop composition only, with no game injection,
+  process hook, game-file access or modification of the existing LFC fix.
+- Added helper binary integrity state, automatic sign-in launch, status,
+  complete restore cleanup and publicly rebuildable C# source.
+- Removed per-Raw-Input native allocations and extended the activity tail to
+  500 ms, eliminating the cursor micro-stutter reproduced on the reference Claw.
+- Added strict Claw A1M `TMA2027 / TL070FVXS02-0` support with its exact
+  128-byte physical EDID and deterministic one-block 30-120 transformation.
+- Generalized install, restore, factory and emergency recovery for one- or
+  two-block catalogued panels without weakening unknown-override refusal.
+- Added an offline A1M EDID generator/integrity test. A1M real-hardware
+  driver/LFC and panel behavior remains community-validation pending.
+- Fixed 2.1.0 sign-in orchestration so the LFC parent waits only for the direct
+  VRR child, not for the resident Cursor Refresh Helper descendant. This keeps
+  the one-shot task from reaching its four-minute execution limit.
+- Made historical CRU cleanup explicit and mandatory: run `reset-all.exe` from
+  the current official CRU release and restart before ClawLab installation,
+  regardless of when CRU was used or whether it now appears inactive.
+
+## 2.0.3 — 2026-08-15
+
+- Fixed first installation when Intel Graphics Software and its machine Run
+  entry are both absent, as confirmed by a Claw 8 AI+ / driver 8974 diagnostic.
+- Added schema-4 startup state that preserves true application absence without
+  constructing, validating or launching a nonexistent executable.
+- Leaves a newly installed third-party Intel startup entry untouched during
+  restore instead of deleting an external change.
+- Persists elevated failure details in `last-error.txt` and echoes them back to
+  the original console after a failed UAC child process.
+
 ## 2.0.2 — 2026-08-15
 
 - Removed the 48-144 and 30-144 installers, confirmation task and every public

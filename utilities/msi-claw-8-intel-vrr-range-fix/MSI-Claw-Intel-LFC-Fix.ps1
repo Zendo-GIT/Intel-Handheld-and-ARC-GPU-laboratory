@@ -6,7 +6,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.2'
+$toolVersion = '2.0.3'
 
 # Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
@@ -14,15 +14,23 @@ $toolVersion = '2.0.2'
 # range. This is a global display-driver setting: no game process is opened,
 # injected into, patched or monitored.
 
-$physicalEdidHash = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
-$experimental30EdidHash = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
-$experimental144EdidHash = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
-$experimental30_144EdidHash = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
-$validatedEdidHashes = @(
-    $physicalEdidHash,
-    $experimental30EdidHash,
-    $experimental144EdidHash,
-    $experimental30_144EdidHash
+$panelCatalog = @(
+    [pscustomobject]@{
+        Manufacturer = 'CSW'; ProductCode = '0801'; Name = 'PN8007QB1-2'
+        PhysicalEdidHash = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
+        Experimental30EdidHash = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
+        Legacy48_144EdidHash = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
+        Legacy30_144EdidHash = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
+        SupportsLegacy144Recovery = $true
+    },
+    [pscustomobject]@{
+        Manufacturer = 'TMA'; ProductCode = '2027'; Name = 'TL070FVXS02-0'
+        PhysicalEdidHash = '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
+        Experimental30EdidHash = '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
+        Legacy48_144EdidHash = $null
+        Legacy30_144EdidHash = $null
+        SupportsLegacy144Recovery = $false
+    }
 )
 $vrrStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $managedModePath = Join-Path $vrrStateRoot 'managed-mode.json'
@@ -63,26 +71,40 @@ function Get-ByteArraySha256 {
     }
 }
 
-$panels = @(
-    Get-CimInstance -Namespace 'root\wmi' -ClassName 'WmiMonitorID' |
-        ForEach-Object {
-            [pscustomobject]@{
-                InstanceName = [string]$_.InstanceName
-                Manufacturer = Convert-WmiText -Values $_.ManufacturerName
-                ProductCode = Convert-WmiText -Values $_.ProductCodeID
-                Name = Convert-WmiText -Values $_.UserFriendlyName
-            }
-        } |
-        Where-Object {
-            $_.Manufacturer -eq 'CSW' -and
-            $_.ProductCode -eq '0801' -and
-            $_.Name -eq 'PN8007QB1-2'
-        }
-)
+$panels = [Collections.Generic.List[object]]::new()
+foreach ($monitor in @(Get-CimInstance -Namespace 'root\wmi' -ClassName 'WmiMonitorID')) {
+    $manufacturer = Convert-WmiText -Values $monitor.ManufacturerName
+    $productCode = Convert-WmiText -Values $monitor.ProductCodeID
+    $name = Convert-WmiText -Values $monitor.UserFriendlyName
+    foreach ($definition in @($panelCatalog | Where-Object {
+                $_.Manufacturer -eq $manufacturer -and
+                $_.ProductCode -eq $productCode -and
+                $_.Name -eq $name
+            })) {
+        $panels.Add([pscustomobject]@{
+                InstanceName = [string]$monitor.InstanceName
+                Manufacturer = $manufacturer
+                ProductCode = $productCode
+                Name = $name
+                Definition = $definition
+            })
+    }
+}
 if ($panels.Count -ne 1) {
-    throw 'The exact validated CSW0801 / PN8007QB1-2 panel was not found once.'
+    throw 'A supported MSI Claw internal panel was not found exactly once.'
 }
 $panel = $panels[0]
+$panelDefinition = $panel.Definition
+$physicalEdidHash = [string]$panelDefinition.PhysicalEdidHash
+$experimental30EdidHash = [string]$panelDefinition.Experimental30EdidHash
+$experimental144EdidHash = [string]$panelDefinition.Legacy48_144EdidHash
+$experimental30_144EdidHash = [string]$panelDefinition.Legacy30_144EdidHash
+$validatedEdidHashes = @(
+    $physicalEdidHash,
+    $experimental30EdidHash,
+    $experimental144EdidHash,
+    $experimental30_144EdidHash
+) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
 $panelInstanceId = $panel.InstanceName -replace '_\d+$', ''
 $panelDeviceParameters = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\$panelInstanceId\Device Parameters"
 $reportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $panelDeviceParameters -Name 'EDID')
@@ -99,8 +121,10 @@ $managedModeName = if ($null -eq $managedMode) { 'UNMANAGED' } else { [string]$m
 $managedProfiles = @{
     'OFFICIAL_48_120' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 120; EdidSha256 = $physicalEdidHash; UsesCustomEdid = $false }
     'CLAWLAB_30_120' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 120; EdidSha256 = $experimental30EdidHash; UsesCustomEdid = $true }
-    'CLAWLAB_48_144' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; EdidSha256 = $experimental144EdidHash; UsesCustomEdid = $true }
-    'CLAWLAB_30_144' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; EdidSha256 = $experimental30_144EdidHash; UsesCustomEdid = $true }
+}
+if ([bool]$panelDefinition.SupportsLegacy144Recovery) {
+    $managedProfiles['CLAWLAB_48_144'] = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; EdidSha256 = $experimental144EdidHash; UsesCustomEdid = $true }
+    $managedProfiles['CLAWLAB_30_144'] = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; EdidSha256 = $experimental30_144EdidHash; UsesCustomEdid = $true }
 }
 $managedProfile = if ($managedProfiles.ContainsKey($managedModeName)) { $managedProfiles[$managedModeName] } else { $null }
 if ($Action -in @('Apply', 'ApplyStartup') -and $null -eq $managedProfile) {
@@ -196,7 +220,12 @@ if ($Action -eq 'ApplyStartup') {
     # LFC script before the Intel solution flags are reapplied.
     $rangeArguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$installedVrrToolPath`" -Action ApplyStartup"
     $rangeProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList $rangeArguments `
-        -WindowStyle Hidden -Wait -PassThru
+        -WindowStyle Hidden -PassThru
+    # Start-Process -Wait waits for the complete descendant process tree on
+    # Windows PowerShell. Release 2.1 launches the resident Cursor Refresh
+    # Helper from the VRR child, so -Wait would never return while that helper
+    # correctly remains active. Wait only for the direct VRR child instead.
+    $rangeProcess.WaitForExit()
     if ($rangeProcess.ExitCode -ne 0) {
         throw "The installed ClawLab VRR startup reapply failed with exit code $($rangeProcess.ExitCode)."
     }

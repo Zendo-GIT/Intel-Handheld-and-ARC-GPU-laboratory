@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title MSI Claw 8 AI+ / 8 EX AI+ Default VRR 30-120 Fix
+title MSI Claw Intel Default VRR 30-120 Fix
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-VRR-Fix.ps1" -Action Install30
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.

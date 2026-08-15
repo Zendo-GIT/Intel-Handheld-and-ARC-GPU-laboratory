@@ -6,6 +6,7 @@
 *.etl
 *.dmp
 *.exe
+!utilities/msi-claw-8-intel-vrr-range-fix/ClawLab-Cursor-Refresh-Helper.exe
 *.dll
 *.zip
 *.7z

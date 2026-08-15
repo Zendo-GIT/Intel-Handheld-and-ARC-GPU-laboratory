@@ -1,9 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title MSI Claw 8 AI+ / 8 EX AI+ ClawLab VRR Factory Reset
+title MSI Claw Intel ClawLab VRR Factory Reset
 echo This recovery removes every exact ClawLab VRR override and managed task.
-echo It restores 1920x1200 at 120 Hz and Intel RECOMMENDED mode.
+echo It restores the detected panel's native resolution at 120 Hz and Intel RECOMMENDED mode.
 echo Unknown third-party EDID overrides are refused and will not be removed.
 echo.
 choice /C YN /N /M "Continue with the ClawLab VRR factory reset? [Y/N] "

@@ -27,6 +27,10 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Intel-VRR-LFC-Driver-Interface.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-LFC-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
@@ -36,7 +40,8 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.0.2.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.1.0.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\A1M_EDID_REFERENCE.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
 )
 foreach ($relativePath in $requiredFiles) {
@@ -56,14 +61,16 @@ $publicFiles = @(
 )
 
 $forbiddenExtensions = @('.exe', '.dll', '.ovl', '.arc', '.bak', '.etl', '.dmp', '.dxil', '.zip', '.7z', '.rar')
+$allowedCursorHelperPath = [IO.Path]::GetFullPath((Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe'))
 $forbiddenFiles = @($publicFiles | Where-Object {
-    $forbiddenExtensions -contains $_.Extension.ToLowerInvariant()
+    $forbiddenExtensions -contains $_.Extension.ToLowerInvariant() -and
+    -not $_.FullName.Equals($allowedCursorHelperPath, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($forbiddenFiles.Count -gt 0) {
     throw "Forbidden binary, trace, backup, shader dump, or archive found in the public tree:`n$($forbiddenFiles.FullName -join "`n")"
 }
 
-$textExtensions = @('.md', '.txt', '.ps1', '.bat', '.cmd', '.vbs', '.yml', '.yaml', '.json')
+$textExtensions = @('.md', '.txt', '.ps1', '.bat', '.cmd', '.vbs', '.yml', '.yaml', '.json', '.cs')
 foreach ($file in @($publicFiles | Where-Object { $_.Extension.ToLowerInvariant() -in $textExtensions })) {
     $text = Get-Content -LiteralPath $file.FullName -Raw
     if ($text -match '(?i)https?://[^\s)>]*(wemod|anti.?cheat.?bypass)') {
@@ -136,7 +143,7 @@ foreach ($relativePath in $retiredVrrPublicFiles) {
     }
 }
 $requiredVrrValues = @(
-    "`$fixVersion = '2.0.2'",
+    "`$fixVersion = '2.1.0'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -147,6 +154,9 @@ $requiredVrrValues = @(
     '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05',
     '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D',
     '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
+    '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1',
+    '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647',
+    "Name = 'TL070FVXS02-0'",
     "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
@@ -154,7 +164,9 @@ $requiredVrrValues = @(
     'Write-IntelStartupBackupAtomically',
     'Set-IntelStartupTrustedIdentity',
     'OriginalEntryPresent',
-    'SchemaVersion = 3',
+    'SchemaVersion = 4',
+    'Set-IntelStartupAbsentState',
+    'last-error.txt',
     'Remove-FileIfPresent',
     'IdentityVerifiedAt',
     'WindowsDisplayMode',
@@ -165,6 +177,10 @@ $requiredVrrValues = @(
     'This retired 144 Hz profile is no longer reapplied',
     'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
+    'Install-CursorRefreshHelper',
+    'Start-CursorRefreshHelper',
+    'Remove-CursorRefreshHelper',
+    'RUNNING_EVENT_DRIVEN'
 )
 foreach ($value in $requiredVrrValues) {
     if ($vrrScript -notmatch [regex]::Escape($value)) {
@@ -174,6 +190,41 @@ foreach ($value in $requiredVrrValues) {
 foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function Set-Experimental144DisplayMode')) {
     if ($vrrScript -match [regex]::Escape($forbiddenMarker)) {
         throw "Retired 144 Hz installation capability remains in the VRR source: $forbiddenMarker"
+    }
+}
+
+$a1mCatalogTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1'
+$a1mCatalogResult = & $a1mCatalogTestPath
+if ($null -eq $a1mCatalogResult -or [string]$a1mCatalogResult.Result -ne 'PASS') {
+    throw 'The pinned Claw A1M EDID generator test failed.'
+}
+
+$cursorHelperPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe'
+$cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
+if ($cursorHelperAssembly.Version.ToString() -ne '2.1.0.0') {
+    throw "Cursor Refresh Helper has unexpected assembly version $($cursorHelperAssembly.Version)."
+}
+$cursorHelperSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs') -Raw
+foreach ($value in @(
+    'RidevInputSink',
+    'RegisterRawInputDevices',
+    'TailTicks',
+    'AllowsTransparency = true',
+    'SystemParameters.PrimaryScreenWidth - Width',
+    'SystemParameters.PrimaryScreenHeight - Height',
+    'IsSystemCursorVisible',
+    'GetCursorInfo',
+    'CursorShowing',
+    '500L / 1000L',
+    'NearBlackBrush'
+)) {
+    if ($cursorHelperSource -notmatch [regex]::Escape($value)) {
+        throw "Cursor Refresh Helper source no longer contains required safety value: $value"
+    }
+}
+foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')) {
+    if ($cursorHelperSource -match [regex]::Escape($forbiddenMarker)) {
+        throw "Cursor Refresh Helper reintroduced a per-packet native allocation path: $forbiddenMarker"
     }
 }
 
@@ -190,7 +241,7 @@ foreach ($value in @(
 
 $lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.2'",
+    "`$toolVersion = '2.0.3'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -201,10 +252,17 @@ foreach ($value in @(
     'OriginalHighFpsSolutionEnabled',
     'Remove-FileIfPresent',
     'ClawLab MSI Claw Intel LFC Fix'
+    '$rangeProcess.WaitForExit()'
+    'TL070FVXS02-0'
+    '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
+    '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
 )) {
     if ($lfcScript -notmatch [regex]::Escape($value)) {
         throw "Intel LFC source no longer contains required safety value: $value"
     }
+}
+if ($lfcScript -match [regex]::Escape('-WindowStyle Hidden -Wait -PassThru')) {
+    throw 'The LFC startup path must not wait for the resident helper process tree.'
 }
 
 $lfcInstallers = @(
