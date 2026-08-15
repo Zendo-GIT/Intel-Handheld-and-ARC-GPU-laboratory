@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.3'
+    [string]$Version = '2.0.0'
 )
 
 Set-StrictMode -Version Latest
@@ -18,23 +18,31 @@ $hashPath = Join-Path $distRoot 'RELEASE_SHA256.txt'
 
 $releaseFiles = @(
     'MSI-Claw-VRR-Fix.ps1',
+    'MSI-Claw-30-120-LFC-Fix.ps1',
+    'Intel-VRR-LFC-Driver-Interface.ps1',
+    'Experimental-144-VRR-Trial.ps1',
     'ClawLab-VRR-Startup.vbs',
+    'ClawLab-LFC-Startup.vbs',
+    'ClawLab-144-Trial-Startup.vbs',
     'INSTALL_48_120_VRR.bat',
-    'INSTALL_EXPERIMENTAL_30_120_VRR.bat',
+    'INSTALL_30_120_VRR.bat',
     'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'INSTALL_EXPERIMENTAL_30_144_VRR.bat',
     'FACTORY_RESET_CLAWLAB_VRR.bat',
     'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
     'Collect-Claw-Display-Diagnostics.ps1',
     'RESTORE_ORIGINAL_VRR.bat',
+    'RESTORE_INTEL_LFC_DEFAULTS.bat',
     'CHECK_STATUS.bat',
-    'EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat',
+    'EMERGENCY_REMOVE_CLAWLAB_EDID.bat',
     'README.txt',
     'CHANGELOG.txt',
     'LICENSE.txt',
     'docs\COMPATIBILITY.md',
     'docs\SAFETY.md',
     'docs\TECHNICAL_DETAILS.md',
-    'docs\NEXUS_MODS.md'
+    'docs\NEXUS_MODS.md',
+    'docs\RELEASE_NOTES_2.0.0.md'
 )
 
 foreach ($relativePath in $releaseFiles) {
@@ -57,14 +65,17 @@ $requiredIntegrityValues = @(
     '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
     '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
     'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05',
+    '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D',
+    '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Install30_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
     'Write-IntelStartupBackupAtomically',
     'Set-IntelStartupTrustedIdentity',
     'IdentityVerifiedAt',
-    'REJECTED_30_144_PROFILE_RESTORE_REQUIRED',
+    'ClawLab MSI Claw 144 Hz Trial Confirmation',
     'WindowsDisplayMode',
     'FileSha256',
     'Assert-ProfileTransitionAllowed',
@@ -89,6 +100,36 @@ foreach ($value in @(
 )) {
     if ($launcherText -notmatch [regex]::Escape($value)) {
         throw "Windowless launcher no longer contains required value: $value"
+    }
+}
+
+$lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-30-120-LFC-Fix.ps1') -Raw
+foreach ($value in @(
+    "`$toolVersion = '$Version'",
+    'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
+    "`$managedModeName -ne 'CLAWLAB_30_120'",
+    'OriginalLowFpsSolutionEnabled',
+    'OriginalHighFpsSolutionEnabled',
+    'ClawLab MSI Claw 30-120 LFC Fix'
+)) {
+    if ($lfcScriptText -notmatch [regex]::Escape($value)) {
+        throw "Required LFC safety value is missing from the release source: $value"
+    }
+}
+
+$trialScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'Experimental-144-VRR-Trial.ps1') -Raw
+foreach ($value in @(
+    "`$toolVersion = '$Version'",
+    "`$observationSeconds = 20",
+    "`$confirmationTimeoutSeconds = 30",
+    'CLAWLAB_48_144',
+    'CLAWLAB_30_144',
+    'Restore-ExperimentalProfile',
+    "-Action Restore",
+    'ClawLab MSI Claw 144 Hz Trial Confirmation'
+)) {
+    if ($trialScriptText -notmatch [regex]::Escape($value)) {
+        throw "Required 144 Hz trial safety value is missing from the release source: $value"
     }
 }
 

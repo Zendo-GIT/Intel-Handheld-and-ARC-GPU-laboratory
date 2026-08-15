@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.0.0 — 2026-08-15
+
+- Integrated the community-validated Intel LFC x2 correction into the guarded
+  30-120 Hz installer. The tested combination uses the `EXCELLENT` Arc Sync
+  profile, the exact 30-120 Hz EDID override, and disables both Intel low- and
+  high-FPS VRR solutions.
+- Added a direct, readable D3DKMT Intel display-driver interface. It changes a
+  global display setting only and never opens, patches, injects into or monitors
+  a game process.
+- Added an independent backup of both original Intel VRR solution flags, exact
+  readback verification, a windowless one-shot logon reapply, and coordinated
+  restore/factory-reset handling.
+- Restricted the LFC x2 correction to the validated 30-120 Hz mode. Official
+  48-120 Hz and optional 48-144 Hz remain separate and receive no unverified
+  LFC claim.
+- Documented that disabling Intel's low-FPS solution removes LFC below the new
+  30 Hz floor. Frames below 30 FPS can still tear or stutter.
+- Documented conflicts with display-profile tools that force Intel
+  `RECOMMENDED` after sign-in or when a game starts. No resource-consuming
+  background watchdog is installed.
+- Reorganized the public choices around four profiles: default corrected
+  30-120 Hz, official Intel/MSI 48-120 Hz, guarded 48-144 Hz, and guarded
+  30-144 Hz.
+- Added a one-time 144 Hz confirmation failsafe. After driver verification and
+  20 seconds of observation, Yes keeps the profile; No, closing the dialog, a
+  30-second timeout or verification failure restores 120 Hz and restarts
+  Windows. The temporary task removes itself.
+- Exposed 30-144 only through that guarded flow and retained the prominent
+  disclosure that it visibly flickered on the reference panel.
+
 ## 1.0.3 — 2026-08-15
 
 - Added safe Intel Graphics Software update detection: a replaced executable is

@@ -18,7 +18,7 @@ specification alone.
 - internal panel `CSW0801 / PN8007QB1-2`
 - physical EDID SHA-256
   `E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0`
-- Intel Graphics driver `32.0.101.8864`
+- Intel Graphics driver `32.0.101.8974` WHQL
 - Intel Graphics Software `26.18.2353.2`
 - Windows 11
 
@@ -42,7 +42,7 @@ specific to Arc 140V. The underlying technique may therefore work on other
 Intel Arc Sync systems. This release remains exact-panel-specific because only
 that full hardware path has been validated.
 
-The experimental EDID transformation is never generic. A different monitor can
+The custom EDID transformation is never generic. A different monitor can
 store its range in different blocks and can have different electrical limits.
 
 ## Similar displays that are not supported
@@ -66,22 +66,33 @@ EDID, so it is deliberately excluded.
 ## Known limits
 
 - Intel Graphics Software can show stale or profile-derived range information.
-- Driver reinstallations can reset the Arc Sync profile. Version 1.0.3 detects
+- Driver reinstallations can reset the Arc Sync profile. Version 2.0.0 detects
   a replaced Intel Graphics Software executable, accepts it only after fresh
   Intel Authenticode validation, and then reapplies the managed profile. Verify
   the result with `CHECK_STATUS.bat` after every driver update.
 - If the driver package recreates Intel Graphics Software's machine Run entry,
   status reports `ORIGINAL_STILL_PRESENT`; rerun the same-mode installer once
   to restore deterministic startup ordering.
-- Experimental mode requires a restart before its EDID is active.
-- Experimental 30 Hz operation is outside MSI's stated 48-120 Hz range and may
+- A custom range requires a restart before its EDID is active.
+- ClawLab 30 Hz operation is outside MSI's stated 48-120 Hz range and may
   flicker or fail on individual panels even with the same model identifier.
+- The Intel LFC x2 correction is validated only with the exact ClawLab 30-120
+  mode on the reference Arc 140V / driver 32.0.101.8974 configuration. It was
+  not validated with 48-120, 48-144, a different panel or another Intel driver.
+- Disabling both Intel low/high-FPS solutions removed the observed x2 refresh
+  multiplication in 30-120 testing. LFC below 30 FPS is consequently unavailable.
+- A utility that forces Intel `RECOMMENDED` at sign-in or per game can overwrite
+  the managed state. Use a configuration that leaves VRR settings untouched.
 - The experimental 48-144 profile produced a stable fixed 144 Hz mode on tested
   panels, but follow-up game testing did not reliably validate VRR behavior at
   144 Hz. It remains available only as an out-of-spec panel overclock, with VRR
   explicitly not guaranteed.
-- Combined 30-144 Hz remains unavailable because the reference panel visibly
-  flickered while that range was active.
+- The guarded 30-144 Hz trial is available only with prominent disclosure: the
+  reference panel visibly flickered while that exact range was active. Other
+  units may behave differently, but this is not a compatibility guarantee.
+- Both 144 Hz trials require a successful 20-second observation and explicit
+  confirmation. No, closing the prompt, or a 30-second timeout triggers restore
+  and a Windows restart.
 - The tool does not prove that every game presents frames through a VRR-capable
   swap chain.
 - The factory reset is universal only across ClawLab VRR modes on the exact

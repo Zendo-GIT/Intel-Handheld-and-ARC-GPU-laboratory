@@ -1,6 +1,23 @@
 MSI CLAW 8 AI+ / 8 EX AI+ VRR RANGE FIX - CHANGELOG
 ====================================================
 
+2.0.0 - 2026-08-15
+------------------
+- Integrates the community-validated Intel LFC x2 correction into the guarded
+  30-120 Hz installer. The tested combination uses EXCELLENT, the exact
+  30-120 Hz EDID override, and disables both Intel low- and high-FPS solutions.
+- Adds an independent backup/readback/restore path for both original flags and
+  a windowless one-shot sign-in reapply with no continuous watchdog.
+- Restricts the correction to 30-120 Hz. Official 48-120 and optional 48-144
+  receive no unverified LFC claim.
+- Documents that LFC below 30 FPS is unavailable while the correction is active.
+- Organizes four public profiles: default corrected 30-120, official Intel/MSI
+  48-120, guarded 48-144, and guarded 30-144.
+- Adds a one-time 144 Hz failsafe: 20 seconds of verified observation followed
+  by Yes to keep, or No/close/30-second timeout to restore 120 Hz and restart.
+- Exposes 30-144 only through the guarded flow and discloses the visible
+  flicker observed on the reference panel.
+
 1.0.3 - 2026-08-15
 ------------------
 - Adds safe Intel Graphics Software update detection. A replaced executable is

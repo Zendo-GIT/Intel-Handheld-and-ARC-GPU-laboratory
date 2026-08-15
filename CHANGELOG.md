@@ -2,6 +2,12 @@
 
 ## 2026-08-15
 
+- Prepared MSI Claw VRR Range Fix 2.0.0 with the community-validated 30-120 Hz
+  Intel LFC x2 correction, reversible driver-flag backup, windowless one-shot
+  startup reapply, guarded 48-144/30-144 confirmation trials, and coordinated
+  restoration. The correction is deliberately limited to the tested 30-120 Hz
+  mode and installs no continuous watcher.
+
 - Prepared MSI Claw VRR Range Fix 1.0.3 with signed Intel Graphics Software
   update detection and automatic trusted-identity renewal after driver updates.
 - Retained the 48-144 Hz installer as an explicitly experimental fixed-refresh

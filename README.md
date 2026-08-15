@@ -24,7 +24,7 @@ checks, safety model and restoration path.
 
 | Utility | Direct download | Release page |
 |---|---|---|
-| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 1.0.3](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.3/MSI-Claw-8-Intel-VRR-Range-Fix-1.0.3.zip) | [claw8-vrr-v1.0.3](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.3) |
+| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 2.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v2.0.0/MSI-Claw-8-Intel-VRR-Range-Fix-2.0.0.zip) | [claw8-vrr-v2.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v2.0.0) |
 
 ## Published projects
 
@@ -39,7 +39,7 @@ checks, safety model and restoration path.
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Activates the documented 48-120 Hz Arc Sync range; includes separate experimental 30-120 and 48-144 options | Claw 8 AI+ validated; Claw 8 EX AI+ accepted only when the same panel and EDID are detected; A1M diagnostics only; fixed 144 Hz tested stable but VRR is not guaranteed | Signed Intel-update detection, mandatory restore-before-switch interlock, exact panel/EDID validation, original backup, factory recovery and Safe Mode recovery |
+| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Default corrected 30-120 Hz profile; official Intel/MSI 48-120 Hz; guarded 48-144 and 30-144 trials | Claw 8 AI+ reference validation; matching-panel Claw 8 EX community validation; 30-144 visibly flickered on the reference panel; VRR at 144 Hz is not guaranteed | Intel LFC x2 correction without game injection, exact panel/EDID validation, mandatory restore-before-switch interlock, 20-second 144 Hz confirmation/rollback, original backup, factory and Safe Mode recovery |
 
 ## Start here
 
@@ -85,7 +85,7 @@ Primary real-hardware validation was performed on:
 - Intel Core Ultra 7 258V
 - Intel Arc 140V
 - 32 GB RAM
-- Intel Graphics driver `32.0.101.8864`
+- Intel Graphics driver `32.0.101.8974` WHQL
 - Windows 11
 
 This reference does not imply that every fix is exclusive to that model. It defines what was actually tested.

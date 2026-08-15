@@ -15,9 +15,9 @@ Official mode calls only these Intel Control Library functions:
 The requested profile is `CTL_INTEL_ARC_SYNC_PROFILE_EXCELLENT`. The result is
 accepted only when the driver reads back `EXCELLENT / 48-120 Hz`.
 
-## Experimental mode
+## Custom EDID ranges
 
-Experimental mode writes two binary registry values named `0` and `1` under the
+Custom range installation writes two binary registry values named `0` and `1` under the
 validated monitor instance's `Device Parameters\EDID_OVERRIDE` key. This is the
 per-block Windows mechanism documented by Microsoft. It does not write the
 panel EEPROM.
@@ -26,16 +26,17 @@ Before writing, the tool requires the complete physical EDID SHA-256 and both
 block checksums. After writing, it requires exact SHA-256 values for both
 generated blocks. An existing unknown override is never replaced or deleted.
 
-Version 1.0.3 can install the pinned 30-120 transformation or the separate
+Version 2.0.0 can install the pinned 30-120 transformation or the separate
 pinned 48-144 transformation. The latter inserts one validated 1920x1200 at
 144 Hz timing and the startup task selects it only when the exact managed
-`CLAWLAB_48_144` state is present. Fixed 144 Hz was stable on tested panels,
-but this does not guarantee operational VRR at 144 Hz. The visibly flickering
-30-144 signature remains recovery-only and no public action installs it.
+`CLAWLAB_48_144` or `CLAWLAB_30_144` state is present. Fixed 144 Hz was stable
+on tested panels, but this does not guarantee operational VRR at 144 Hz. The
+30-144 range visibly flickered on the reference panel and is exposed only by a
+guarded, prominently warned trial.
 
 Intel Graphics Software is Authenticode-validated during installation. Its
 verified executable path, signer thumbprint, file version and SHA-256 are
-saved. If an Intel driver package later replaces the executable, version 1.0.3
+saved. If an Intel driver package later replaces the executable, version 2.0.0
 detects the identity change and renews the saved values only after a fresh
 Windows Authenticode validation confirms a valid Intel signature at the exact
 canonical path with the original `-s` argument. The hash is read again before
@@ -44,7 +45,32 @@ relocated or concurrently changing file is refused.
 
 Administrative elevation is requested for installation so the tool can back up
 and remove Intel Graphics Software's machine-wide automatic-startup entry.
-Experimental EDID installation and restoration also require elevation.
+Custom EDID installation and restoration also require elevation.
+
+## 30-120 Hz Intel LFC x2 correction
+
+The 30-120 installer also runs the readable
+`MSI-Claw-30-120-LFC-Fix.ps1`. It requires the exact validated panel, exact
+ClawLab 30-120 EDID hash, a `CLAWLAB_30_120` managed-mode record, exactly one
+active Intel display adapter, and direct readback of `30-120 Hz` before it can
+change anything.
+
+The script uses Windows D3DKMT with Intel's driver-private VRR display escape to
+read and change the driver's low- and high-FPS solution flags. This is not the
+public Intel Control Library API and is not presented as an Intel-supported
+feature. It also does not load either the legacy Intel Graphics Command Center
+or current Intel Graphics Software application assemblies.
+
+Before changing the flags, the script saves both original values under the
+current user's local ClawLab state. It disables both as the one combination
+validated on real hardware, reads them back, and verifies that the active
+30-120 Hz range did not change. Any failed verification restores the saved
+values. The project deliberately makes no claim about which individual flag is
+responsible for the observed x2 behavior.
+
+Disabling Intel's low-FPS solution removes LFC below the 30 Hz floor. A game
+running below 30 FPS can still tear or stutter. The correction is not attempted
+for 48-120 or 48-144 Hz.
 
 ## Sign-in persistence
 
@@ -66,6 +92,12 @@ Graphics Software command, allows display initialization to settle, then
 applies and verifies the profile. The task is allowed on battery power and has
 a three-minute execution limit.
 
+The 30-120 LFC correction registers a second current-user task named
+`ClawLab MSI Claw 30-120 LFC Fix`. Its VBS launcher is also windowless. It waits
+for display initialization, invokes the installed range reapply, disables both
+saved Intel solution flags, verifies the complete 30-120 state, and exits. It
+is a one-shot logon action, not a resident process or periodic watchdog.
+
 Intel Graphics Software is not used to apply the range. Its tray process was
 observed retaining stale `60-120 Hz` text until fully exited and restarted,
 while direct driver queries already returned `48-120 Hz`.
@@ -75,10 +107,11 @@ while direct driver queries already returned `48-120 Hz`.
 The first original Intel profile is saved under the current user's local
 ClawLab state directory and is not overwritten by repeated installation.
 
-Normal restore verifies and removes only this package's EDID blocks, restores
-the saved Intel profile, unregisters the sign-in task, removes the installed
-PowerShell and VBS scripts, restores the exact Intel startup value, and asks for
-a restart. Emergency restore uses the recorded exact registry path and
+Normal restore first returns both saved Intel solution flags, then verifies and
+removes only this package's EDID blocks, restores the saved Intel profile,
+unregisters both sign-in tasks, removes the installed PowerShell and VBS
+scripts, restores the exact Intel startup value, and asks for a restart.
+Emergency restore uses the recorded exact registry path and
 hard-coded block SHA-256 values. It does not load Intel Control Library and can
 be used from Safe Mode.
 
@@ -90,13 +123,26 @@ installer can proceed only from a clean state or when reinstalling that exact
 same mode. Every cross-profile transition is refused with instructions to run
 `RESTORE_ORIGINAL_VRR.bat` first.
 
-The exact legacy 30-120 or 48-144 override can be adopted only by its matching
-installer. The historical 30-144 override is recovery-only and always requires
-restore.
+An exact legacy 30-120, 48-144 or 30-144 override can be adopted only by its
+matching installer.
 Legacy managed artifacts without a trustworthy mode record are not guessed and
 require restore. An inconsistent record/override pair also requires restore.
 The startup task itself refuses to operate unless its mode record and current
-override agree, and explicitly refuses the historical 30-144 mode.
+override agree.
+
+## Guarded 144 Hz confirmation
+
+Both 144 Hz installers register one temporary highest-privilege current-user
+task. At the next sign-in it waits for the main task to expose and verify the
+requested 48-144 or 30-144 range, observes it for 20 seconds, then displays a
+system-modal Yes/No confirmation. The dialog has a 30-second timeout.
+
+Yes keeps the range and deletes the temporary task and its files. No, closing
+the dialog, or timing out invokes the normal verified restore path, first
+selects 1920x1200 at 120 Hz, removes the exact EDID override and managed state,
+then schedules a Windows restart to reload the physical EDID. Failure to verify
+the requested range also triggers rollback. A restore failure does not delete
+the recovery state and tells the user to run `RESTORE_ORIGINAL_VRR.bat`.
 
 ## Factory recovery
 
@@ -122,8 +168,8 @@ physical EDID.
 - no unknown EDID-override removal;
 - no game executable, asset, process or memory modification;
 - no DLL injection, overlay, hook or background service;
-- one documented current-user scheduled task, removed by normal restore;
-- one readable VBS launcher used only to prevent a console-window flash;
+- two documented current-user one-shot scheduled tasks, removed by normal restore;
+- two readable VBS launchers used only to prevent a console-window flash;
 - one exact Intel startup value temporarily replaced and restored;
 - no power-plan, BIOS, network or anti-cheat modification;
 - no bundled Intel, MSI, Microsoft or CRU binary.

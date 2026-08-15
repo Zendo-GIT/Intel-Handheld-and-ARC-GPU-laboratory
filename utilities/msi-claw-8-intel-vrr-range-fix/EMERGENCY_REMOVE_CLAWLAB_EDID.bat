@@ -1,11 +1,11 @@
 @echo off
 setlocal
-title MSI Claw 8 AI+ / 8 EX AI+ Experimental VRR 30-120 Fix
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-VRR-Fix.ps1" -Action Install30
+title Emergency removal - MSI Claw custom EDID
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-VRR-Fix.ps1" -Action EmergencyRestoreEdid
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (
-  echo The experimental fix was not installed. Read the error above.
+  echo The emergency removal was not completed. Read the error above.
   pause
   exit /b %CLAWLAB_EXIT%
 )

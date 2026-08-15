@@ -1,6 +1,15 @@
 @echo off
 setlocal
 title Restore original MSI Claw VRR profile
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-30-120-LFC-Fix.ps1" -Action Restore
+set "CLAWLAB_EXIT=%ERRORLEVEL%"
+echo.
+if not "%CLAWLAB_EXIT%"=="0" (
+  echo The original Intel LFC state was not restored. The VRR profile was left unchanged.
+  echo Read the error above and do not delete this package.
+  pause
+  exit /b %CLAWLAB_EXIT%
+)
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-VRR-Fix.ps1" -Action Restore
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.

@@ -25,15 +25,23 @@ $requiredFiles = @(
     'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
     'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-30-120-LFC-Fix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Intel-VRR-LFC-Driver-Interface.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Experimental-144-VRR-Trial.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-LFC-Startup.vbs',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-144-Trial-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_30_120_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_30_120_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_30_144_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\FACTORY_RESET_CLAWLAB_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat'
+    'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.0.0.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath) -PathType Leaf)) {
@@ -117,7 +125,7 @@ foreach ($value in $requiredDetroitValues) {
 
 $vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 $requiredVrrValues = @(
-    "`$fixVersion = '1.0.3'",
+    "`$fixVersion = '2.0.0'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -125,14 +133,17 @@ $requiredVrrValues = @(
     '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
     '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
     'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05',
+    '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D',
+    '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Install30_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
     'Write-IntelStartupBackupAtomically',
     'Set-IntelStartupTrustedIdentity',
     'IdentityVerifiedAt',
-    'REJECTED_30_144_PROFILE_RESTORE_REQUIRED',
+    'ClawLab MSI Claw 144 Hz Trial Confirmation',
     'WindowsDisplayMode',
     'FileSha256',
     'Assert-ProfileTransitionAllowed',
@@ -156,6 +167,35 @@ foreach ($value in @(
 )) {
     if ($vrrLauncher -notmatch [regex]::Escape($value)) {
         throw "VRR windowless launcher no longer contains required value: $value"
+    }
+}
+
+$lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-30-120-LFC-Fix.ps1') -Raw
+foreach ($value in @(
+    "`$toolVersion = '2.0.0'",
+    'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
+    "`$managedModeName -ne 'CLAWLAB_30_120'",
+    'OriginalLowFpsSolutionEnabled',
+    'OriginalHighFpsSolutionEnabled',
+    'ClawLab MSI Claw 30-120 LFC Fix'
+)) {
+    if ($lfcScript -notmatch [regex]::Escape($value)) {
+        throw "30-120 LFC source no longer contains required safety value: $value"
+    }
+}
+
+$trialScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\Experimental-144-VRR-Trial.ps1') -Raw
+foreach ($value in @(
+    "`$toolVersion = '2.0.0'",
+    "`$observationSeconds = 20",
+    "`$confirmationTimeoutSeconds = 30",
+    'CLAWLAB_48_144',
+    'CLAWLAB_30_144',
+    'Restore-ExperimentalProfile',
+    'ClawLab MSI Claw 144 Hz Trial Confirmation'
+)) {
+    if ($trialScript -notmatch [regex]::Escape($value)) {
+        throw "144 Hz trial source no longer contains required safety value: $value"
     }
 }
 

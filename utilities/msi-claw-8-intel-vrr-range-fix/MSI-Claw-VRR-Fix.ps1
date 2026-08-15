@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]
+    [ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Install30_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]
     [string]$Action = 'Status'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '1.0.3'
+$fixVersion = '2.0.0'
 $targetManufacturer = 'CSW'
 $targetProductCode = '0801'
 $targetPanelName = 'PN8007QB1-2'
@@ -27,6 +27,11 @@ $startupLauncherName = 'ClawLab-VRR-Startup.vbs'
 $installedLauncherPath = Join-Path $stateRoot $startupLauncherName
 $startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
 $startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
+$experimental144TrialTaskName = 'ClawLab MSI Claw 144 Hz Trial Confirmation'
+$experimental144TrialStatePath = Join-Path $stateRoot 'experimental-144-trial.json'
+$installedExperimental144TrialPath = Join-Path $stateRoot 'Experimental-144-VRR-Trial.ps1'
+$installedExperimental144TrialLauncherPath = Join-Path $stateRoot 'ClawLab-144-Trial-Startup.vbs'
+$installedExperimental144TrialDriverPath = Join-Path $stateRoot 'Intel-VRR-144-Trial-Driver-Interface.ps1'
 $intelStartupBackupPath = Join-Path $stateRoot 'intel-graphics-startup.json'
 $intelStartupRegistryPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
 $intelStartupValueName = 'Intel' + [char]0x00AE + ' Graphics Software'
@@ -141,7 +146,7 @@ function Get-KnownOverrideHashes {
     if ($EdidSha256 -eq $validated30_144EdidSha256) {
         return [pscustomobject]@{ Block0 = $validated30_144Block0Sha256; Block1 = $validated30_144Block1Sha256 }
     }
-    throw "Unknown ClawLab experimental EDID hash: $EdidSha256"
+    throw "Unknown ClawLab custom EDID hash: $EdidSha256"
 }
 
 function Get-PanelRegistryContext {
@@ -198,7 +203,7 @@ function Get-PanelRegistryContext {
             }
         }
         if (-not $knownCompleteOverride -and -not $recoverableClawLabBlocks) {
-            throw "Unsupported panel EDID: $reportedHash. Experimental mode is restricted to the validated EDID."
+            throw "Unsupported panel EDID: $reportedHash. Custom modes are restricted to the validated EDID."
         }
 
         $physicalEdid[95] = 48
@@ -211,7 +216,7 @@ function Get-PanelRegistryContext {
         Set-EdidChecksum -Edid $physicalEdid -Start 0
         Set-EdidChecksum -Edid $physicalEdid -Start 128
         if ((Get-ByteArraySha256 -Bytes $physicalEdid) -ne $validatedPhysicalEdidSha256) {
-            throw 'The known experimental EDID could not be reduced to the validated physical baseline.'
+            throw 'The known custom EDID could not be reduced to the validated physical baseline.'
         }
     }
 
@@ -251,7 +256,7 @@ function New-ExperimentalEdidVariant {
 
     $physicalHash = Get-ByteArraySha256 -Bytes $PhysicalEdid
     if ($physicalHash -ne $validatedPhysicalEdidSha256) {
-        throw "Unsupported panel EDID: $physicalHash. Experimental mode is restricted to the validated EDID."
+        throw "Unsupported panel EDID: $physicalHash. Custom modes are restricted to the validated EDID."
     }
     if ($PhysicalEdid[95] -ne 48 -or $PhysicalEdid[96] -ne 120 -or
         $PhysicalEdid[142] -ne 48 -or $PhysicalEdid[143] -ne 120) {
@@ -467,7 +472,7 @@ function Get-ManagedModeRecord {
         }
     }
     if ([int]$record.SchemaVersion -ne 1 -or
-        [string]$record.Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+        [string]$record.Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
         throw 'The managed VRR mode record contains an unsupported value. Run RESTORE_ORIGINAL_VRR.bat.'
     }
     return $record
@@ -504,14 +509,7 @@ function Get-EffectiveManagedMode {
         }
     }
 
-    if ($OverrideState.State -eq 'CLAWLAB_30_144') {
-        return [pscustomobject]@{
-            Mode = [string]$OverrideState.State
-            State = 'REJECTED_RESTORE_REQUIRED'
-            Source = 'EDID_OVERRIDE'
-        }
-    }
-    if ($OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+    if ($OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
         return [pscustomobject]@{
             Mode = [string]$OverrideState.State
             State = 'LEGACY_MATCHING_OVERRIDE'
@@ -562,7 +560,7 @@ function Assert-ProfileTransitionAllowed {
 function Set-ManagedModeRecord {
     param([Parameter(Mandatory)][string]$Mode)
 
-    if ($Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+    if ($Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
         throw "Internal managed VRR mode is invalid: $Mode"
     }
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
@@ -605,6 +603,17 @@ function Get-StartupReapplyState {
         return 'TASK_WITHOUT_FILES'
     }
     return [string]$task.State
+}
+
+function Remove-Experimental144Trial {
+    $trialTask = Get-ScheduledTask -TaskName $experimental144TrialTaskName -ErrorAction SilentlyContinue
+    if ($null -ne $trialTask) {
+        Unregister-ScheduledTask -TaskName $experimental144TrialTaskName -Confirm:$false -ErrorAction Stop
+    }
+    [IO.File]::Delete($experimental144TrialStatePath)
+    [IO.File]::Delete($installedExperimental144TrialPath)
+    [IO.File]::Delete($installedExperimental144TrialLauncherPath)
+    [IO.File]::Delete($installedExperimental144TrialDriverPath)
 }
 
 function Install-StartupReapply {
@@ -653,6 +662,7 @@ function Remove-StartupReapply {
     if ($null -ne $task) {
         Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
     }
+    Remove-Experimental144Trial
     [IO.File]::Delete($installedScriptPath)
     [IO.File]::Delete($installedLauncherPath)
     [IO.File]::Delete($startupStatusPath)
@@ -1599,7 +1609,7 @@ function Restore-SnapshotProfile {
     }
 }
 
-function Install-ExperimentalMode {
+function Install-CustomEdidMode {
     param(
         [Parameter(Mandatory)][object]$Panel,
         [Parameter(Mandatory)][object]$Gpu,
@@ -1610,22 +1620,22 @@ function Install-ExperimentalMode {
         [Parameter(Mandatory)][string]$DesiredState
     )
 
-    if ($DesiredState -notin @('CLAWLAB_30_120', 'CLAWLAB_48_144')) {
-        throw "Experimental profile $DesiredState is recovery-only and cannot be installed by version $fixVersion."
+    if ($DesiredState -notin @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
+        throw "Unknown ClawLab custom profile: $DesiredState"
     }
 
     $desired = @($ExperimentalEdids | Where-Object { $_.State -eq $DesiredState })
     if ($desired.Count -ne 1) {
-        throw "Internal experimental profile lookup failed: $DesiredState"
+        throw "Internal custom profile lookup failed: $DesiredState"
     }
     $variant = $desired[0]
     [void](Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState)
 
     if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
-        throw 'An unknown EDID override is installed. Remove it with its original tool before using experimental mode.'
+        throw 'An unknown EDID override is installed. Remove it with its original tool before using a ClawLab custom range.'
     }
     if ($OverrideState.State -ne 'NONE' -and $OverrideState.State -ne $DesiredState) {
-        throw "Another experimental mode is installed ($($OverrideState.State)). Run RESTORE_ORIGINAL_VRR.bat before changing modes."
+        throw "Another ClawLab custom range is installed ($($OverrideState.State)). Run RESTORE_ORIGINAL_VRR.bat before changing modes."
     }
 
     Confirm-AdministratorOrRelaunch
@@ -1633,11 +1643,11 @@ function Install-ExperimentalMode {
 
     if ($OverrideState.State -eq 'NONE') {
         if (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf) {
-            throw 'A stale experimental state file exists without its EDID override. Run RESTORE_ORIGINAL_VRR.bat before retrying.'
+            throw 'A stale custom-range state file exists without its EDID override. Run RESTORE_ORIGINAL_VRR.bat before retrying.'
         }
         if ([Math]::Abs($Before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
             [Math]::Abs($Before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
-            throw "Experimental installation must start from the native 48-120 Hz EDID, but the driver reports $($Before.MonitorMinimumHz)-$($Before.MonitorMaximumHz) Hz."
+            throw "Custom-range installation must start from the native 48-120 Hz EDID, but the driver reports $($Before.MonitorMinimumHz)-$($Before.MonitorMaximumHz) Hz."
         }
 
         Invoke-SetProfile -Target $Before -ProfileId $profileExcellent
@@ -1645,7 +1655,7 @@ function Install-ExperimentalMode {
         if ($official.ProfileId -ne $profileExcellent -or
             [Math]::Abs($official.ActiveMinimumHz - $targetMinimumHz) -gt 0.1 -or
             [Math]::Abs($official.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
-            throw 'Could not establish the verified official 48-120 Hz baseline before applying the experimental EDID.'
+            throw 'Could not establish the verified official 48-120 Hz baseline before applying the custom EDID.'
         }
 
         [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
@@ -1675,7 +1685,7 @@ function Install-ExperimentalMode {
             New-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -PropertyType Binary -Value $variant.Block1 -Force | Out-Null
             $writtenState = Get-EdidOverrideState -RegistryContext $RegistryContext -ExperimentalEdids $ExperimentalEdids
             if ($writtenState.State -ne $DesiredState) {
-                throw 'The experimental EDID registry write did not verify.'
+                throw 'The custom EDID registry write did not verify.'
             }
             Install-StartupReapply
             Set-ManagedModeRecord -Mode $DesiredState
@@ -1689,7 +1699,8 @@ function Install-ExperimentalMode {
             throw
         }
 
-        Write-Host "Experimental $($variant.MinimumHz)-$($variant.MaximumHz) Hz EDID override is installed and verified." -ForegroundColor Yellow
+        $modeLabel = if ($DesiredState -eq 'CLAWLAB_30_120') { 'ClawLab default' } else { 'Experimental' }
+        Write-Host "$modeLabel $($variant.MinimumHz)-$($variant.MaximumHz) Hz EDID override is installed and verified." -ForegroundColor Yellow
         if ([Math]::Abs($variant.MaximumHz - $experimentalMaximumHz) -le 0.1) {
             Write-Host 'A short burst of stutter or line artifacts can occur while the Intel display link loads the 144 Hz timing.' -ForegroundColor Yellow
             Write-Warning 'Fixed 144 Hz operation was stable on tested panels, but variable refresh behavior at 144 Hz is not guaranteed.'
@@ -1711,18 +1722,19 @@ function Install-ExperimentalMode {
         if ($after.ProfileId -ne $profileExcellent -or
             [Math]::Abs($after.ActiveMinimumHz - $variant.MinimumHz) -gt 0.1 -or
             [Math]::Abs($after.ActiveMaximumHz - $variant.MaximumHz) -gt 0.1) {
-            throw "Experimental driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
+            throw "Custom-range driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
         }
         Install-StartupReapply
         Set-ManagedModeRecord -Mode $DesiredState
-        Write-Host "Experimental $($variant.MinimumHz)-$($variant.MaximumHz) Hz mode is active and verified by the Intel driver." -ForegroundColor Yellow
+        $modeLabel = if ($DesiredState -eq 'CLAWLAB_30_120') { 'ClawLab default' } else { 'Experimental' }
+        Write-Host "$modeLabel $($variant.MinimumHz)-$($variant.MaximumHz) Hz mode is active and verified by the Intel driver." -ForegroundColor Yellow
         $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $after -OverrideState $OverrideState
         return $status
     }
 
     Install-StartupReapply
     Set-ManagedModeRecord -Mode $DesiredState
-    Write-Host 'The experimental override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
+    Write-Host 'The custom EDID override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
     Write-Host 'Restart the PC, then run CHECK_STATUS.bat.' -ForegroundColor Yellow
     $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $Before -OverrideState $OverrideState
     $status.RestartRequired = $true
@@ -1743,7 +1755,6 @@ function Get-StatusObject {
         [Math]::Abs($Snapshot.ActiveMaximumHz - $targetMaximumHz) -le 0.1
     )
     $knownExperimentalOverride = $OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')
-    $rejected30_144Override = $OverrideState.State -eq 'CLAWLAB_30_144'
     $experimentalRangeActive = (
         $knownExperimentalOverride -and
         $Snapshot.ProfileId -eq $profileExcellent -and
@@ -1751,14 +1762,21 @@ function Get-StatusObject {
         [Math]::Abs($Snapshot.ActiveMaximumHz - [float]$OverrideState.MaximumHz) -le 0.1
     )
 
-    $state = if ($rejected30_144Override) {
-        'REJECTED_30_144_PROFILE_RESTORE_REQUIRED'
-    }
-    elseif ($experimentalRangeActive) {
-        'EXPERIMENTAL_{0}_{1}_ACTIVE' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
+    $state = if ($experimentalRangeActive) {
+        if ($OverrideState.State -eq 'CLAWLAB_30_120') {
+            'CLAWLAB_30_120_ACTIVE'
+        }
+        else {
+            'EXPERIMENTAL_{0}_{1}_ACTIVE' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
+        }
     }
     elseif ($knownExperimentalOverride) {
-        'EXPERIMENTAL_{0}_{1}_PENDING_RESTART' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
+        if ($OverrideState.State -eq 'CLAWLAB_30_120') {
+            'CLAWLAB_30_120_PENDING_RESTART'
+        }
+        else {
+            'EXPERIMENTAL_{0}_{1}_PENDING_RESTART' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
+        }
     }
     elseif ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
         'UNKNOWN_EDID_OVERRIDE'
@@ -1793,8 +1811,8 @@ function Get-StatusObject {
         StartupReapply = Get-StartupReapplyState
         IntelGraphicsStartup = $intelStartupState
         EdidOverride = $OverrideState.State
-        RecoveryRequired = $rejected30_144Override
-        RestartRequired = -not $rejected30_144Override -and $knownExperimentalOverride -and -not $experimentalRangeActive
+        RecoveryRequired = $false
+        RestartRequired = $knownExperimentalOverride -and -not $experimentalRangeActive
         RegistryModified = (
             $knownExperimentalOverride -or
             $intelStartupState -eq 'CLAWLAB_ORDERED'
@@ -1807,30 +1825,30 @@ try {
     if ($Action -eq 'EmergencyRestoreEdid') {
         Confirm-AdministratorOrRelaunch
         if (-not (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf)) {
-            throw 'The ClawLab experimental EDID state file is missing. Nothing was removed.'
+            throw 'The ClawLab custom EDID state file is missing. Nothing was removed.'
         }
         $emergencyState = [IO.File]::ReadAllText($experimentalStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
         if ('RegistryPath' -notin $emergencyState.PSObject.Properties.Name) {
-            throw 'The ClawLab experimental EDID state file is invalid. Nothing was removed.'
+            throw 'The ClawLab custom EDID state file is invalid. Nothing was removed.'
         }
         $emergencyOverridePath = [string]$emergencyState.RegistryPath
         if ($emergencyOverridePath -notlike 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\DISPLAY\CSW0801\*\Device Parameters\EDID_OVERRIDE') {
             throw "Unsafe or unexpected EDID override path: $emergencyOverridePath"
         }
         if ('ExperimentalEdidSha256' -notin $emergencyState.PSObject.Properties.Name) {
-            throw 'The ClawLab experimental state file has no EDID hash. Nothing was removed.'
+            throw 'The ClawLab custom-range state file has no EDID hash. Nothing was removed.'
         }
         $expectedEmergencyHashes = Get-KnownOverrideHashes -EdidSha256 ([string]$emergencyState.ExperimentalEdidSha256)
         $emergencyBlock0 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop)
         $emergencyBlock1 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop)
         if ((Get-ByteArraySha256 -Bytes $emergencyBlock0) -ne $expectedEmergencyHashes.Block0 -or
             (Get-ByteArraySha256 -Bytes $emergencyBlock1) -ne $expectedEmergencyHashes.Block1) {
-            throw 'The installed EDID override does not match ClawLab experimental mode. Nothing was removed.'
+            throw 'The installed EDID override does not match a known ClawLab custom mode. Nothing was removed.'
         }
         Remove-ItemProperty -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop
         Remove-ItemProperty -LiteralPath $emergencyOverridePath -Name '1' -ErrorAction Stop
         [IO.File]::Delete($experimentalStatePath)
-        Write-Host 'Removed the verified ClawLab experimental EDID override.' -ForegroundColor Green
+        Write-Host 'Removed the verified ClawLab custom EDID override.' -ForegroundColor Green
         Write-Host 'Restart the PC. Then run RESTORE_ORIGINAL_VRR.bat in normal Windows to restore the saved Intel profile.' -ForegroundColor Yellow
         exit 0
     }
@@ -1854,9 +1872,6 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Startup reapply was cancelled.'
             }
-            if ($overrideState.State -eq 'CLAWLAB_30_144') {
-                throw 'The rejected 30-144 Hz profile can flicker and is recovery-only. Run RESTORE_ORIGINAL_VRR.bat to return to the native 48-120 Hz panel state.'
-            }
             $expectedManagedMode = if ($overrideState.State -eq 'NONE') { 'OFFICIAL_48_120' } else { [string]$overrideState.State }
             $managedMode = Get-EffectiveManagedMode -OverrideState $overrideState
             if ($managedMode.Mode -ne $expectedManagedMode -or $managedMode.State -ne 'CONSISTENT') {
@@ -1870,7 +1885,7 @@ try {
             }
 
             $displayMode = $null
-            if ($overrideState.State -eq 'CLAWLAB_48_144') {
+            if ($overrideState.State -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
                 # Intel caps the active Arc Sync maximum to the current fixed
                 # Windows refresh. Select 144 Hz before applying EXCELLENT so
                 # the API can expose and verify the declared 48-144 Hz range.
@@ -1917,7 +1932,7 @@ try {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }
             if ($overrideState.State -ne 'NONE') {
-                throw "Experimental mode $($overrideState.State) is installed. Run RESTORE_ORIGINAL_VRR.bat before installing official mode."
+                throw "ClawLab custom mode $($overrideState.State) is installed. Run RESTORE_ORIGINAL_VRR.bat before installing official mode."
             }
             if ([Math]::Abs($before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
                 [Math]::Abs($before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
@@ -1963,15 +1978,21 @@ try {
         }
 
         'Install30' {
-            Install-ExperimentalMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
                 -DesiredState 'CLAWLAB_30_120'
         }
 
         'Install48_144' {
-            Install-ExperimentalMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
                 -DesiredState 'CLAWLAB_48_144'
+        }
+
+        'Install30_144' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_30_144'
         }
 
         'FactoryReset' {
@@ -2051,6 +2072,15 @@ try {
                 Confirm-AdministratorOrRelaunch
             }
 
+            if ($overrideState.State -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
+                # Leave the experimental fixed 144 Hz timing before removing
+                # its EDID blocks. This gives trial rollback a visibly safe
+                # 120 Hz mode even before the required restart.
+                [void](Set-Safe120DisplayMode)
+                Start-Sleep -Seconds 2
+                $before = Get-TargetSnapshot -Attempts 10
+            }
+
             Restore-SnapshotProfile -Target $before -Profile $original
             $after = Get-TargetSnapshot -Attempts 10
             if ($after.ProfileId -ne [int]$original.ProfileId) {
@@ -2062,7 +2092,7 @@ try {
                 Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -ErrorAction Stop
                 $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
                 if ($overrideState.State -ne 'NONE') {
-                    throw 'The experimental EDID override could not be removed completely.'
+                    throw 'The ClawLab custom EDID override could not be removed completely.'
                 }
             }
             Remove-StartupReapply

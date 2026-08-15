@@ -56,7 +56,39 @@ Intel's sample documents that custom minimum and maximum values must remain
 inside the panel-supported range. The release therefore never claims that a
 custom profile alone can unlock 30 Hz.
 
-## Experimental EDID transformation
+## Intel LFC x2 correction in the default 30-120 mode
+
+On driver 32.0.101.8974, game telemetry showed Intel's Adaptive Sync Plus/LFC
+path multiplying refresh inside the desired range (`60 FPS -> 120 Hz` and
+`68 FPS -> 136 Hz` were observed). Installing only the 30-120 EDID was not
+sufficient. The validated result required all of the following at the same time:
+
+```text
+Managed mode:                 CLAWLAB_30_120
+Arc Sync profile:             EXCELLENT
+Monitor/driver range:         30-120 Hz
+LowFpsSolutionEnabled:        false
+HighFpsSolutionEnabled:       false
+Third-party profile overwrite: none
+```
+
+`MSI-Claw-30-120-LFC-Fix.ps1` uses `D3DKMTEscape` with Intel's driver-private
+VRR display payload. Read operation 0 returns the current range and solution
+flags; operations 4 and 6 disable the low- and high-FPS solutions. The script
+backs up both original values before using them and operations 3 and 5 restore
+them. Every change is read back, and a range change or failed flag verification
+causes rollback.
+
+This driver-private path is independent of both Intel Graphics Software and the
+legacy Intel Graphics Command Center application assemblies. It is transparent
+source code, but it is not a documented public Intel API. The two flags remain
+a single empirically validated combination; the project does not infer which
+one alone causes the x2 behavior.
+
+The consequence is intentional: Intel LFC below the new 30 Hz floor is disabled.
+Frames below 30 FPS remain outside the corrected direct-VRR range.
+
+## Validated 30-120 EDID transformation
 
 Validated physical EDID:
 
@@ -67,14 +99,14 @@ SHA-256: E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0
 
 Only four byte positions differ in the generated override:
 
-| Absolute offset | Meaning | Physical | Experimental |
+| Absolute offset | Meaning | Physical | ClawLab 30-120 |
 |---:|---|---:|---:|
 | `0x5F` | Base EDID range-descriptor minimum | `0x30` (48) | `0x1E` (30) |
 | `0x7F` | Base-block checksum | `0xEF` | `0x01` |
 | `0x8E` | DisplayID Adaptive-Sync minimum | `0x30` (48) | `0x1E` (30) |
 | `0xFF` | Extension-block checksum | `0x90` | `0xA2` |
 
-Generated experimental EDID SHA-256:
+Generated 30-120 EDID SHA-256:
 
 ```text
 14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918
@@ -104,15 +136,23 @@ remained stable, Windows exposed 1920x1200 at 144 Hz, and the Intel API read
 back `EXCELLENT / 48-144 Hz`.
 
 A separate guarded 30-144 test was also accepted by the Intel API as
-`EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. That
-combination failed visual validation and has no public installer.
+`EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. Release
+2.0.0 therefore exposes it only as a prominently warned, self-rolling trial.
 
 Follow-up game testing did not reliably validate functioning VRR behavior at
 144 Hz. A stable fixed overclock and an API range readback do not prove that
-variable refresh is operating. Version 1.0.3 therefore keeps 48-144 only as an
+variable refresh is operating. Version 2.0.0 therefore keeps 48-144 only as an
 explicit experimental panel-refresh overclock: fixed 144 Hz was stable on
 tested panels, but VRR at 144 Hz or throughout the advertised range is not
 guaranteed.
+
+Both 144 Hz installers write the pinned override and register a temporary
+current-user confirmation task. At the next sign-in, the normal startup task
+selects 1920x1200 at 144 Hz and verifies Intel `EXCELLENT` at the requested
+range. The trial task then observes that verified state for 20 seconds and asks
+the user whether to keep it. A No answer, closed dialog, 30-second timeout or
+verification failure selects 120 Hz, runs the normal restore path and restarts
+Windows. A Yes answer keeps the profile and removes only the temporary task.
 
 For the exact managed 48-144 state, startup first selects the enumerated
 1920x1200 at 144 Hz Windows mode, waits for the display path to settle, launches
@@ -120,16 +160,16 @@ the verified Intel Graphics Software command, then applies and verifies Intel
 `EXCELLENT / 48-144 Hz`. The status result confirms the declared EDID, fixed
 mode and API range only; it deliberately makes no claim about per-game VRR.
 
-The 30-144 complete and per-block hashes remain in the source only so normal,
-emergency and factory recovery can identify and remove an existing ClawLab
-override without touching unknown third-party data.
+The 30-144 complete and per-block hashes are pinned for installation,
+verification, normal restore, emergency recovery and factory recovery. Unknown
+third-party data is still never removed.
 
 ## Signed Intel Graphics Software update detection
 
 The ordered startup path pins the exact Intel Graphics Software identity after
 validating its canonical path, `-s` argument and Windows Authenticode signature.
 Graphics-driver updates can legitimately replace that executable. Version
-1.0.3 compares the current SHA-256 and saved schema at every managed startup.
+2.0.0 compares the current SHA-256 and saved schema at every managed startup.
 
 When they differ, the task performs a fresh Authenticode validation, requires a
 valid signer whose certificate subject identifies Intel Corporation, recomputes
@@ -151,7 +191,7 @@ BROKEN/UNKNOWN -> FACTORY_RESET_CLAWLAB_VRR -> CLEAN after restart
 ```
 
 The managed record is written only after installation verification. The current
-EDID override must match the recorded experimental mode, while official mode
+EDID override must match the recorded custom mode, while official mode
 requires no EDID override. `ApplyStartup` also requires this invariant before it
 can touch the fixed refresh or Arc Sync profile.
 
@@ -161,7 +201,7 @@ the physical EDID reloads after restart, the expected default active range is
 the driver-selected subset of the native 48-120 Hz panel capability.
 
 Recovery classification is block-based rather than requiring a valid complete
-experimental pair. This permits repair after an interrupted or cross-profile
+custom pair. This permits repair after an interrupted or cross-profile
 write left block 0 and block 1 from different ClawLab variants. Each present
 block must still match one of the pinned ClawLab hashes; an unknown block is
 never removed.
@@ -169,7 +209,7 @@ never removed.
 ## Restart model
 
 Windows reads monitor EDID override blocks while initializing the monitor
-device. Experimental installation and removal therefore require a restart.
+device. Custom-range installation and removal therefore require a restart.
 Every mutating batch file presents an explicit `Y/N` restart choice. No restart
 occurs without the user selecting `Y`.
 

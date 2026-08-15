@@ -3,11 +3,14 @@
 A transparent and reversible utility for the `CSW0801 / PN8007QB1-2` internal
 panel used by compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations.
 
-![Version](https://img.shields.io/badge/release-1.0.3-blue)
+![Version](https://img.shields.io/badge/release-2.0.0-blue)
 ![Official mode](https://img.shields.io/badge/official-48--120_Hz-green)
-![Experimental mode](https://img.shields.io/badge/experimental-30--120_Hz-orange)
-![Experimental overclock](https://img.shields.io/badge/experimental-48--144_Hz-red)
+![Default mode](https://img.shields.io/badge/default-30--120_Hz-orange)
+![Guarded trials](https://img.shields.io/badge/guarded_trials-48--144_%2F_30--144_Hz-red)
 ![License](https://img.shields.io/badge/license-MIT-green)
+
+See the [2.0.0 release notes](docs/RELEASE_NOTES_2.0.0.md) for the publication
+summary and upgrade boundary.
 
 ## Why this exists
 
@@ -30,7 +33,12 @@ monitor VRR range. MSI documents both Claw Intel models with an 8-inch
 - [MSI Claw 8 AI+ specifications](https://www.msi.com/Handheld/Claw-8-AI-Plus-A2VMX/Specification)
 - [MSI Claw 8 EX AI+ specifications](https://www.msi.com/Handheld/Claw-8-EX-AI-Plus-CG3EMX/Specification)
 
-## Three deliberately separate modes
+## Four deliberately separate profiles
+
+The default profile in release 2.0.0 is **30-120 Hz with the validated Intel
+LFC x2 correction**. The native **48-120 Hz** profile remains available as the
+official Intel/MSI-specification choice. Both 144 Hz profiles are opt-in guarded
+hardware trials.
 
 ### Official mode: 48-120 Hz
 
@@ -51,7 +59,7 @@ Intel Graphics Software command, allows display initialization to settle, then
 applies and verifies `EXCELLENT`. No console window is displayed.
 
 Graphics-driver packages can replace `IntelGraphicsSoftware.exe`. Version
-1.0.3 detects that replacement and renews the saved file identity only after a
+2.0.0 detects that replacement and renews the saved file identity only after a
 fresh Windows Authenticode validation confirms the canonical executable is
 still validly signed by Intel. A changed hash alone is never trusted. Invalid,
 relocated or unstable files are refused without launching them.
@@ -60,9 +68,9 @@ This mode does not modify the EDID, graphics driver, monitor firmware or any
 game. Its only registry change is the reversible startup-order entry described
 above.
 
-### Experimental mode: 30-120 Hz
+### Default ClawLab mode: 30-120 Hz
 
-`INSTALL_EXPERIMENTAL_30_120_VRR.bat` is an optional validated-panel-only EDID
+`INSTALL_30_120_VRR.bat` is a validated-panel-only EDID
 override comparable in purpose to configuring the range with ToastyX Custom
 Resolution Utility (CRU). It changes the minimum from 48 to 30 in copies of the
 base EDID range descriptor and DisplayID Adaptive-Sync block, recalculates both
@@ -70,14 +78,32 @@ checksums, and writes only those two verified 128-byte override blocks using
 Windows' documented `EDID_OVERRIDE` mechanism.
 
 The physical panel EEPROM is never written. A restart is required for Windows
-and the Intel driver to reload the override. This mode is outside MSI's
-specified range and can cause flicker, blanking or other display instability.
-It is explicitly experimental and must not be represented as MSI-certified.
+and the Intel driver to reload the override. This range is outside MSI's stated
+48 Hz floor and can cause flicker, blanking or other display instability. It is
+the release's default because the complete 30-120 + Intel LFC correction was
+validated on the reference system; it must not be represented as MSI-certified.
 
 - [Microsoft EDID override documentation](https://learn.microsoft.com/windows-hardware/drivers/display/overriding-monitor-edids)
 - [Official CRU support thread](https://www.monitortests.com/forum/Thread-Custom-Resolution-Utility-CRU)
 
 No CRU file is bundled or required.
+
+Version 2.0.0 also integrates the community-validated correction for Intel's
+aggressive LFC/Adaptive Sync Plus behavior. On affected systems, the driver can
+multiply refresh rate by two inside the intended VRR range, for example
+`60 FPS -> 120 Hz` or `68 FPS -> 136 Hz`. The validated 30-120 Hz combination:
+
+- selects Intel `EXCELLENT`;
+- advertises and verifies the exact 30-120 Hz monitor range;
+- disables both Intel low- and high-FPS VRR solutions through a direct Windows
+  D3DKMT display-driver request;
+- verifies both flags and the active range, then reapplies them once at sign-in.
+
+The two Intel flags are treated as one tested combination. The project does not
+claim which flag is individually responsible. Disabling the low-FPS solution
+also means LFC is unavailable below 30 FPS; frame rates below the new floor can
+still tear or stutter. This correction is not applied to the official 48-120 Hz
+or experimental 48-144 Hz modes because those combinations were not validated.
 
 ### Experimental overclock: 48-144 Hz — VRR not guaranteed
 
@@ -94,32 +120,43 @@ refresh overclock with **VRR not guaranteed**, not as a verified VRR upgrade.
 It is outside MSI's 120 Hz specification and can cause artifacts, instability
 or reduced panel lifetime.
 
-The combined 30-144 profile has no installer because it produced visible panel
-flicker. Its exact historical hashes remain recovery-only so the restore,
-emergency and factory paths can remove an old ClawLab override safely.
+### Experimental full-range trial: 30-144 Hz
+
+`INSTALL_EXPERIMENTAL_30_144_VRR.bat` exposes the complete custom range. This
+exact profile produced visible flicker on the reference panel, so it is offered
+only as an informed, reversible trial—not as the recommended profile.
+
+Both 144 Hz installers schedule the same failsafe for the next sign-in. Once
+the driver has verified the requested range, the profile runs for 20 seconds and
+a system-modal Yes/No dialog opens. **Yes** keeps it. **No**, closing the dialog,
+or no answer within 30 seconds restores the previous profile, selects a safe
+120 Hz display mode, and restarts Windows to reload the physical EDID. The
+confirmation task deletes itself after either outcome.
 
 ## Installation
 
 1. Extract the release ZIP completely.
 2. Close games and display-control applications.
-3. If an older 30-144 ClawLab profile is installed, run
-   `RESTORE_ORIGINAL_VRR.bat` first and restart. Do not run an installer yet.
+3. If any ClawLab VRR profile is already installed, keep the same profile or run
+   `RESTORE_ORIGINAL_VRR.bat` and restart before switching.
 4. Choose exactly one installer:
-   - run `INSTALL_48_120_VRR.bat` for the recommended official mode and accept
-     its administrator prompt; or
-   - run `INSTALL_EXPERIMENTAL_30_120_VRR.bat` for the optional experimental
-     low-range mode and accept its administrator prompt; or
-   - run `INSTALL_EXPERIMENTAL_48_144_VRR.bat` only if you accept a panel
-     overclock whose fixed 144 Hz mode was stable but whose VRR behavior is not
-     guaranteed.
+   - run `INSTALL_30_120_VRR.bat` for the release's default,
+     community-validated 30-120 Hz + Intel LFC x2 correction; or
+   - run `INSTALL_48_120_VRR.bat` for the official Intel/MSI-specification
+     48-120 Hz profile; or
+   - run `INSTALL_EXPERIMENTAL_48_144_VRR.bat` for the guarded 48-144 trial; or
+   - run `INSTALL_EXPERIMENTAL_30_144_VRR.bat` only after reading the visible-
+     flicker warning and accepting the guarded 30-144 trial.
 5. Accept the final restart prompt, or restart the PC manually later.
 6. After signing in, wait for Intel Graphics Software to start automatically;
    the VRR task runs before it.
 7. Run `CHECK_STATUS.bat`.
 
-The experimental installer first establishes the verified official profile,
-then installs the EDID override. If status reports
-an `EXPERIMENTAL_*_PENDING_RESTART` state, restart before evaluating the result.
+The 30-120 installer establishes the verified Intel profile, installs the EDID
+override, saves the original Intel low/high-FPS solution flags, disables both
+flags, and installs a separate windowless one-shot sign-in reapply. If status
+reports `CLAWLAB_30_120_PENDING_RESTART` or an experimental 144 Hz pending state,
+restart before evaluating the result.
 
 ### Mandatory profile-switch procedure
 
@@ -151,17 +188,21 @@ Expected states include:
 ```text
 OFFICIAL_48_120_ACTIVE
 EXPERIMENTAL_OVERRIDE_PENDING_RESTART
-EXPERIMENTAL_30_120_ACTIVE
+CLAWLAB_30_120_ACTIVE
 EXPERIMENTAL_48_144_ACTIVE
-REJECTED_30_144_PROFILE_RESTORE_REQUIRED
+EXPERIMENTAL_30_144_ACTIVE
 DRIVER_PROFILE_CONSTRAINED
 UNKNOWN_EDID_OVERRIDE
 ```
 
-`EXPERIMENTAL_48_144_ACTIVE` means that the EDID, fixed Windows mode and Intel
-API readback match the declared range. It is not proof of active VRR behavior
-inside a game. For this mode, `WindowsDisplayMode` must also report
-`1920x1200 @ 144 Hz`.
+`EXPERIMENTAL_48_144_ACTIVE` or `EXPERIMENTAL_30_144_ACTIVE` means that the
+EDID, fixed Windows mode and Intel API readback match the declared range. It is
+not proof of correct VRR behavior inside every game. For either 144 Hz mode,
+`WindowsDisplayMode` must also report `1920x1200 @ 144 Hz`.
+
+The trial-status block reports `AWAITING_CONFIRMATION` until the 20-second
+observation and Yes/No decision are complete. A confirmed profile reports
+`NOT_SCHEDULED` because the one-time failsafe removes itself.
 
 `StartupReapply` must show `Ready` or `Running` after installation. If it shows
 `NOT_INSTALLED`, the driver can return to 60-120 Hz on the next restart.
@@ -174,16 +215,38 @@ entry. The VRR profile can still be verified, but if status shows
 it safely removes the newly recreated exact Intel entry and restores ordered
 startup without requiring a profile switch.
 
+The second status block reports the 30-120 LFC correction. Its validated active
+state is:
+
+```text
+CLAWLAB_30_120_LFC_FIX_ACTIVE
+LowFpsSolutionEnabled  = False
+HighFpsSolutionEnabled = False
+StartupPersistence     = INSTALLED_ONE_SHOT_AT_LOGON
+LfcFixActive           = True
+```
+
+Display-profile tools that force Intel `RECOMMENDED` at sign-in or when a game
+starts can overwrite the managed state. Disable that conflicting profile write
+or use a build/configuration that leaves VRR untouched. This release deliberately
+installs no continuous watchdog: it performs one ordered sign-in reapply and
+then exits, avoiding in-game display switches and polling overhead.
+
 `ManagedMode` identifies the installed mode and `ProfileSwitchGuard` must show
 `CONSISTENT`. Any `RESTORE_REQUIRED`, `INCONSISTENT` or `UNSUPPORTED` state means
 that no installer should be run; use restore or factory recovery.
 
 ## Restore and emergency recovery
 
-Run `RESTORE_ORIGINAL_VRR.bat` to restore the first saved Intel Arc Sync profile
-and remove the experimental EDID override if this package installed it. Restore
-also unregisters the sign-in task, deletes its installed scripts and restores
-the exact signed Intel startup entry. Restart the PC when prompted.
+Run `RESTORE_ORIGINAL_VRR.bat` to restore the saved Intel low/high-FPS solution
+flags first, restore the first saved Intel Arc Sync profile, and remove the
+ClawLab custom EDID override if this package installed it. Restore also
+unregisters both sign-in tasks, deletes their installed scripts and restores the
+exact signed Intel startup entry. Restart the PC when prompted.
+
+`RESTORE_INTEL_LFC_DEFAULTS.bat` restores only the saved Intel low/high-FPS
+solution flags and removes their one-shot task. It leaves the selected ClawLab
+VRR range unchanged.
 
 The original profile is stored under:
 
@@ -191,8 +254,8 @@ The original profile is stored under:
 %LOCALAPPDATA%\ClawLab\Intel-Arc-Sync-Full-Range\original-profile.json
 ```
 
-If experimental mode causes a display problem, boot Windows Safe Mode and run
-`EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat`. This path does not initialize the
+If a custom range causes a display problem, boot Windows Safe Mode and run
+`EMERGENCY_REMOVE_CLAWLAB_EDID.bat`. This path does not initialize the
 Intel graphics API. It removes only override blocks whose SHA-256 values match
 this package, then asks for a restart. After normal Windows returns, run the
 regular restore script to restore the saved Intel profile.
@@ -230,7 +293,7 @@ E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0
 This is a display-specific safeguard, not a claim that other Intel Arc GPUs are
 incapable. A Claw 8 EX AI+ is accepted only when Windows reports the exact panel
 and physical EDID above. A future generic edition needs separate monitor
-selection and validation. The experimental mode must never be copied blindly to
+selection and validation. A custom EDID must never be copied blindly to
 another EDID.
 
 The Intel-powered Claw A1M uses a different 7-inch 1920x1080 display and is not
@@ -250,9 +313,11 @@ specification is similar but whose exact panel identity has not been verified.
 
 The utility does not open, inject into, patch, monitor or control game
 processes. It modifies no game file and installs no runtime service, overlay or
-hook. Its scheduled task runs once after sign-in and exits immediately after
+hook. Its scheduled tasks run once after sign-in and exit immediately after
 profile verification. Official mode changes a global display profile through
-Intel's public API; experimental mode installs a Windows monitor EDID override.
+Intel's public API; custom modes install a Windows monitor EDID override.
+The 30-120 LFC correction changes only global Intel display-driver flags through
+Windows D3DKMT; it performs no per-game operation.
 
 This design has no direct interaction with anti-cheat software, but no project
 can guarantee third-party anti-cheat policy. Keep the package documentation
@@ -261,7 +326,7 @@ available when reporting compatibility.
 ## Building the release
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 1.0.3
+.\tools\Build-Release.ps1 -Version 2.0.0
 ```
 
 The ZIP contains only readable scripts and documentation. It contains no Intel
