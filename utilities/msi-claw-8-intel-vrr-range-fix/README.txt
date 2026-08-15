@@ -1,4 +1,4 @@
-MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 2.0.0
+MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 2.0.1
 ====================================================
 
 SUPPORTED PANEL
@@ -24,12 +24,12 @@ a readable Windows Script Host launcher starts the verified Intel application,
 allows display initialization to settle, then applies and verifies 48-120 Hz
 through a fully hidden PowerShell process.
 
-Version 2.0.0 survives Intel Graphics Software updates. If the executable
+Version 2.0.1 survives Intel Graphics Software updates. If the executable
 changes, the task renews its saved hash only after Windows verifies that the
 canonical file still has a valid Intel Authenticode signature. A changed hash
 alone is never accepted.
 
-DEFAULT CLAWLAB 2.0.0 MODE - 30-120 HZ
+DEFAULT CLAWLAB 2.0.1 MODE - 30-120 HZ
 ---------------------------------------
 Run INSTALL_30_120_VRR.bat and accept the administrator prompt.
 
@@ -38,15 +38,15 @@ purpose to a CRU configuration. It is outside MSI's official 48-120 Hz
 specification and can cause flicker or display instability. The physical panel
 firmware is not modified.
 
-Version 2.0.0 also applies the community-validated Intel LFC x2 correction for
-this exact mode. It saves the original low/high-FPS VRR solution flags, disables
-both as one tested combination, verifies 30-120 Hz, and installs a windowless
-one-shot sign-in reapply. This corrected the observed 60 FPS -> 120 Hz and
-68 FPS -> 136 Hz multiplication. It installs no continuous watchdog.
+Version 2.0.1 applies the Intel LFC x2 correction with every profile. It saves
+the original low/high-FPS VRR solution flags, disables both, verifies the exact
+selected range, and installs a windowless one-shot sign-in reapply. At 30-120,
+this corrected the observed 60 FPS -> 120 Hz and 68 FPS -> 136 Hz
+multiplication. It installs no continuous watchdog.
 
-LFC below 30 FPS is unavailable while this correction is active. Frame rates
-below the new floor can still tear or stutter. The correction is not applied to
-48-120 or 48-144 because those combinations were not validated.
+LFC below the selected 30 or 48 FPS floor is unavailable while this correction
+is active. Frames below that floor can still tear or stutter. Direct behavior
+was validated at 30-120; both 144 Hz profiles remain experimental.
 
 EXPERIMENTAL 48-144 HZ TRIAL - VRR NOT GUARANTEED
 ---------------------------------------------------
@@ -61,11 +61,11 @@ EXPERIMENTAL 30-144 HZ TRIAL - VISIBLE FLICKER OBSERVED
 INSTALL_EXPERIMENTAL_30_144_VRR.bat exposes the complete custom range. This
 exact profile visibly flickered on the reference panel and is not recommended.
 
-Both 144 Hz installers run as guarded trials. After restart and driver
-verification, the profile runs for 20 seconds and opens a Yes/No confirmation.
-Yes keeps it. No, closing the prompt, or no answer within 30 seconds restores
-the previous profile, selects 120 Hz and restarts Windows. The trial task then
-removes itself.
+Both 144 Hz installers run as guarded trials. After restart, the requested
+range and both shared LFC flags must verify before the profile runs for 20
+seconds and opens a Yes/No confirmation. Yes keeps it. No, closing the prompt,
+or no answer within 30 seconds restores the original LFC flags and previous VRR
+profile, selects 120 Hz and restarts Windows. The trial task then removes itself.
 
 UNSUPPORTED CLAW / A1M DIAGNOSTICS
 ----------------------------------
@@ -124,6 +124,6 @@ SAFETY
 - Saves the first original Intel profile and never silently overwrites it.
 - Verifies every Intel profile change and every registry override block.
 - Modifies no game, driver file, monitor firmware or game process.
-- Uses a global Windows D3DKMT display-driver request for the 30-120 LFC fix;
+- Uses a global Windows D3DKMT display-driver request for the shared LFC fix;
   it performs no game injection, hook, patch or monitoring.
 - Includes no Intel DLL, CRU executable, driver, EDID dump or compiled binary.

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.0.0'
+    [string]$Version = '2.0.1'
 )
 
 Set-StrictMode -Version Latest
@@ -18,7 +18,7 @@ $hashPath = Join-Path $distRoot 'RELEASE_SHA256.txt'
 
 $releaseFiles = @(
     'MSI-Claw-VRR-Fix.ps1',
-    'MSI-Claw-30-120-LFC-Fix.ps1',
+    'MSI-Claw-Intel-LFC-Fix.ps1',
     'Intel-VRR-LFC-Driver-Interface.ps1',
     'Experimental-144-VRR-Trial.ps1',
     'ClawLab-VRR-Startup.vbs',
@@ -42,7 +42,7 @@ $releaseFiles = @(
     'docs\SAFETY.md',
     'docs\TECHNICAL_DETAILS.md',
     'docs\NEXUS_MODS.md',
-    'docs\RELEASE_NOTES_2.0.0.md'
+    'docs\RELEASE_NOTES_2.0.1.md'
 )
 
 foreach ($relativePath in $releaseFiles) {
@@ -103,17 +103,34 @@ foreach ($value in @(
     }
 }
 
-$lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-30-120-LFC-Fix.ps1') -Raw
+$lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
     "`$toolVersion = '$Version'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
-    "`$managedModeName -ne 'CLAWLAB_30_120'",
+    "'OFFICIAL_48_120'",
+    "'CLAWLAB_30_120'",
+    "'CLAWLAB_48_144'",
+    "'CLAWLAB_30_144'",
+    '$managedProfiles.ContainsKey($managedModeName)',
     'OriginalLowFpsSolutionEnabled',
     'OriginalHighFpsSolutionEnabled',
-    'ClawLab MSI Claw 30-120 LFC Fix'
+    'ClawLab MSI Claw Intel LFC Fix'
 )) {
     if ($lfcScriptText -notmatch [regex]::Escape($value)) {
         throw "Required LFC safety value is missing from the release source: $value"
+    }
+}
+
+$lfcInstallers = @(
+    'INSTALL_30_120_VRR.bat',
+    'INSTALL_48_120_VRR.bat',
+    'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'INSTALL_EXPERIMENTAL_30_144_VRR.bat'
+)
+foreach ($installerName in $lfcInstallers) {
+    $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
+    if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
+        throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
     }
 }
 
@@ -126,6 +143,9 @@ foreach ($value in @(
     'CLAWLAB_30_144',
     'Restore-ExperimentalProfile',
     "-Action Restore",
+    'LowFpsSolutionEnabled',
+    'HighFpsSolutionEnabled',
+    'shared LFC x2 correction',
     'ClawLab MSI Claw 144 Hz Trial Confirmation'
 )) {
     if ($trialScriptText -notmatch [regex]::Escape($value)) {

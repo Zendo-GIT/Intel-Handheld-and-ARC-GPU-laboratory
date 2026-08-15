@@ -3,13 +3,13 @@
 A transparent and reversible utility for the `CSW0801 / PN8007QB1-2` internal
 panel used by compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations.
 
-![Version](https://img.shields.io/badge/release-2.0.0-blue)
+![Version](https://img.shields.io/badge/release-2.0.1-blue)
 ![Official mode](https://img.shields.io/badge/official-48--120_Hz-green)
 ![Default mode](https://img.shields.io/badge/default-30--120_Hz-orange)
 ![Guarded trials](https://img.shields.io/badge/guarded_trials-48--144_%2F_30--144_Hz-red)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-See the [2.0.0 release notes](docs/RELEASE_NOTES_2.0.0.md) for the publication
+See the [2.0.1 release notes](docs/RELEASE_NOTES_2.0.1.md) for the publication
 summary and upgrade boundary.
 
 ## Why this exists
@@ -35,7 +35,7 @@ monitor VRR range. MSI documents both Claw Intel models with an 8-inch
 
 ## Four deliberately separate profiles
 
-The default profile in release 2.0.0 is **30-120 Hz with the validated Intel
+The default profile in release 2.0.1 is **30-120 Hz with the validated Intel
 LFC x2 correction**. The native **48-120 Hz** profile remains available as the
 official Intel/MSI-specification choice. Both 144 Hz profiles are opt-in guarded
 hardware trials.
@@ -59,14 +59,13 @@ Intel Graphics Software command, allows display initialization to settle, then
 applies and verifies `EXCELLENT`. No console window is displayed.
 
 Graphics-driver packages can replace `IntelGraphicsSoftware.exe`. Version
-2.0.0 detects that replacement and renews the saved file identity only after a
+2.0.1 detects that replacement and renews the saved file identity only after a
 fresh Windows Authenticode validation confirms the canonical executable is
 still validly signed by Intel. A changed hash alone is never trusted. Invalid,
 relocated or unstable files are refused without launching them.
 
 This mode does not modify the EDID, graphics driver, monitor firmware or any
-game. Its only registry change is the reversible startup-order entry described
-above.
+game. It also applies the shared Intel LFC correction described below.
 
 ### Default ClawLab mode: 30-120 Hz
 
@@ -88,22 +87,23 @@ validated on the reference system; it must not be represented as MSI-certified.
 
 No CRU file is bundled or required.
 
-Version 2.0.0 also integrates the community-validated correction for Intel's
+Version 2.0.1 integrates the correction for Intel's
 aggressive LFC/Adaptive Sync Plus behavior. On affected systems, the driver can
 multiply refresh rate by two inside the intended VRR range, for example
-`60 FPS -> 120 Hz` or `68 FPS -> 136 Hz`. The validated 30-120 Hz combination:
+`60 FPS -> 120 Hz` or `68 FPS -> 136 Hz`. Every installer:
 
 - selects Intel `EXCELLENT`;
-- advertises and verifies the exact 30-120 Hz monitor range;
+- verifies the exact range and pinned EDID for its selected profile;
 - disables both Intel low- and high-FPS VRR solutions through a direct Windows
   D3DKMT display-driver request;
 - verifies both flags and the active range, then reapplies them once at sign-in.
 
-The two Intel flags are treated as one tested combination. The project does not
-claim which flag is individually responsible. Disabling the low-FPS solution
-also means LFC is unavailable below 30 FPS; frame rates below the new floor can
-still tear or stutter. This correction is not applied to the official 48-120 Hz
-or experimental 48-144 Hz modes because those combinations were not validated.
+The two Intel flags are treated as one combination. The project does not claim
+which flag is individually responsible. Disabling the low-FPS solution also
+means LFC is unavailable below the selected profile floor; frame rates below
+30 FPS or 48 FPS, depending on the profile, can still tear or stutter. The x2
+correction was directly validated at 30-120 Hz and is installed with exact
+verification on all four profiles. The two 144 Hz profiles remain experimental.
 
 ### Experimental overclock: 48-144 Hz — VRR not guaranteed
 
@@ -127,11 +127,12 @@ exact profile produced visible flicker on the reference panel, so it is offered
 only as an informed, reversible trial—not as the recommended profile.
 
 Both 144 Hz installers schedule the same failsafe for the next sign-in. Once
-the driver has verified the requested range, the profile runs for 20 seconds and
-a system-modal Yes/No dialog opens. **Yes** keeps it. **No**, closing the dialog,
-or no answer within 30 seconds restores the previous profile, selects a safe
-120 Hz display mode, and restarts Windows to reload the physical EDID. The
-confirmation task deletes itself after either outcome.
+the driver has verified the requested range and both shared LFC flags, the
+profile runs for 20 seconds and a system-modal Yes/No dialog opens. **Yes**
+keeps it. **No**, closing the dialog, or no answer within 30 seconds restores
+the original LFC flags and previous VRR profile, selects a safe 120 Hz display
+mode, and restarts Windows to reload the physical EDID. The confirmation task
+deletes itself after either outcome.
 
 ## Installation
 
@@ -152,11 +153,11 @@ confirmation task deletes itself after either outcome.
    the VRR task runs before it.
 7. Run `CHECK_STATUS.bat`.
 
-The 30-120 installer establishes the verified Intel profile, installs the EDID
-override, saves the original Intel low/high-FPS solution flags, disables both
-flags, and installs a separate windowless one-shot sign-in reapply. If status
-reports `CLAWLAB_30_120_PENDING_RESTART` or an experimental 144 Hz pending state,
-restart before evaluating the result.
+Every installer establishes its verified Intel profile, saves the original
+Intel low/high-FPS solution flags, disables both, and installs a separate
+windowless one-shot sign-in reapply. Custom profiles also install their pinned
+EDID override. If status reports a pending-restart state, restart before
+evaluating the result.
 
 ### Mandatory profile-switch procedure
 
@@ -215,11 +216,12 @@ entry. The VRR profile can still be verified, but if status shows
 it safely removes the newly recreated exact Intel entry and restores ordered
 startup without requiring a profile switch.
 
-The second status block reports the 30-120 LFC correction. Its validated active
-state is:
+The second status block reports the LFC correction for the selected profile. Its
+active state is:
 
 ```text
-CLAWLAB_30_120_LFC_FIX_ACTIVE
+CLAWLAB_LFC_FIX_ACTIVE
+ExpectedRange              = selected profile range
 LowFpsSolutionEnabled  = False
 HighFpsSolutionEnabled = False
 StartupPersistence     = INSTALLED_ONE_SHOT_AT_LOGON
@@ -316,7 +318,7 @@ processes. It modifies no game file and installs no runtime service, overlay or
 hook. Its scheduled tasks run once after sign-in and exit immediately after
 profile verification. Official mode changes a global display profile through
 Intel's public API; custom modes install a Windows monitor EDID override.
-The 30-120 LFC correction changes only global Intel display-driver flags through
+The shared LFC correction changes only global Intel display-driver flags through
 Windows D3DKMT; it performs no per-game operation.
 
 This design has no direct interaction with anti-cheat software, but no project
@@ -326,7 +328,7 @@ available when reporting compatibility.
 ## Building the release
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 2.0.0
+.\tools\Build-Release.ps1 -Version 2.0.1
 ```
 
 The ZIP contains only readable scripts and documentation. It contains no Intel

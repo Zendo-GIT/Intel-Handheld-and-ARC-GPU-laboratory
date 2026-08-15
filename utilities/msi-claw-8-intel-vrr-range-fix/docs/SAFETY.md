@@ -26,7 +26,7 @@ Before writing, the tool requires the complete physical EDID SHA-256 and both
 block checksums. After writing, it requires exact SHA-256 values for both
 generated blocks. An existing unknown override is never replaced or deleted.
 
-Version 2.0.0 can install the pinned 30-120 transformation or the separate
+Version 2.0.1 can install the pinned 30-120 transformation or the separate
 pinned 48-144 transformation. The latter inserts one validated 1920x1200 at
 144 Hz timing and the startup task selects it only when the exact managed
 `CLAWLAB_48_144` or `CLAWLAB_30_144` state is present. Fixed 144 Hz was stable
@@ -36,7 +36,7 @@ guarded, prominently warned trial.
 
 Intel Graphics Software is Authenticode-validated during installation. Its
 verified executable path, signer thumbprint, file version and SHA-256 are
-saved. If an Intel driver package later replaces the executable, version 2.0.0
+saved. If an Intel driver package later replaces the executable, version 2.0.1
 detects the identity change and renews the saved values only after a fresh
 Windows Authenticode validation confirms a valid Intel signature at the exact
 canonical path with the original `-s` argument. The hash is read again before
@@ -47,13 +47,12 @@ Administrative elevation is requested for installation so the tool can back up
 and remove Intel Graphics Software's machine-wide automatic-startup entry.
 Custom EDID installation and restoration also require elevation.
 
-## 30-120 Hz Intel LFC x2 correction
+## Shared Intel LFC x2 correction
 
-The 30-120 installer also runs the readable
-`MSI-Claw-30-120-LFC-Fix.ps1`. It requires the exact validated panel, exact
-ClawLab 30-120 EDID hash, a `CLAWLAB_30_120` managed-mode record, exactly one
-active Intel display adapter, and direct readback of `30-120 Hz` before it can
-change anything.
+Every installer also runs the readable `MSI-Claw-Intel-LFC-Fix.ps1`. It
+requires the exact validated panel, one of the four managed-mode records, the
+corresponding pinned EDID state, exactly one active Intel display adapter, and
+direct readback of the selected range before it can change the Intel flags.
 
 The script uses Windows D3DKMT with Intel's driver-private VRR display escape to
 read and change the driver's low- and high-FPS solution flags. This is not the
@@ -62,15 +61,15 @@ feature. It also does not load either the legacy Intel Graphics Command Center
 or current Intel Graphics Software application assemblies.
 
 Before changing the flags, the script saves both original values under the
-current user's local ClawLab state. It disables both as the one combination
-validated on real hardware, reads them back, and verifies that the active
-30-120 Hz range did not change. Any failed verification restores the saved
-values. The project deliberately makes no claim about which individual flag is
-responsible for the observed x2 behavior.
+current user's local ClawLab state. It disables both as one combination, reads
+them back, and verifies that the selected range did not change. Any failed
+verification restores the saved values. The project deliberately makes no
+claim about which individual flag is responsible for the observed x2 behavior.
+Direct behavior was validated at 30-120 Hz; the same guarded mechanism is
+installed for 48-120, 48-144 and 30-144 with their own exact range checks.
 
-Disabling Intel's low-FPS solution removes LFC below the 30 Hz floor. A game
-running below 30 FPS can still tear or stutter. The correction is not attempted
-for 48-120 or 48-144 Hz.
+Disabling Intel's low-FPS solution removes LFC below the selected 30 or 48 Hz
+floor. A game running below that floor can still tear or stutter.
 
 ## Sign-in persistence
 
@@ -92,10 +91,10 @@ Graphics Software command, allows display initialization to settle, then
 applies and verifies the profile. The task is allowed on battery power and has
 a three-minute execution limit.
 
-The 30-120 LFC correction registers a second current-user task named
-`ClawLab MSI Claw 30-120 LFC Fix`. Its VBS launcher is also windowless. It waits
+The shared LFC correction registers a second current-user task named
+`ClawLab MSI Claw Intel LFC Fix`. Its VBS launcher is also windowless. It waits
 for display initialization, invokes the installed range reapply, disables both
-saved Intel solution flags, verifies the complete 30-120 state, and exits. It
+saved Intel solution flags, verifies the complete selected range, and exits. It
 is a one-shot logon action, not a resident process or periodic watchdog.
 
 Intel Graphics Software is not used to apply the range. Its tray process was

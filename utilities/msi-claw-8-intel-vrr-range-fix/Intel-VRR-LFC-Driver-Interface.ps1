@@ -1,4 +1,4 @@
-# Direct Intel display-driver interface used by the ClawLab 30-120 Hz LFC fix.
+# Direct Intel display-driver interface used by the ClawLab LFC fix.
 # It does not depend on Intel Graphics Command Center or Intel Graphics
 # Software application assemblies.
 [CmdletBinding()]

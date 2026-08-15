@@ -8,7 +8,7 @@ echo Unknown third-party EDID overrides are refused and will not be removed.
 echo.
 choice /C YN /N /M "Continue with the ClawLab VRR factory reset? [Y/N] "
 if errorlevel 2 exit /b 0
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-30-120-LFC-Fix.ps1" -Action Restore
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-Intel-LFC-Fix.ps1" -Action Restore
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (

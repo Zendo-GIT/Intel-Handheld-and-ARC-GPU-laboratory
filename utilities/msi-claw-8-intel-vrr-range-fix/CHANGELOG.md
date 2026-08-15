@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.1 — 2026-08-15
+
+- Integrated the community-validated Intel LFC x2 correction into all four
+  installers. Its directly tested combination uses the `EXCELLENT` Arc Sync
+  profile, the exact 30-120 Hz EDID override, and disables both Intel low- and
+  high-FPS VRR solutions; every other profile receives the same operation only
+  after its own exact mode, EDID and active-range verification.
+- Replaced the 30-120-specific LFC companion with one profile-aware module whose
+  backup is bound to the selected managed mode.
+- Made both guarded 144 Hz confirmations require the requested range and both
+  shared LFC flags before the 20-second observation can begin. Automatic
+  rejection restores the original LFC and VRR state together.
+- Added repository and release-build checks that reject any installer missing
+  the shared LFC correction.
+- Direct behavior remains real-hardware validated at 30-120 Hz; both 144 Hz
+  profiles retain experimental status.
+- Documented that disabling Intel's low-FPS solution removes LFC below the
+  selected 30 or 48 Hz floor. Frames below that floor can still tear or stutter.
+
 ## 2.0.0 — 2026-08-15
 
 - Integrated the community-validated Intel LFC x2 correction into the guarded

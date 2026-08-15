@@ -15,6 +15,15 @@ if not "%CLAWLAB_EXIT%"=="0" (
   pause
   exit /b %CLAWLAB_EXIT%
 )
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply
+set "CLAWLAB_EXIT=%ERRORLEVEL%"
+echo.
+if not "%CLAWLAB_EXIT%"=="0" (
+  echo The 48-144 Hz profile was installed, but the Intel LFC fix failed.
+  echo Run RESTORE_ORIGINAL_VRR.bat before trying again.
+  pause
+  exit /b %CLAWLAB_EXIT%
+)
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Experimental-144-VRR-Trial.ps1" -Action Schedule -Mode CLAWLAB_48_144
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.

@@ -9,7 +9,7 @@ if not "%CLAWLAB_EXIT%"=="0" (
   pause
   exit /b %CLAWLAB_EXIT%
 )
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-30-120-LFC-Fix.ps1" -Action Apply
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (

@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.0.0'
+$fixVersion = '2.0.1'
 $targetManufacturer = 'CSW'
 $targetProductCode = '0801'
 $targetPanelName = 'PN8007QB1-2'

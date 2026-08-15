@@ -24,7 +24,7 @@ checks, safety model and restoration path.
 
 | Utility | Direct download | Release page |
 |---|---|---|
-| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 2.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v2.0.0/MSI-Claw-8-Intel-VRR-Range-Fix-2.0.0.zip) | [claw8-vrr-v2.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v2.0.0) |
+| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 2.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v2.0.1/MSI-Claw-8-Intel-VRR-Range-Fix-2.0.1.zip) | [claw8-vrr-v2.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v2.0.1) |
 
 ## Published projects
 

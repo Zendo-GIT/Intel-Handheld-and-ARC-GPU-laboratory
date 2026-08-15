@@ -2,6 +2,12 @@
 
 ## 2026-08-15
 
+- Prepared MSI Claw VRR Range Fix 2.0.1 by extending the guarded Intel LFC x2
+  correction to all four managed profiles. Added exact per-profile range/EDID
+  verification, mode-bound backup, complete 144 Hz LFC/VRR rollback and build
+  checks that reject an installer without the shared correction. Direct behavior
+  remains validated at 30-120 Hz.
+
 - Prepared MSI Claw VRR Range Fix 2.0.0 with the community-validated 30-120 Hz
   Intel LFC x2 correction, reversible driver-flag backup, windowless one-shot
   startup reapply, guarded 48-144/30-144 confirmation trials, and coordinated

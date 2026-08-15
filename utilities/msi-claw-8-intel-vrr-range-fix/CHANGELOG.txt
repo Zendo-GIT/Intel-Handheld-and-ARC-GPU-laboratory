@@ -1,6 +1,22 @@
 MSI CLAW 8 AI+ / 8 EX AI+ VRR RANGE FIX - CHANGELOG
 ====================================================
 
+2.0.1 - 2026-08-15
+------------------
+- Integrates the community-validated Intel LFC x2 correction into all four
+  installers. The directly tested combination uses EXCELLENT, the exact
+  30-120 Hz EDID override, and disables both Intel low- and high-FPS solutions;
+  every other profile receives the same guarded operation with exact checks.
+- Replaces the 30-120-specific companion with one profile-aware LFC module and
+  binds its backup to the selected managed mode.
+- Requires both guarded 144 Hz trials to verify their range and shared LFC flags
+  before observation. Rejection restores original LFC and VRR state together.
+- Adds repository/build checks that reject any installer missing the shared fix.
+- Direct behavior is real-hardware validated at 30-120 Hz; both 144 Hz profiles
+  retain experimental status.
+- Documents that LFC below the selected 30 or 48 Hz floor is unavailable while
+  the correction is active.
+
 2.0.0 - 2026-08-15
 ------------------
 - Integrates the community-validated Intel LFC x2 correction into the guarded

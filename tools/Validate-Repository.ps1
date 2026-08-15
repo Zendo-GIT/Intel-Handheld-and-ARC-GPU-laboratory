@@ -25,7 +25,7 @@ $requiredFiles = @(
     'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
     'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
-    'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-30-120-LFC-Fix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Intel-VRR-LFC-Driver-Interface.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Experimental-144-VRR-Trial.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
@@ -40,7 +40,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.0.0.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.0.1.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
 )
 foreach ($relativePath in $requiredFiles) {
@@ -125,7 +125,7 @@ foreach ($value in $requiredDetroitValues) {
 
 $vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 $requiredVrrValues = @(
-    "`$fixVersion = '2.0.0'",
+    "`$fixVersion = '2.0.1'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -170,28 +170,49 @@ foreach ($value in @(
     }
 }
 
-$lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-30-120-LFC-Fix.ps1') -Raw
+$lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.0'",
+    "`$toolVersion = '2.0.1'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
-    "`$managedModeName -ne 'CLAWLAB_30_120'",
+    "'OFFICIAL_48_120'",
+    "'CLAWLAB_30_120'",
+    "'CLAWLAB_48_144'",
+    "'CLAWLAB_30_144'",
+    '$managedProfiles.ContainsKey($managedModeName)',
     'OriginalLowFpsSolutionEnabled',
     'OriginalHighFpsSolutionEnabled',
-    'ClawLab MSI Claw 30-120 LFC Fix'
+    'ClawLab MSI Claw Intel LFC Fix'
 )) {
     if ($lfcScript -notmatch [regex]::Escape($value)) {
-        throw "30-120 LFC source no longer contains required safety value: $value"
+        throw "Intel LFC source no longer contains required safety value: $value"
+    }
+}
+
+$lfcInstallers = @(
+    'INSTALL_30_120_VRR.bat',
+    'INSTALL_48_120_VRR.bat',
+    'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'INSTALL_EXPERIMENTAL_30_144_VRR.bat'
+)
+foreach ($installerName in $lfcInstallers) {
+    $installerPath = Join-Path $repositoryRoot "utilities\msi-claw-8-intel-vrr-range-fix\$installerName"
+    $installerText = Get-Content -LiteralPath $installerPath -Raw
+    if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
+        throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
     }
 }
 
 $trialScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\Experimental-144-VRR-Trial.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.0'",
+    "`$toolVersion = '2.0.1'",
     "`$observationSeconds = 20",
     "`$confirmationTimeoutSeconds = 30",
     'CLAWLAB_48_144',
     'CLAWLAB_30_144',
     'Restore-ExperimentalProfile',
+    'LowFpsSolutionEnabled',
+    'HighFpsSolutionEnabled',
+    'shared LFC x2 correction',
     'ClawLab MSI Claw 144 Hz Trial Confirmation'
 )) {
     if ($trialScript -notmatch [regex]::Escape($value)) {

@@ -6,11 +6,11 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.0'
+$toolVersion = '2.0.1'
 
-# Community-validated companion for the exact ClawLab 30-120 Hz mode. It
+# Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
-# preventing the observed x2 refresh-rate multiplication inside the 30-120 Hz
+# preventing the observed x2 refresh-rate multiplication inside the managed
 # range. This is a global display-driver setting: no game process is opened,
 # injected into, patched or monitored.
 
@@ -27,12 +27,12 @@ $validatedEdidHashes = @(
 $vrrStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $managedModePath = Join-Path $vrrStateRoot 'managed-mode.json'
 $experimentalStatePath = Join-Path $vrrStateRoot 'experimental-edid.json'
-$lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-30-120-LFC-Fix'
+$lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-LFC-Fix'
 $lfcBackupPath = Join-Path $lfcStateRoot 'original-intel-vrr-solutions.json'
-$installedToolPath = Join-Path $lfcStateRoot 'MSI-Claw-30-120-LFC-Fix.ps1'
+$installedToolPath = Join-Path $lfcStateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
 $installedDriverInterfacePath = Join-Path $lfcStateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'
 $installedLauncherPath = Join-Path $lfcStateRoot 'ClawLab-LFC-Startup.vbs'
-$startupTaskName = 'ClawLab MSI Claw 30-120 LFC Fix'
+$startupTaskName = 'ClawLab MSI Claw Intel LFC Fix'
 
 function Convert-WmiText {
     param([AllowNull()][object]$Values)
@@ -88,21 +88,32 @@ if (Test-Path -LiteralPath $managedModePath -PathType Leaf) {
     $managedMode = [IO.File]::ReadAllText($managedModePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
 }
 $managedModeName = if ($null -eq $managedMode) { 'UNMANAGED' } else { [string]$managedMode.Mode }
-if ($Action -in @('Apply', 'ApplyStartup') -and $managedModeName -ne 'CLAWLAB_30_120') {
-    throw "The LFC fix is validated only with the ClawLab 30-120 Hz mode; current mode is $managedModeName."
+$managedProfiles = @{
+    'OFFICIAL_48_120' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 120; EdidSha256 = $physicalEdidHash; UsesCustomEdid = $false }
+    'CLAWLAB_30_120' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 120; EdidSha256 = $experimental30EdidHash; UsesCustomEdid = $true }
+    'CLAWLAB_48_144' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; EdidSha256 = $experimental144EdidHash; UsesCustomEdid = $true }
+    'CLAWLAB_30_144' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; EdidSha256 = $experimental30_144EdidHash; UsesCustomEdid = $true }
 }
-if ($Action -eq 'ApplyStartup' -and $reportedEdidSha256 -ne $experimental30EdidHash) {
-    throw "The LFC fix requires the exact ClawLab 30-120 Hz EDID; current hash is $reportedEdidSha256."
+$managedProfile = if ($managedProfiles.ContainsKey($managedModeName)) { $managedProfiles[$managedModeName] } else { $null }
+if ($Action -in @('Apply', 'ApplyStartup') -and $null -eq $managedProfile) {
+    throw "The LFC fix requires one of the four ClawLab-managed profiles; current mode is $managedModeName."
 }
-if ($Action -eq 'Apply' -and $reportedEdidSha256 -ne $experimental30EdidHash) {
-    if ($reportedEdidSha256 -ne $physicalEdidHash -or
+$expectedMinimumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MinimumHz }
+$expectedMaximumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MaximumHz }
+$expectedEdidSha256 = if ($null -eq $managedProfile) { '' } else { [string]$managedProfile.EdidSha256 }
+if ($Action -eq 'ApplyStartup' -and $reportedEdidSha256 -ne $expectedEdidSha256) {
+    throw "The LFC fix requires the exact $managedModeName EDID; current hash is $reportedEdidSha256."
+}
+if ($Action -eq 'Apply' -and $reportedEdidSha256 -ne $expectedEdidSha256) {
+    if (-not [bool]$managedProfile.UsesCustomEdid -or
+        $reportedEdidSha256 -ne $physicalEdidHash -or
         -not (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf)) {
-        throw 'The pending ClawLab 30-120 Hz EDID state could not be verified.'
+        throw "The pending $managedModeName EDID state could not be verified."
     }
     $pendingEdidState = [IO.File]::ReadAllText($experimentalStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ([string]$pendingEdidState.Mode -ne 'CLAWLAB_30_120' -or
-        [string]$pendingEdidState.ExperimentalEdidSha256 -ne $experimental30EdidHash) {
-        throw 'The pending custom EDID does not match the validated ClawLab 30-120 Hz profile.'
+    if ([string]$pendingEdidState.Mode -ne $managedModeName -or
+        [string]$pendingEdidState.ExperimentalEdidSha256 -ne $expectedEdidSha256) {
+        throw "The pending custom EDID does not match $managedModeName."
     }
 }
 
@@ -149,8 +160,6 @@ function Invoke-DirectVrrDriverAction {
     return Convert-DirectVrrState -RawState $raw
 }
 
-$expectedMinimumHz = 30
-$expectedMaximumHz = 120
 if ($Action -eq 'ApplyStartup') {
     $clawTweaksTask = Get-ScheduledTask -TaskPath '\ClawTweaks\' -TaskName 'ClawTweaksHelper' -ErrorAction SilentlyContinue
     if ($null -ne $clawTweaksTask) {
@@ -249,6 +258,15 @@ function Get-LfcBackup {
         'OriginalHighFpsSolutionEnabled' -notin $backup.PSObject.Properties.Name) {
         throw 'The Intel VRR solution backup is invalid.'
     }
+    if ([int]$backup.SchemaVersion -eq 3 -and
+        'ManagedVrrMode' -notin $backup.PSObject.Properties.Name) {
+        throw 'The Intel VRR solution backup has no managed-profile identity.'
+    }
+    if ($Action -in @('Apply', 'ApplyStartup') -and
+        [int]$backup.SchemaVersion -eq 3 -and
+        [string]$backup.ManagedVrrMode -ne $managedModeName) {
+        throw "The saved LFC state belongs to $($backup.ManagedVrrMode), not $managedModeName. Run RESTORE_ORIGINAL_VRR.bat before switching profiles."
+    }
     return $backup
 }
 
@@ -295,7 +313,7 @@ function Install-StartupPersistence {
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4)
     $task = New-ScheduledTask -Action $taskAction -Trigger $trigger -Principal $principal `
-        -Settings $settings -Description 'Silently reapplies the validated ClawLab 30-120 Hz Intel LFC state once at logon, then exits.'
+        -Settings $settings -Description 'Silently reapplies the selected ClawLab VRR range and Intel LFC state once at logon, then exits.'
     Register-ScheduledTask -TaskName $startupTaskName -InputObject $task -Force | Out-Null
     if ((Get-StartupPersistenceState) -ne 'INSTALLED_ONE_SHOT_AT_LOGON') {
         throw 'The one-shot startup persistence task could not be verified.'
@@ -319,18 +337,20 @@ $state = switch ($Action) {
     'Status' {
         $now = Get-CurrentIntelVrrState
         [pscustomobject]@{
-            State = if ($managedModeName -eq 'CLAWLAB_30_120' -and
+            State = if ($null -ne $managedProfile -and
                 (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
+                $now.MinimumHz -eq $expectedMinimumHz -and
+                $now.MaximumHz -eq $expectedMaximumHz -and
                 -not $now.LowFpsSolutionEnabled -and -not $now.HighFpsSolutionEnabled) {
-                'CLAWLAB_LOW_HIGH_SOLUTIONS_DISABLED'
+                'CLAWLAB_LFC_FIX_ACTIVE'
             }
             elseif (-not $now.LowFpsSolutionEnabled) {
                 'INTEL_LOW_FPS_SOLUTION_DISABLED_OUTSIDE_MANAGED_FIX'
             }
-            elseif ($managedModeName -eq 'CLAWLAB_30_120' -and
+            elseif ($null -ne $managedProfile -and
                 (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
                 (Get-StartupPersistenceState) -eq 'INSTALLED_ONE_SHOT_AT_LOGON') {
-                'CLAWLAB_30_120_LFC_FIX_PENDING_RESTART'
+                'CLAWLAB_LFC_FIX_PENDING_RESTART'
             }
             else {
                 'INTEL_VRR_SOLUTIONS_NOT_PATCHED'
@@ -374,7 +394,7 @@ $state = switch ($Action) {
         if (-not $startupApplication -and -not $rangeReady) {
             Install-StartupPersistence
             [pscustomobject]@{
-                State = 'CLAWLAB_30_120_LFC_FIX_PENDING_RESTART'
+                State = 'CLAWLAB_LFC_FIX_PENDING_RESTART'
                 Before = $before
                 Current = $before
                 BackupPresent = $true
@@ -418,7 +438,7 @@ $state = switch ($Action) {
         }
 
         [pscustomobject]@{
-            State = 'CLAWLAB_30_120_LFC_FIX_ACTIVE'
+            State = 'CLAWLAB_LFC_FIX_ACTIVE'
             Before = $before
             Current = $after
             BackupPresent = $true
@@ -468,12 +488,15 @@ $state = switch ($Action) {
     IntelDriverVersion = [string]$intelGpu.DriverVersion
     CurrentState = $current
     ManagedVrrMode = $managedModeName
+    ExpectedRange = if ($null -eq $managedProfile) { 'UNMANAGED' } else { "$expectedMinimumHz-$expectedMaximumHz Hz" }
     PanelEdidSha256 = $reportedEdidSha256
     LfcTransition = $state
     StartupPersistence = Get-StartupPersistenceState
-    LfcFixActive = $managedModeName -eq 'CLAWLAB_30_120' -and
+    LfcFixActive = $null -ne $managedProfile -and
         (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
         (Get-StartupPersistenceState) -eq 'INSTALLED_ONE_SHOT_AT_LOGON' -and
+        [int]$state.Current.MinimumHz -eq $expectedMinimumHz -and
+        [int]$state.Current.MaximumHz -eq $expectedMaximumHz -and
         (-not [bool]$state.Current.LowFpsSolutionEnabled) -and
         (-not [bool]$state.Current.HighFpsSolutionEnabled)
 }

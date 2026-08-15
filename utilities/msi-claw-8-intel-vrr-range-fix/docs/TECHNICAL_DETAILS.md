@@ -56,7 +56,7 @@ Intel's sample documents that custom minimum and maximum values must remain
 inside the panel-supported range. The release therefore never claims that a
 custom profile alone can unlock 30 Hz.
 
-## Intel LFC x2 correction in the default 30-120 mode
+## Shared Intel LFC x2 correction
 
 On driver 32.0.101.8974, game telemetry showed Intel's Adaptive Sync Plus/LFC
 path multiplying refresh inside the desired range (`60 FPS -> 120 Hz` and
@@ -72,12 +72,29 @@ HighFpsSolutionEnabled:       false
 Third-party profile overwrite: none
 ```
 
-`MSI-Claw-30-120-LFC-Fix.ps1` uses `D3DKMTEscape` with Intel's driver-private
+`MSI-Claw-Intel-LFC-Fix.ps1` uses `D3DKMTEscape` with Intel's driver-private
 VRR display payload. Read operation 0 returns the current range and solution
 flags; operations 4 and 6 disable the low- and high-FPS solutions. The script
 backs up both original values before using them and operations 3 and 5 restore
 them. Every change is read back, and a range change or failed flag verification
 causes rollback.
+
+Release 2.0.1 integrates this same correction into all four installers. Before
+changing either flag, the shared script requires the exact managed-mode record,
+the exact physical or pinned custom EDID expected for that mode, and the exact
+active Intel range shown below:
+
+| Managed mode | Required Intel range | Release role |
+|---|---:|---|
+| `CLAWLAB_30_120` | 30-120 Hz | Default corrected profile |
+| `OFFICIAL_48_120` | 48-120 Hz | Official Intel/MSI range |
+| `CLAWLAB_48_144` | 48-144 Hz | Experimental overclock |
+| `CLAWLAB_30_144` | 30-144 Hz | Experimental overclock |
+
+The observed removal of LFC x2 has been validated on real hardware at 30-120
+Hz. The 48-120 and 144 Hz paths use the identical guarded flag operation and
+per-range readback, but this does not turn those configurations into claimed
+real-hardware LFC validation. Both 144 Hz profiles remain experimental.
 
 This driver-private path is independent of both Intel Graphics Software and the
 legacy Intel Graphics Command Center application assemblies. It is transparent
@@ -85,8 +102,9 @@ source code, but it is not a documented public Intel API. The two flags remain
 a single empirically validated combination; the project does not infer which
 one alone causes the x2 behavior.
 
-The consequence is intentional: Intel LFC below the new 30 Hz floor is disabled.
-Frames below 30 FPS remain outside the corrected direct-VRR range.
+The consequence is intentional: Intel's refresh-multiplication solution below
+the selected floor is disabled. Frames below 30 FPS in a 30 Hz profile, or
+below 48 FPS in a 48 Hz profile, remain outside the corrected direct-VRR range.
 
 ## Validated 30-120 EDID transformation
 
@@ -137,22 +155,24 @@ back `EXCELLENT / 48-144 Hz`.
 
 A separate guarded 30-144 test was also accepted by the Intel API as
 `EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. Release
-2.0.0 therefore exposes it only as a prominently warned, self-rolling trial.
+2.0.1 therefore exposes it only as a prominently warned, self-rolling trial.
 
 Follow-up game testing did not reliably validate functioning VRR behavior at
 144 Hz. A stable fixed overclock and an API range readback do not prove that
-variable refresh is operating. Version 2.0.0 therefore keeps 48-144 only as an
+variable refresh is operating. Version 2.0.1 therefore keeps 48-144 only as an
 explicit experimental panel-refresh overclock: fixed 144 Hz was stable on
 tested panels, but VRR at 144 Hz or throughout the advertised range is not
 guaranteed.
 
-Both 144 Hz installers write the pinned override and register a temporary
-current-user confirmation task. At the next sign-in, the normal startup task
-selects 1920x1200 at 144 Hz and verifies Intel `EXCELLENT` at the requested
-range. The trial task then observes that verified state for 20 seconds and asks
-the user whether to keep it. A No answer, closed dialog, 30-second timeout or
-verification failure selects 120 Hz, runs the normal restore path and restarts
-Windows. A Yes answer keeps the profile and removes only the temporary task.
+Both 144 Hz installers write the pinned override, install the shared LFC x2
+correction and register a temporary current-user confirmation task. At the next
+sign-in, the normal startup task selects 1920x1200 at 144 Hz and verifies Intel
+`EXCELLENT` at the requested range. The trial task also requires both Intel
+low/high-FPS solution flags to remain disabled, then observes that complete
+state for 20 seconds and asks the user whether to keep it. A No answer, closed
+dialog, 30-second timeout or verification failure restores the original LFC
+flags, selects 120 Hz, runs the normal restore path and restarts Windows. A Yes
+answer keeps the profile and removes only the temporary task.
 
 For the exact managed 48-144 state, startup first selects the enumerated
 1920x1200 at 144 Hz Windows mode, waits for the display path to settle, launches
@@ -169,7 +189,7 @@ third-party data is still never removed.
 The ordered startup path pins the exact Intel Graphics Software identity after
 validating its canonical path, `-s` argument and Windows Authenticode signature.
 Graphics-driver updates can legitimately replace that executable. Version
-2.0.0 compares the current SHA-256 and saved schema at every managed startup.
+2.0.1 compares the current SHA-256 and saved schema at every managed startup.
 
 When they differ, the task performs a fresh Authenticode validation, requires a
 valid signer whose certificate subject identifies Intel Corporation, recomputes
