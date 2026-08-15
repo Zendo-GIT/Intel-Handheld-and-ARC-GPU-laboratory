@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.3 — 2026-08-15
+
+- Added safe Intel Graphics Software update detection: a replaced executable is
+  trusted only after fresh Authenticode validation confirms Intel Corporation,
+  the canonical path and original `-s` command, followed by stable SHA-256
+  verification and an atomic identity-record update.
+- Added automatic schema-2 migration for identities saved by earlier releases,
+  including signer thumbprint, file version and SHA-256.
+- Retained the 48-144 Hz installer as a clearly disclosed experimental panel
+  overclock: fixed 144 Hz was stable on tested hardware, but VRR at 144 Hz or
+  throughout the advertised range is not guaranteed.
+- Kept the visibly flickering 30-144 profile unavailable and recovery-only,
+  with an explicit rejected-profile status directing affected historical users
+  to `RESTORE_ORIGINAL_VRR.bat`.
+
 ## 1.0.2 — 2026-08-15
 
 - Added an optional 48-144 Hz DisplayID profile after guarded hardware testing

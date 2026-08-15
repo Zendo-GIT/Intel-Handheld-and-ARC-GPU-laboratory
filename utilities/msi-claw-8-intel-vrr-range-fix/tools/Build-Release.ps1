@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.2'
+    [string]$Version = '1.0.3'
 )
 
 Set-StrictMode -Version Latest
@@ -61,12 +61,16 @@ $requiredIntegrityValues = @(
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
-    'Set-Experimental144DisplayMode',
+    'Write-IntelStartupBackupAtomically',
+    'Set-IntelStartupTrustedIdentity',
+    'IdentityVerifiedAt',
+    'REJECTED_30_144_PROFILE_RESTORE_REQUIRED',
     'WindowsDisplayMode',
     'FileSha256',
     'Assert-ProfileTransitionAllowed',
     'managed-mode.json',
     "'FactoryReset'",
+    'Set-Experimental144DisplayMode',
     'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
 )

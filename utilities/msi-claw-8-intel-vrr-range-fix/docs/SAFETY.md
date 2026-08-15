@@ -26,23 +26,21 @@ Before writing, the tool requires the complete physical EDID SHA-256 and both
 block checksums. After writing, it requires exact SHA-256 values for both
 generated blocks. An existing unknown override is never replaced or deleted.
 
-The 48-144 Hz mode additionally inserts one exact DisplayID 2.0 Type VII
-1920x1200 timing while preserving the native 60 and 120 Hz detailed timings.
-The implementation accepts only pinned complete/block hashes for 30-120 and
-48-144. The rejected 30-144 signature remains recognized internally only so an
-exact matching leftover can be reported and safely removed; no public action
-installs it.
-
-The startup task selects a Windows fixed refresh only for the exact 48-144
-override. It first requires an enumerated 1920x1200 at 144 Hz mode and verifies
-the current mode after selection. It never creates a timing at startup and does
-not change the fixed refresh for official 48-120 or experimental 30-120.
+Version 1.0.3 can install the pinned 30-120 transformation or the separate
+pinned 48-144 transformation. The latter inserts one validated 1920x1200 at
+144 Hz timing and the startup task selects it only when the exact managed
+`CLAWLAB_48_144` state is present. Fixed 144 Hz was stable on tested panels,
+but this does not guarantee operational VRR at 144 Hz. The visibly flickering
+30-144 signature remains recovery-only and no public action installs it.
 
 Intel Graphics Software is Authenticode-validated during installation. Its
-verified executable path, signer thumbprint and SHA-256 are saved. The hidden
-startup process avoids PowerShell module auto-loading and requires the current
-executable SHA-256 to match the saved value before launch. A changed Intel
-executable is refused until the installer is rerun and validates the update.
+verified executable path, signer thumbprint, file version and SHA-256 are
+saved. If an Intel driver package later replaces the executable, version 1.0.3
+detects the identity change and renews the saved values only after a fresh
+Windows Authenticode validation confirms a valid Intel signature at the exact
+canonical path with the original `-s` argument. The hash is read again before
+the atomic trust-record update and again before launch. An unsigned, invalid,
+relocated or concurrently changing file is refused.
 
 Administrative elevation is requested for installation so the tool can back up
 and remove Intel Graphics Software's machine-wide automatic-startup entry.
@@ -92,11 +90,13 @@ installer can proceed only from a clean state or when reinstalling that exact
 same mode. Every cross-profile transition is refused with instructions to run
 `RESTORE_ORIGINAL_VRR.bat` first.
 
-Exact legacy experimental overrides can be adopted only by their matching
-installer. Legacy managed artifacts without a trustworthy mode record are not
-guessed and require restore. An inconsistent record/override pair also requires
-restore. The startup task itself refuses to operate unless its mode record and
-current override agree.
+The exact legacy 30-120 or 48-144 override can be adopted only by its matching
+installer. The historical 30-144 override is recovery-only and always requires
+restore.
+Legacy managed artifacts without a trustworthy mode record are not guessed and
+require restore. An inconsistent record/override pair also requires restore.
+The startup task itself refuses to operate unless its mode record and current
+override agree, and explicitly refuses the historical 30-144 mode.
 
 ## Factory recovery
 

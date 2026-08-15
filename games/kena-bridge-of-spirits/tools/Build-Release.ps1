@@ -86,6 +86,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
 try {
     $entries = @($archive.Entries)
+    $entryNames = @($entries | ForEach-Object { $_.FullName.Replace('\', '/') })
     $requiredEntries = @(
         "Kena/Content/Paks/~Mods/$pakName",
         'README.txt',
@@ -94,7 +95,7 @@ try {
         'FILES_SHA256.txt'
     )
     foreach ($requiredEntry in $requiredEntries) {
-        if ($requiredEntry -notin $entries.FullName) {
+        if ($requiredEntry -notin $entryNames) {
             throw "Required ZIP entry missing: $requiredEntry"
         }
     }

@@ -1,4 +1,4 @@
-MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 1.0.2
+MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 1.0.3
 ====================================================
 
 SUPPORTED PANEL
@@ -24,6 +24,11 @@ a readable Windows Script Host launcher starts the verified Intel application,
 allows display initialization to settle, then applies and verifies 48-120 Hz
 through a fully hidden PowerShell process.
 
+Version 1.0.3 survives Intel Graphics Software updates. If the executable
+changes, the task renews its saved hash only after Windows verifies that the
+canonical file still has a valid Intel Authenticode signature. A changed hash
+alone is never accepted.
+
 EXPERIMENTAL MODE - OPTIONAL
 ----------------------------
 Run INSTALL_EXPERIMENTAL_30_120_VRR.bat and accept the administrator prompt.
@@ -33,22 +38,16 @@ purpose to a CRU configuration. It is outside MSI's official 48-120 Hz
 specification and can cause flicker or display instability. The physical panel
 firmware is not modified.
 
-EXPERIMENTAL 144 HZ MODE - OPTIONAL PANEL OVERCLOCK
-----------------------------------------------------
-Run INSTALL_EXPERIMENTAL_48_144_VRR.bat and accept the administrator prompt.
+EXPERIMENTAL 48-144 HZ OVERCLOCK - VRR NOT GUARANTEED
+-----------------------------------------------------
+Run INSTALL_EXPERIMENTAL_48_144_VRR.bat only if you accept an out-of-spec
+panel overclock. Fixed 1920x1200 at 144 Hz remained stable on tested panels and
+Intel reported EXCELLENT / 48-144 Hz, but follow-up game testing did not prove
+that VRR works correctly at 144 Hz or throughout that range. This mode may
+behave as a stable fixed 144 Hz mode; VRR is explicitly not guaranteed.
 
-This preserves the 48 Hz minimum and adds a 1920x1200 144 Hz DisplayID timing.
-The reference panel was stable after transient stutter and line artifacts while
-the Intel display device reloaded, and the driver verified EXCELLENT / 48-144
-Hz. Persistent flicker, lines or blanking means restore immediately.
-
-Windows can fall back to the fixed 120 Hz mode after a restart. The hidden
-sign-in task now selects 1920x1200 at 144 Hz for this profile, waits for the
-display transition, and verifies EXCELLENT / 48-144 Hz. No manual Windows
-Display Settings step is required.
-
-The combined 30-144 Hz profile is not distributed because real-hardware testing
-produced visible flicker even though the Intel API accepted the range.
+The combined 30-144 profile has no installer because it visibly flickered.
+Its historical signatures remain recognized only for safe recovery.
 
 UNSUPPORTED CLAW / A1M DIAGNOSTICS
 ----------------------------------
@@ -70,10 +69,14 @@ the EDID override.
 Fully exit and restart the Intel Graphics Software tray process to refresh its
 displayed current range. Restarting the UI does not control the driver profile.
 
+If an Intel driver installer recreates the original Intel startup entry and
+CHECK_STATUS reports ORIGINAL_STILL_PRESENT, rerun the installer for the same
+managed mode once. Same-mode repair is allowed and restores ordered startup.
+
 MANDATORY PROFILE SWITCH RULE
 -----------------------------
 Run RESTORE_ORIGINAL_VRR.bat successfully and restart before installing a
-different mode. Version 1.0.2 records the installed mode and refuses every
+different mode. Version 1.0.2 and later record the installed mode and refuse every
 cross-profile installation. Reinstalling the same mode is allowed.
 
 RESTORE

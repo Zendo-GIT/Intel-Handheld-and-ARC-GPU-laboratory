@@ -84,10 +84,10 @@ Both 128-byte blocks retain a checksum sum of zero modulo 256. The script writes
 them as separate Windows EDID override blocks, matching Microsoft's documented
 monitor-driver mechanism. The physical EEPROM remains unchanged.
 
-## Experimental 144 Hz timing and hardware result
+## Experimental 48-144 Hz overclock
 
-The 48-144 override leaves the 48 Hz floor unchanged, raises both pinned range
-maxima to 144, and inserts one DisplayID 2.0 Type VII timing:
+The 48-144 override leaves the 48 Hz floor unchanged, raises both
+pinned range maxima to 144, and inserted one DisplayID 2.0 Type VII timing:
 
 ```text
 Active:       1920x1200
@@ -97,35 +97,46 @@ Pixel clock:  378.593 MHz
 EDID SHA-256: 4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E
 ```
 
-The native 60 and 120 Hz detailed timings remain present. During guarded
+The native 60 and 120 Hz detailed timings remained present. During guarded
 real-hardware testing, applying the mode caused transient stutter and line
-artifacts while the Intel device reloaded. Once active, 144 Hz remained stable,
-Windows exposed 1920x1200 at 144 Hz, and the Intel API read back
-`EXCELLENT / 48-144 Hz`. Automatic rollback restored the physical 48-120 EDID
-and `EXCELLENT / 48-120 Hz` profile.
+artifacts while the Intel device reloaded. Once active, the fixed 144 Hz image
+remained stable, Windows exposed 1920x1200 at 144 Hz, and the Intel API read
+back `EXCELLENT / 48-144 Hz`.
 
 A separate guarded 30-144 test was also accepted by the Intel API as
 `EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. That
 combination failed visual validation and has no public installer.
 
-## Fixed-refresh persistence for 48-144 Hz
+Follow-up game testing did not reliably validate functioning VRR behavior at
+144 Hz. A stable fixed overclock and an API range readback do not prove that
+variable refresh is operating. Version 1.0.3 therefore keeps 48-144 only as an
+explicit experimental panel-refresh overclock: fixed 144 Hz was stable on
+tested panels, but VRR at 144 Hz or throughout the advertised range is not
+guaranteed.
 
-Community testing found that the EDID override survived a Windows restart but
-Windows selected the fixed 120 Hz mode again. Because Intel caps the reported
-active Arc Sync maximum to the current fixed refresh, applying `EXCELLENT`
-before selecting 144 Hz produced only `48-120 Hz`.
+For the exact managed 48-144 state, startup first selects the enumerated
+1920x1200 at 144 Hz Windows mode, waits for the display path to settle, launches
+the verified Intel Graphics Software command, then applies and verifies Intel
+`EXCELLENT / 48-144 Hz`. The status result confirms the declared EDID, fixed
+mode and API range only; it deliberately makes no claim about per-game VRR.
 
-The ordered sign-in routine now performs the validated sequence below only when
-the exact 48-144 override is present:
+The 30-144 complete and per-block hashes remain in the source only so normal,
+emergency and factory recovery can identify and remove an existing ClawLab
+override without touching unknown third-party data.
 
-1. require the enumerated 1920x1200 at 144 Hz mode;
-2. select 144 Hz with `ChangeDisplaySettingsEx` and verify the current mode;
-3. allow the Intel display transition and Graphics Software startup to settle;
-4. apply `EXCELLENT`, retry transient resets and verify `48-144 Hz`;
-5. record both the Arc Sync range and fixed Windows display mode.
+## Signed Intel Graphics Software update detection
 
-The installed task passed a controlled 144-to-120-to-144 test with final direct
-readback `EXCELLENT / 48-144 Hz` and `1920x1200 @ 144 Hz`.
+The ordered startup path pins the exact Intel Graphics Software identity after
+validating its canonical path, `-s` argument and Windows Authenticode signature.
+Graphics-driver updates can legitimately replace that executable. Version
+1.0.3 compares the current SHA-256 and saved schema at every managed startup.
+
+When they differ, the task performs a fresh Authenticode validation, requires a
+valid signer whose certificate subject identifies Intel Corporation, recomputes
+the file hash to detect a concurrent replacement, and atomically stores schema
+2 identity metadata containing the signer thumbprint, file version and SHA-256.
+The identity is checked again before launch. Failure at any stage prevents the
+application launch and VRR reapply rather than trusting a hash change alone.
 
 ## Managed-mode transition model
 

@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '1.0.2'
+$fixVersion = '1.0.3'
 $targetManufacturer = 'CSW'
 $targetProductCode = '0801'
 $targetPanelName = 'PN8007QB1-2'
@@ -30,6 +30,7 @@ $startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
 $intelStartupBackupPath = Join-Path $stateRoot 'intel-graphics-startup.json'
 $intelStartupRegistryPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
 $intelStartupValueName = 'Intel' + [char]0x00AE + ' Graphics Software'
+$script:intelStartupIdentityRenewed = $false
 $validatedPhysicalEdidSha256 = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
 $validated30_120EdidSha256 = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
 $validated30_120Block0Sha256 = '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698'
@@ -503,6 +504,13 @@ function Get-EffectiveManagedMode {
         }
     }
 
+    if ($OverrideState.State -eq 'CLAWLAB_30_144') {
+        return [pscustomobject]@{
+            Mode = [string]$OverrideState.State
+            State = 'REJECTED_RESTORE_REQUIRED'
+            Source = 'EDID_OVERRIDE'
+        }
+    }
     if ($OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144')) {
         return [pscustomobject]@{
             Mode = [string]$OverrideState.State
@@ -714,7 +722,81 @@ function Resolve-IntelGraphicsStartupCommand {
         Arguments = $match.Groups['Arguments'].Value
         SignerThumbprint = $signerThumbprint
         FileSha256 = Get-FileSha256 -LiteralPath $executable
+        FileVersion = [string](Get-Item -LiteralPath $executable).VersionInfo.FileVersion
     }
+}
+
+function Write-IntelStartupBackupAtomically {
+    param([Parameter(Mandatory)][object]$Backup)
+
+    [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    $temporaryPath = Join-Path $stateRoot ('.intel-graphics-startup-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    $replacementBackupPath = Join-Path $stateRoot ('.intel-graphics-startup-previous-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    try {
+        [IO.File]::WriteAllText(
+            $temporaryPath,
+            ($Backup | ConvertTo-Json),
+            [Text.UTF8Encoding]::new($false)
+        )
+        if (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf) {
+            [IO.File]::Replace($temporaryPath, $intelStartupBackupPath, $replacementBackupPath)
+            [IO.File]::Delete($replacementBackupPath)
+        }
+        else {
+            [IO.File]::Move($temporaryPath, $intelStartupBackupPath)
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            [IO.File]::Delete($temporaryPath)
+        }
+        if (Test-Path -LiteralPath $replacementBackupPath -PathType Leaf) {
+            [IO.File]::Delete($replacementBackupPath)
+        }
+    }
+}
+
+function Set-IntelStartupTrustedIdentity {
+    param(
+        [AllowNull()][object]$ExistingBackup,
+        [Parameter(Mandatory)][object]$Resolved
+    )
+
+    if ([string]::IsNullOrWhiteSpace([string]$Resolved.SignerThumbprint) -or
+        [string]::IsNullOrWhiteSpace([string]$Resolved.FileSha256) -or
+        [string]::IsNullOrWhiteSpace([string]$Resolved.FileVersion)) {
+        throw 'An incomplete Intel Graphics Software identity cannot be trusted.'
+    }
+
+    $savedAt = (Get-Date).ToString('o')
+    if ($null -ne $ExistingBackup -and 'SavedAt' -in $ExistingBackup.PSObject.Properties.Name) {
+        $savedAt = [string]$ExistingBackup.SavedAt
+    }
+    $record = [ordered]@{
+        SchemaVersion = 2
+        FixVersion = $fixVersion
+        SavedAt = $savedAt
+        IdentityVerifiedAt = (Get-Date).ToString('o')
+        RegistryPath = $intelStartupRegistryPath
+        ValueName = $intelStartupValueName
+        Command = $Resolved.Command
+        Executable = $Resolved.Executable
+        Arguments = $Resolved.Arguments
+        SignerThumbprint = $Resolved.SignerThumbprint
+        FileSha256 = $Resolved.FileSha256
+        FileVersion = $Resolved.FileVersion
+    }
+    Write-IntelStartupBackupAtomically -Backup $record
+
+    $verified = [IO.File]::ReadAllText($intelStartupBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ([int]$verified.SchemaVersion -ne 2 -or
+        [string]$verified.Command -ne [string]$Resolved.Command -or
+        [string]$verified.SignerThumbprint -ne [string]$Resolved.SignerThumbprint -or
+        [string]$verified.FileSha256 -ne [string]$Resolved.FileSha256 -or
+        [string]$verified.FileVersion -ne [string]$Resolved.FileVersion) {
+        throw 'The verified Intel Graphics Software identity could not be saved safely.'
+    }
+    return $verified
 }
 
 function Get-IntelStartupBackup {
@@ -731,22 +813,49 @@ function Get-IntelStartupBackup {
         [string]$backup.ValueName -ne $intelStartupValueName) {
         throw 'The saved Intel startup registry target is invalid.'
     }
+    if ('SchemaVersion' -in $backup.PSObject.Properties.Name -and
+        [int]$backup.SchemaVersion -notin @(1, 2)) {
+        throw 'The saved Intel startup entry uses an unsupported schema.'
+    }
+
     $startupMode = $Action -eq 'ApplyStartup'
     $resolved = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command) -SkipAuthenticode:$startupMode
     if ($resolved.Executable -ne [string]$backup.Executable -or
         $resolved.Arguments -ne [string]$backup.Arguments) {
         throw 'The saved Intel startup command no longer passes verification.'
     }
-    if ($startupMode) {
-        if ('FileSha256' -notin $backup.PSObject.Properties.Name) {
-            throw 'The Intel startup backup needs an integrity upgrade. Run the selected installer once, then retry.'
+
+    $hasPinnedIdentity = (
+        'FileSha256' -in $backup.PSObject.Properties.Name -and
+        'FileVersion' -in $backup.PSObject.Properties.Name -and
+        'SchemaVersion' -in $backup.PSObject.Properties.Name -and
+        [int]$backup.SchemaVersion -eq 2
+    )
+    $hashChanged = -not $hasPinnedIdentity -or
+        $resolved.FileSha256 -ne [string]$backup.FileSha256
+    $signerChanged = -not $startupMode -and
+        $resolved.SignerThumbprint -ne [string]$backup.SignerThumbprint
+
+    if ($hashChanged -or $signerChanged) {
+        # A graphics-driver update can replace IntelGraphicsSoftware.exe. Trust
+        # is renewed only after a fresh Authenticode check of the canonical
+        # Intel path; a changed hash by itself is never accepted.
+        $verifiedUpdate = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
+        if ($verifiedUpdate.Executable -ne [string]$backup.Executable -or
+            $verifiedUpdate.Arguments -ne [string]$backup.Arguments) {
+            throw 'The updated Intel Graphics Software command no longer matches the saved command.'
         }
-        if ($resolved.FileSha256 -ne [string]$backup.FileSha256) {
-            throw 'Intel Graphics Software changed after installation. Rerun the selected installer before startup reapply.'
+        $stableHash = Get-FileSha256 -LiteralPath $verifiedUpdate.Executable
+        if ($stableHash -ne $verifiedUpdate.FileSha256) {
+            throw 'Intel Graphics Software changed while its signed update was being verified. Startup reapply was cancelled.'
         }
+        $backup = Set-IntelStartupTrustedIdentity -ExistingBackup $backup -Resolved $verifiedUpdate
+        $script:intelStartupIdentityRenewed = $true
     }
-    elseif ($resolved.SignerThumbprint -ne [string]$backup.SignerThumbprint) {
-        throw 'The saved Intel startup signer no longer matches the verified executable.'
+
+    $final = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command) -SkipAuthenticode
+    if ($final.FileSha256 -ne [string]$backup.FileSha256) {
+        throw 'Intel Graphics Software no longer matches the trusted identity after verification.'
     }
     return $backup
 }
@@ -797,38 +906,11 @@ function Set-ManagedIntelStartupOrder {
         }
         $resolved = Resolve-IntelGraphicsStartupCommand -Command $current
         [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
-        $backupData = [ordered]@{
-            SchemaVersion = 1
-            FixVersion = $fixVersion
-            SavedAt = (Get-Date).ToString('o')
-            RegistryPath = $intelStartupRegistryPath
-            ValueName = $intelStartupValueName
-            Command = $resolved.Command
-            Executable = $resolved.Executable
-            Arguments = $resolved.Arguments
-            SignerThumbprint = $resolved.SignerThumbprint
-            FileSha256 = $resolved.FileSha256
-        }
-        [IO.File]::WriteAllText(
-            $intelStartupBackupPath,
-            ($backupData | ConvertTo-Json),
-            [Text.UTF8Encoding]::new($false)
-        )
+        [void](Set-IntelStartupTrustedIdentity -ExistingBackup $null -Resolved $resolved)
         $backup = Get-IntelStartupBackup
     }
     elseif (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
         throw 'An unknown Intel Graphics Software startup entry is present. It was not modified.'
-    }
-
-    if ('FileSha256' -notin $backup.PSObject.Properties.Name) {
-        $resolvedBackup = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
-        $backup | Add-Member -NotePropertyName FileSha256 -NotePropertyValue $resolvedBackup.FileSha256
-        [IO.File]::WriteAllText(
-            $intelStartupBackupPath,
-            ($backup | ConvertTo-Json),
-            [Text.UTF8Encoding]::new($false)
-        )
-        $backup = Get-IntelStartupBackup
     }
 
     if (-not [string]::IsNullOrEmpty($current)) {
@@ -907,6 +989,10 @@ function Start-ManagedIntelGraphicsSoftware {
         return
     }
     $resolved = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
+    if ($resolved.FileSha256 -ne [string]$backup.FileSha256 -or
+        $resolved.SignerThumbprint -ne [string]$backup.SignerThumbprint) {
+        throw 'Intel Graphics Software changed between trust verification and launch.'
+    }
     Start-Process -FilePath $resolved.Executable -ArgumentList $resolved.Arguments -WindowStyle Hidden
 }
 
@@ -1524,6 +1610,10 @@ function Install-ExperimentalMode {
         [Parameter(Mandatory)][string]$DesiredState
     )
 
+    if ($DesiredState -notin @('CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+        throw "Experimental profile $DesiredState is recovery-only and cannot be installed by version $fixVersion."
+    }
+
     $desired = @($ExperimentalEdids | Where-Object { $_.State -eq $DesiredState })
     if ($desired.Count -ne 1) {
         throw "Internal experimental profile lookup failed: $DesiredState"
@@ -1602,6 +1692,7 @@ function Install-ExperimentalMode {
         Write-Host "Experimental $($variant.MinimumHz)-$($variant.MaximumHz) Hz EDID override is installed and verified." -ForegroundColor Yellow
         if ([Math]::Abs($variant.MaximumHz - $experimentalMaximumHz) -le 0.1) {
             Write-Host 'A short burst of stutter or line artifacts can occur while the Intel display link loads the 144 Hz timing.' -ForegroundColor Yellow
+            Write-Warning 'Fixed 144 Hz operation was stable on tested panels, but variable refresh behavior at 144 Hz is not guaranteed.'
         }
         Write-Host 'Restart the PC to make Windows and the Intel driver reload the display EDID.' -ForegroundColor Yellow
         $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $official -OverrideState $writtenState
@@ -1652,6 +1743,7 @@ function Get-StatusObject {
         [Math]::Abs($Snapshot.ActiveMaximumHz - $targetMaximumHz) -le 0.1
     )
     $knownExperimentalOverride = $OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')
+    $rejected30_144Override = $OverrideState.State -eq 'CLAWLAB_30_144'
     $experimentalRangeActive = (
         $knownExperimentalOverride -and
         $Snapshot.ProfileId -eq $profileExcellent -and
@@ -1659,7 +1751,10 @@ function Get-StatusObject {
         [Math]::Abs($Snapshot.ActiveMaximumHz - [float]$OverrideState.MaximumHz) -le 0.1
     )
 
-    $state = if ($experimentalRangeActive) {
+    $state = if ($rejected30_144Override) {
+        'REJECTED_30_144_PROFILE_RESTORE_REQUIRED'
+    }
+    elseif ($experimentalRangeActive) {
         'EXPERIMENTAL_{0}_{1}_ACTIVE' -f ([int]$OverrideState.MinimumHz), ([int]$OverrideState.MaximumHz)
     }
     elseif ($knownExperimentalOverride) {
@@ -1698,7 +1793,8 @@ function Get-StatusObject {
         StartupReapply = Get-StartupReapplyState
         IntelGraphicsStartup = $intelStartupState
         EdidOverride = $OverrideState.State
-        RestartRequired = $knownExperimentalOverride -and -not $experimentalRangeActive
+        RecoveryRequired = $rejected30_144Override
+        RestartRequired = -not $rejected30_144Override -and $knownExperimentalOverride -and -not $experimentalRangeActive
         RegistryModified = (
             $knownExperimentalOverride -or
             $intelStartupState -eq 'CLAWLAB_ORDERED'
@@ -1758,6 +1854,9 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Startup reapply was cancelled.'
             }
+            if ($overrideState.State -eq 'CLAWLAB_30_144') {
+                throw 'The rejected 30-144 Hz profile can flicker and is recovery-only. Run RESTORE_ORIGINAL_VRR.bat to return to the native 48-120 Hz panel state.'
+            }
             $expectedManagedMode = if ($overrideState.State -eq 'NONE') { 'OFFICIAL_48_120' } else { [string]$overrideState.State }
             $managedMode = Get-EffectiveManagedMode -OverrideState $overrideState
             if ($managedMode.Mode -ne $expectedManagedMode -or $managedMode.State -ne 'CONSISTENT') {
@@ -1774,7 +1873,7 @@ try {
             if ($overrideState.State -eq 'CLAWLAB_48_144') {
                 # Intel caps the active Arc Sync maximum to the current fixed
                 # Windows refresh. Select 144 Hz before applying EXCELLENT so
-                # the API can expose and verify the full 48-144 Hz range.
+                # the API can expose and verify the declared 48-144 Hz range.
                 $displayMode = Set-Experimental144DisplayMode
                 Start-Sleep -Seconds 3
             }
@@ -1807,7 +1906,8 @@ try {
             if ($null -ne $displayMode) {
                 $displaySuffix = ", $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz"
             }
-            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix)
+            $identitySuffix = if ($script:intelStartupIdentityRenewed) { ', signed Intel Graphics Software update trusted' } else { '' }
+            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix + $identitySuffix)
             exit 0
         }
 

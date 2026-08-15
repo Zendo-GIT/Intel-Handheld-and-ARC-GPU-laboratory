@@ -20,6 +20,7 @@ Use game-scoped tags so versions can evolve independently:
 - `detroit-v1.0.0`
 - `claw8-vrr-v1.0.1`
 - `claw8-vrr-v1.0.2`
+- `claw8-vrr-v1.0.3`
 
 Attach only the matching ZIP and checksum from `dist`. Do not attach the entire repository, source captures, backups, or publication workspace.
 
@@ -35,6 +36,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `detroit-v1.0.0` | `Detroit Intel Arc Stability Fix 1.0.0` | `Detroit-Intel-Arc-Stability-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v1.0.1` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.1` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.1.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v1.0.2` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.2` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.2.zip` and its `.sha256.txt` file |
+| `claw8-vrr-v1.0.3` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.3` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.3.zip` and its `.sha256.txt` file |
 
 For each release:
 

@@ -66,15 +66,22 @@ EDID, so it is deliberately excluded.
 ## Known limits
 
 - Intel Graphics Software can show stale or profile-derived range information.
-- Driver reinstallations can reset the Arc Sync profile; rerun official install
-  and verify with `CHECK_STATUS.bat`.
+- Driver reinstallations can reset the Arc Sync profile. Version 1.0.3 detects
+  a replaced Intel Graphics Software executable, accepts it only after fresh
+  Intel Authenticode validation, and then reapplies the managed profile. Verify
+  the result with `CHECK_STATUS.bat` after every driver update.
+- If the driver package recreates Intel Graphics Software's machine Run entry,
+  status reports `ORIGINAL_STILL_PRESENT`; rerun the same-mode installer once
+  to restore deterministic startup ordering.
 - Experimental mode requires a restart before its EDID is active.
 - Experimental 30 Hz operation is outside MSI's stated 48-120 Hz range and may
   flicker or fail on individual panels even with the same model identifier.
-- Experimental 48-144 Hz is a panel overclock. It was stable on the reference
-  unit after transient reload artifacts but is not guaranteed on every unit.
-- Combined 30-144 Hz is intentionally unavailable because the reference panel
-  visibly flickered while that range was active.
+- The experimental 48-144 profile produced a stable fixed 144 Hz mode on tested
+  panels, but follow-up game testing did not reliably validate VRR behavior at
+  144 Hz. It remains available only as an out-of-spec panel overclock, with VRR
+  explicitly not guaranteed.
+- Combined 30-144 Hz remains unavailable because the reference panel visibly
+  flickered while that range was active.
 - The tool does not prove that every game presents frames through a VRR-capable
   swap chain.
 - The factory reset is universal only across ClawLab VRR modes on the exact

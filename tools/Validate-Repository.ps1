@@ -117,7 +117,7 @@ foreach ($value in $requiredDetroitValues) {
 
 $vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 $requiredVrrValues = @(
-    "`$fixVersion = '1.0.2'",
+    "`$fixVersion = '1.0.3'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -129,12 +129,16 @@ $requiredVrrValues = @(
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
-    'Set-Experimental144DisplayMode',
+    'Write-IntelStartupBackupAtomically',
+    'Set-IntelStartupTrustedIdentity',
+    'IdentityVerifiedAt',
+    'REJECTED_30_144_PROFILE_RESTORE_REQUIRED',
     'WindowsDisplayMode',
     'FileSha256',
     'Assert-ProfileTransitionAllowed',
     'managed-mode.json',
     "'FactoryReset'",
+    'Set-Experimental144DisplayMode',
     'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
 )

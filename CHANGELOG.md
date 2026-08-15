@@ -2,6 +2,12 @@
 
 ## 2026-08-15
 
+- Prepared MSI Claw VRR Range Fix 1.0.3 with signed Intel Graphics Software
+  update detection and automatic trusted-identity renewal after driver updates.
+- Retained the 48-144 Hz installer as an explicitly experimental fixed-refresh
+  overclock after stable 144 Hz testing, while documenting that working VRR at
+  144 Hz is not guaranteed. The flickering 30-144 profile remains recovery-only.
+
 - Finalized MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.1 after full-restart
   validation showed Intel restoring `RECOMMENDED / 60-120 Hz` during startup.
   The windowless current-user task now applies and verifies

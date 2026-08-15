@@ -120,13 +120,14 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
 try {
     $entries = @($zip.Entries)
+    $entryNames = @($entries | ForEach-Object { $_.FullName.Replace('\', '/') })
     if ($entries.Count -ne 8) {
         throw "Unexpected release entry count: $($entries.Count)"
     }
     if (@($entries | Where-Object { $_.FullName -match '\.(exe|dll|bak|etl|dmp|zip|7z|rar)$' }).Count -gt 0) {
         throw 'Forbidden file detected inside the release ZIP.'
     }
-    if (@($entries | Where-Object { $_.FullName -notlike "$packageName/*" }).Count -gt 0) {
+    if (@($entryNames | Where-Object { $_ -notlike "$packageName/*" }).Count -gt 0) {
         throw 'A release entry is outside the expected top-level package folder.'
     }
 }

@@ -3,9 +3,10 @@
 A transparent and reversible utility for the `CSW0801 / PN8007QB1-2` internal
 panel used by compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations.
 
-![Version](https://img.shields.io/badge/release-1.0.2-blue)
+![Version](https://img.shields.io/badge/release-1.0.3-blue)
 ![Official mode](https://img.shields.io/badge/official-48--120_Hz-green)
-![Experimental modes](https://img.shields.io/badge/experimental-30--120_%7C_48--144_Hz-orange)
+![Experimental mode](https://img.shields.io/badge/experimental-30--120_Hz-orange)
+![Experimental overclock](https://img.shields.io/badge/experimental-48--144_Hz-red)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Why this exists
@@ -49,6 +50,12 @@ style `0`. The script waits silently for the display driver, starts the verified
 Intel Graphics Software command, allows display initialization to settle, then
 applies and verifies `EXCELLENT`. No console window is displayed.
 
+Graphics-driver packages can replace `IntelGraphicsSoftware.exe`. Version
+1.0.3 detects that replacement and renews the saved file identity only after a
+fresh Windows Authenticode validation confirms the canonical executable is
+still validly signed by Intel. A changed hash alone is never trusted. Invalid,
+relocated or unstable files are refused without launching them.
+
 This mode does not modify the EDID, graphics driver, monitor firmware or any
 game. Its only registry change is the reversible startup-order entry described
 above.
@@ -72,45 +79,43 @@ It is explicitly experimental and must not be represented as MSI-certified.
 
 No CRU file is bundled or required.
 
-### Experimental mode: 48-144 Hz
+### Experimental overclock: 48-144 Hz — VRR not guaranteed
 
-`INSTALL_EXPERIMENTAL_48_144_VRR.bat` preserves the documented 48 Hz minimum
-and adds a 1920x1200 144 Hz DisplayID detailed timing plus a 48-144 Hz maximum.
-It is a panel overclock outside MSI's 120 Hz specification.
+`INSTALL_EXPERIMENTAL_48_144_VRR.bat` adds a validated 1920x1200 at 144 Hz
+timing and advertises a 48-144 Hz range on the exact supported panel. Fixed
+144 Hz remained stable on the tested Claw 8 AI+ and community-tested Claw 8
+EX AI+ units, and Intel's API reported `EXCELLENT / 48-144 Hz`.
 
-On the reference Claw 8, Windows exposed 1920x1200 at 144 Hz and Intel Control
-Library directly verified `EXCELLENT / 48-144 Hz`. The image remained stable
-after a transient burst of stutter and line artifacts while the Intel display
-device reloaded. This does not prove that every unit has identical electrical
-headroom. Persistent flicker, lines or blanking means the profile is unsuitable
-for that unit and must be restored immediately.
+Those results prove that the fixed 144 Hz display mode works on the tested
+panels; they do **not** prove that variable refresh operates correctly in every
+game or throughout the advertised 48-144 Hz range. Follow-up game telemetry did
+not reliably validate VRR at 144 Hz. Treat this option as an experimental panel
+refresh overclock with **VRR not guaranteed**, not as a verified VRR upgrade.
+It is outside MSI's 120 Hz specification and can cause artifacts, instability
+or reduced panel lifetime.
 
-Windows can return to the fixed 120 Hz display mode after a restart even while
-the 48-144 EDID override remains installed. For this profile only, the hidden
-sign-in task verifies that 1920x1200 at 144 Hz is exposed, selects it through
-the Windows display API, waits for the Intel transition to settle, and then
-applies and verifies `EXCELLENT / 48-144 Hz`. No manual visit to Windows Display
-Settings is required after startup.
-
-The combined 30-144 Hz profile is deliberately not distributed. It was
-accepted by the driver as `EXCELLENT / 30-144 Hz` but produced visible panel
-flicker during real-hardware testing.
+The combined 30-144 profile has no installer because it produced visible panel
+flicker. Its exact historical hashes remain recovery-only so the restore,
+emergency and factory paths can remove an old ClawLab override safely.
 
 ## Installation
 
 1. Extract the release ZIP completely.
 2. Close games and display-control applications.
-3. Choose exactly one installer:
+3. If an older 30-144 ClawLab profile is installed, run
+   `RESTORE_ORIGINAL_VRR.bat` first and restart. Do not run an installer yet.
+4. Choose exactly one installer:
    - run `INSTALL_48_120_VRR.bat` for the recommended official mode and accept
      its administrator prompt; or
    - run `INSTALL_EXPERIMENTAL_30_120_VRR.bat` for the optional experimental
      low-range mode and accept its administrator prompt; or
-   - run `INSTALL_EXPERIMENTAL_48_144_VRR.bat` for the optional experimental
-     144 Hz panel-overclock mode and accept its administrator prompt.
-4. Accept the final restart prompt, or restart the PC manually later.
-5. After signing in, wait for Intel Graphics Software to start automatically;
+   - run `INSTALL_EXPERIMENTAL_48_144_VRR.bat` only if you accept a panel
+     overclock whose fixed 144 Hz mode was stable but whose VRR behavior is not
+     guaranteed.
+5. Accept the final restart prompt, or restart the PC manually later.
+6. After signing in, wait for Intel Graphics Software to start automatically;
    the VRR task runs before it.
-6. Run `CHECK_STATUS.bat`.
+7. Run `CHECK_STATUS.bat`.
 
 The experimental installer first establishes the verified official profile,
 then installs the EDID override. If status reports
@@ -120,7 +125,7 @@ an `EXPERIMENTAL_*_PENDING_RESTART` state, restart before evaluating the result.
 
 Never run a different installer over an installed mode. Run
 `RESTORE_ORIGINAL_VRR.bat`, require a successful result, restart when requested,
-and only then install the new mode. Version 1.0.2 enforces this rule: every
+and only then install the new mode. Version 1.0.2 and later enforce this rule: every
 successful installation records its exact managed mode, and every installer
 refuses a different mode. Reinstalling the same mode remains allowed for repair
 or package updates.
@@ -148,21 +153,30 @@ OFFICIAL_48_120_ACTIVE
 EXPERIMENTAL_OVERRIDE_PENDING_RESTART
 EXPERIMENTAL_30_120_ACTIVE
 EXPERIMENTAL_48_144_ACTIVE
+REJECTED_30_144_PROFILE_RESTORE_REQUIRED
 DRIVER_PROFILE_CONSTRAINED
 UNKNOWN_EDID_OVERRIDE
 ```
+
+`EXPERIMENTAL_48_144_ACTIVE` means that the EDID, fixed Windows mode and Intel
+API readback match the declared range. It is not proof of active VRR behavior
+inside a game. For this mode, `WindowsDisplayMode` must also report
+`1920x1200 @ 144 Hz`.
 
 `StartupReapply` must show `Ready` or `Running` after installation. If it shows
 `NOT_INSTALLED`, the driver can return to 60-120 Hz on the next restart.
 `IntelGraphicsStartup` must show `CLAWLAB_ORDERED`; any unknown startup entry is
 refused rather than overwritten.
 
+An Intel driver installer may recreate Intel Graphics Software's original Run
+entry. The VRR profile can still be verified, but if status shows
+`ORIGINAL_STILL_PRESENT`, rerun the installer for the same managed mode once;
+it safely removes the newly recreated exact Intel entry and restores ordered
+startup without requiring a profile switch.
+
 `ManagedMode` identifies the installed mode and `ProfileSwitchGuard` must show
 `CONSISTENT`. Any `RESTORE_REQUIRED`, `INCONSISTENT` or `UNSUPPORTED` state means
 that no installer should be run; use restore or factory recovery.
-
-For the experimental 48-144 profile, `WindowsDisplayMode` must additionally
-show `1920x1200 @ 144 Hz`.
 
 ## Restore and emergency recovery
 
@@ -247,7 +261,7 @@ available when reporting compatibility.
 ## Building the release
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 1.0.2
+.\tools\Build-Release.ps1 -Version 1.0.3
 ```
 
 The ZIP contains only readable scripts and documentation. It contains no Intel
