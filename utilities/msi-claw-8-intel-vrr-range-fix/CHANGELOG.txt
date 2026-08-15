@@ -1,6 +1,21 @@
 MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 ========================================
 
+2.1.1 - 2026-08-16
+------------------
+- Starts the Cursor Refresh Helper before the slow Intel stabilization stage.
+- Extends the mouse-activity tail from 500 ms to 1.5 seconds.
+- Enters tool-independent deep idle during controller/game use: the helper
+  stops animation, releases its 1 ms timer request, trims its own working set,
+  and wakes on the next visible raw-mouse packet.
+- Adds HEALTHY / INITIALIZING / ATTENTION_REQUIRED status and Intel driver-change
+  verification.
+- Reports VERSION_MISMATCH when CHECK_STATUS 2.1.1 finds an older installed helper.
+- Adds an interactive historical-CRU preflight to both installers.
+- Reorganizes the ZIP into root install/status files, RECOVERY, EMERGENCY,
+  DIAGNOSTICS, scripts and SOURCE.
+- Keeps the 2.0.3 Intel LFC correction unchanged.
+
 2.1.0 - 2026-08-16
 ------------------
 - Adds the event-driven Cursor Refresh Helper validated on the reference Claw.

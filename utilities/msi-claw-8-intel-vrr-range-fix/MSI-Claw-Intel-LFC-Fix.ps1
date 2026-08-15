@@ -131,7 +131,7 @@ if ($Action -in @('Apply', 'ApplyStartup') -and $null -eq $managedProfile) {
     throw "The LFC fix requires one of the four ClawLab-managed profiles; current mode is $managedModeName."
 }
 if ($Action -in @('Apply', 'ApplyStartup') -and $managedModeName -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
-    throw 'The installed 144 Hz profile is retired and cannot receive persistence updates. Run RESTORE_ORIGINAL_VRR.bat.'
+    throw 'The installed 144 Hz profile is retired and cannot receive persistence updates. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
 }
 $expectedMinimumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MinimumHz }
 $expectedMaximumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MaximumHz }
@@ -305,7 +305,7 @@ function Get-LfcBackup {
     if ($Action -in @('Apply', 'ApplyStartup') -and
         [int]$backup.SchemaVersion -eq 3 -and
         [string]$backup.ManagedVrrMode -ne $managedModeName) {
-        throw "The saved LFC state belongs to $($backup.ManagedVrrMode), not $managedModeName. Run RESTORE_ORIGINAL_VRR.bat before switching profiles."
+        throw "The saved LFC state belongs to $($backup.ManagedVrrMode), not $managedModeName. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before switching profiles."
     }
     return $backup
 }

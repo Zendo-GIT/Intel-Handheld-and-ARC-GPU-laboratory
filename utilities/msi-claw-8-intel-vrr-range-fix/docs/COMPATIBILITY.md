@@ -38,7 +38,7 @@ pass while still rejecting a future panel revision whose EDID differs.
 
 The A1M definition is based on its exact 128-byte Tianma EDID, including valid
 base-block checksum and its native 48-120 Hz range descriptor. The generated
-30-120 block is also pinned by full SHA-256. Release 2.1.0 performs the same
+30-120 block is also pinned by full SHA-256. Release 2.1.1 performs the same
 fail-closed Intel API and active-range readback used on the Claw 8 family.
 Because no physical A1M was available during development, A1M driver/LFC and
 panel behavior remain community-validation pending; this is not presented as
@@ -92,20 +92,21 @@ EDID, so it is deliberately excluded.
 ## Known limits
 
 - Intel Graphics Software can show stale or profile-derived range information.
-- Driver reinstallations can reset the Arc Sync profile. Version 2.1.0 retains
+- Driver reinstallations can reset the Arc Sync profile. Version 2.1.1 retains
   a replaced Intel Graphics Software executable, accepts it only after fresh
   Intel Authenticode validation, and then reapplies the managed profile. Verify
-  the result with `CHECK_STATUS.bat` after every driver update.
+  the result with `CHECK_STATUS.bat` after every driver update. The overall
+  report states whether the changed driver is already verified or needs repair.
 - If the driver package recreates Intel Graphics Software's machine Run entry,
   status reports `ORIGINAL_STILL_PRESENT` or `MANAGED_COMMAND_REAPPEARED`;
   rerun the same-mode installer once to restore deterministic startup ordering.
 - Some valid driver installations contain neither Intel Graphics Software nor
-  its machine Run entry. Version 2.1.0 records that as an intentional original
+  its machine Run entry. Version 2.1.1 records that as an intentional original
   state and applies VRR without requiring or launching the optional app.
 - A custom range requires a restart before its EDID is active.
 - ClawLab 30 Hz operation is outside MSI's stated 48-120 Hz range and may
   flicker or fail on individual panels even with the same model identifier.
-- Both 2.1.0 installers include the unchanged 2.0.3 Intel LFC x2 correction. It runs
+- Both 2.1.1 installers include the unchanged 2.0.3 Intel LFC x2 correction. It runs
   only after exact managed-mode, EDID and requested-range verification, and it
   reads both modified flags back from the driver.
 - The observed removal of x2 refresh multiplication is validated on real
@@ -117,13 +118,17 @@ EDID, so it is deliberately excluded.
   or below 48 FPS in a 48 Hz profile, is consequently unavailable.
 - A utility that forces Intel `RECOMMENDED` at sign-in or per game can overwrite
   the managed state. Use a configuration that leaves VRR settings untouched.
-- Version 2.1.0 does not expose a 144 Hz profile. Older exact ClawLab 144 Hz
+- Version 2.1.1 does not expose a 144 Hz profile. Older exact ClawLab 144 Hz
   states remain recognizable only so normal, factory or emergency recovery can
   return the display to 120 Hz. Unknown third-party data remains untouched.
 - The tool does not prove that every game presents frames through a VRR-capable
   swap chain.
 - The Cursor Refresh Helper is validated for the Windows desktop on the
   reference Claw. It is intentionally suppressed for hidden cursors, remains
-  active in Xbox Full Screen Experience, and is not a game frame-pacing tool.
+  compatible with Xbox Full Screen Experience, and is not a game frame-pacing
+  tool. After 1.5 seconds without usable visible-mouse input it enters deep idle,
+  releases its timer-resolution request and waits for the next mouse packet.
+  This covers controller/game profiles without detecting or depending on the
+  utility that selected them.
 - The factory reset is universal only across ClawLab VRR modes on an exact
   catalogued panel. It is not a generic CRU, monitor-driver or Windows reset.

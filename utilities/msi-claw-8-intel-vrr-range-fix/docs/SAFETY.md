@@ -2,7 +2,7 @@
 
 ## Supported public profiles
 
-Version 2.1.0 installs only corrected 30-120 and official Intel/MSI 48-120.
+Version 2.1.1 installs only corrected 30-120 and official Intel/MSI 48-120.
 Both require one exact catalogued panel identity, pinned EDID state, one active Intel output
 and exact driver range readback before the shared LFC flags can change.
 
@@ -18,8 +18,8 @@ monitor firmware. The 48-120 profile does not modify EDID.
 
 No 144 Hz installer, confirmation task or installation action is included.
 Exact hashes from older releases remain only for detection and recovery.
-Version 2.1.0 refuses to reapply or persist a retired 144 Hz state and directs
-the user to `RESTORE_ORIGINAL_VRR.bat`.
+Version 2.1.1 refuses to reapply or persist a retired 144 Hz state and directs
+the user to `RECOVERY\RESTORE_ORIGINAL_VRR.bat`.
 
 Normal restore first selects a safe 120 Hz Windows mode when a legacy 144 Hz
 override is detected, restores Intel solution flags and profile, removes the
@@ -44,13 +44,19 @@ The separate `ClawLab-Cursor-Refresh-Helper.exe` is a current-user, event-driven
 desktop component. It receives standard Raw Input messages and animates a nearly
 transparent 2x2 WPF/DWM surface at the extreme lower-right corner only while a
 visible mouse cursor moves. It performs no continuous polling; its 8 ms animation
-timer is stopped 500 ms after input ends.
+timer is stopped 1.5 seconds after input ends. At the same transition it releases
+the 1 ms timer-resolution request, trims only its own working set and waits in
+the standard Windows message loop.
 
 The animation is suppressed when the system cursor is hidden and remains active
 inside Windows Xbox Full Screen Experience. The helper neither injects into nor
 hooks, opens, enumerates or reads game processes. It contains no driver interface and does not
 change the LFC flags, VRR profile or EDID. Restore stops the exact installed
 binary, verifies its path, and removes it with its integrity record.
+
+No ClawTweaks, MSI Center M or other profile-manager process is inspected. A
+controller/game profile simply stops producing usable visible-mouse activity,
+which naturally leaves the helper in deep idle until the mouse returns.
 
 ## Third-party overrides
 
@@ -67,7 +73,7 @@ diagnostics or install ClawLab.
 
 ## Profile switching
 
-Run `RESTORE_ORIGINAL_VRR.bat` successfully and restart before selecting the
+Run `RECOVERY\RESTORE_ORIGINAL_VRR.bat` successfully and restart before selecting the
 other supported profile. Same-mode repair remains allowed. Unknown or mixed
 state requires the factory recovery path; unknown third-party data is still
 left untouched.

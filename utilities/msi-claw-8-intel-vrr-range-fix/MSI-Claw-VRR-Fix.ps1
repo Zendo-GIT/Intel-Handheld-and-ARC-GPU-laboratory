@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.1.0'
+$fixVersion = '2.1.1'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
@@ -561,12 +561,12 @@ function Get-ManagedModeRecord {
     $record = [IO.File]::ReadAllText($managedModeStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
     foreach ($property in @('SchemaVersion', 'FixVersion', 'Mode', 'InstalledAt')) {
         if ($property -notin $record.PSObject.Properties.Name) {
-            throw "The managed VRR mode record is invalid: missing $property. Run RESTORE_ORIGINAL_VRR.bat."
+            throw "The managed VRR mode record is invalid: missing $property. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
         }
     }
     if ([int]$record.SchemaVersion -ne 1 -or
         [string]$record.Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
-        throw 'The managed VRR mode record contains an unsupported value. Run RESTORE_ORIGINAL_VRR.bat.'
+        throw 'The managed VRR mode record contains an unsupported value. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
     }
     return $record
 }
@@ -647,7 +647,7 @@ function Assert-ProfileTransitionAllowed {
     if ($sameMode) {
         return $current
     }
-    throw "VRR profile switch refused. Current managed state: $($current.Mode) / $($current.State). Run RESTORE_ORIGINAL_VRR.bat successfully before installing $DesiredMode."
+    throw "VRR profile switch refused. Current managed state: $($current.Mode) / $($current.State). Run RECOVERY\RESTORE_ORIGINAL_VRR.bat successfully before installing $DesiredMode."
 }
 
 function Set-ManagedModeRecord {
@@ -750,6 +750,9 @@ function Get-CursorRefreshHelperState {
             [string]$record.FileName -ne $cursorRefreshHelperName) {
             return 'INVALID_STATE'
         }
+        if ([string]$record.FixVersion -ne $fixVersion) {
+            return 'VERSION_MISMATCH'
+        }
         $actualHash = (Get-FileHash -LiteralPath $installedCursorRefreshHelperPath -Algorithm SHA256).Hash
         if ($actualHash -ne [string]$record.FileSha256) {
             return 'HASH_MISMATCH'
@@ -793,7 +796,7 @@ function Install-CursorRefreshHelper {
         FileSha256 = $sourceHash
         InstalledAt = (Get-Date).ToString('o')
         Activation = 'RAW_MOUSE_INPUT_EVENT_DRIVEN'
-        IdleBehavior = 'NO_ANIMATION_TIMER'
+        IdleBehavior = 'DEEP_IDLE_NO_TIMER_RESOLUTION'
     }
     [IO.File]::WriteAllText(
         $cursorRefreshHelperStatePath,
@@ -1924,7 +1927,7 @@ function Install-CustomEdidMode {
         throw 'An unknown EDID override is installed. Remove it with its original tool before using a ClawLab custom range.'
     }
     if ($OverrideState.State -ne 'NONE' -and $OverrideState.State -ne $DesiredState) {
-        throw "Another ClawLab custom range is installed ($($OverrideState.State)). Run RESTORE_ORIGINAL_VRR.bat before changing modes."
+        throw "Another ClawLab custom range is installed ($($OverrideState.State)). Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before changing modes."
     }
 
     Confirm-AdministratorOrRelaunch
@@ -1932,7 +1935,7 @@ function Install-CustomEdidMode {
 
     if ($OverrideState.State -eq 'NONE') {
         if (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf) {
-            throw 'A stale custom-range state file exists without its EDID override. Run RESTORE_ORIGINAL_VRR.bat before retrying.'
+            throw 'A stale custom-range state file exists without its EDID override. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before retrying.'
         }
         if ([Math]::Abs($Before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
             [Math]::Abs($Before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
@@ -2154,12 +2157,18 @@ try {
         }
         Remove-FileIfPresent -LiteralPath $experimentalStatePath
         Write-Host 'Removed the verified ClawLab custom EDID override.' -ForegroundColor Green
-        Write-Host 'Restart the PC. Then run RESTORE_ORIGINAL_VRR.bat in normal Windows to restore the saved Intel profile.' -ForegroundColor Yellow
+        Write-Host 'Restart the PC. Then run RECOVERY\RESTORE_ORIGINAL_VRR.bat in normal Windows to restore the saved Intel profile.' -ForegroundColor Yellow
         exit 0
     }
 
     $panel = Get-ValidatedPanel
     $gpu = Get-IntelGpu
+    if ($Action -eq 'ApplyStartup') {
+        # The helper only needs the validated panel, installed state and the
+        # current interactive desktop. Start it before the slower Intel driver
+        # stabilization path; the later call remains an idempotent final check.
+        Start-CursorRefreshHelper
+    }
     $registryContext = Get-PanelRegistryContext -Panel $panel
     $experimentalEdids = @(Get-ExperimentalEdidCatalog -PhysicalEdid $registryContext.PhysicalEdid -Definition $registryContext.Definition)
     $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
@@ -2179,11 +2188,11 @@ try {
             }
             $expectedManagedMode = if ($overrideState.State -eq 'NONE') { 'OFFICIAL_48_120' } else { [string]$overrideState.State }
             if ($expectedManagedMode -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
-                throw 'This retired 144 Hz profile is no longer reapplied. Run RESTORE_ORIGINAL_VRR.bat to return to a supported 120 Hz profile.'
+                throw 'This retired 144 Hz profile is no longer reapplied. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat to return to a supported 120 Hz profile.'
             }
             $managedMode = Get-EffectiveManagedMode -OverrideState $overrideState
             if ($managedMode.Mode -ne $expectedManagedMode -or $managedMode.State -ne 'CONSISTENT') {
-                throw "Startup reapply refused an unmanaged or inconsistent VRR state: $($managedMode.Mode) / $($managedMode.State). Run RESTORE_ORIGINAL_VRR.bat."
+                throw "Startup reapply refused an unmanaged or inconsistent VRR state: $($managedMode.Mode) / $($managedMode.State). Run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
             }
             $expectedMinimumHz = [float]$overrideState.MinimumHz
             $expectedMaximumHz = [float]$overrideState.MaximumHz
@@ -2234,7 +2243,7 @@ try {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }
             if ($overrideState.State -ne 'NONE') {
-                throw "ClawLab custom mode $($overrideState.State) is installed. Run RESTORE_ORIGINAL_VRR.bat before installing official mode."
+                throw "ClawLab custom mode $($overrideState.State) is installed. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before installing official mode."
             }
             if ([Math]::Abs($before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
                 [Math]::Abs($before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {

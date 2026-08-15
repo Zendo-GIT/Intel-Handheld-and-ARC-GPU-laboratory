@@ -13,8 +13,8 @@ using System.Windows.Threading;
 [assembly: AssemblyDescription("Event-driven MSI Claw desktop cursor refresh helper")]
 [assembly: AssemblyCompany("ClawLab")]
 [assembly: AssemblyProduct("MSI Claw Intel VRR Range Fix")]
-[assembly: AssemblyVersion("2.1.0.0")]
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyVersion("2.1.1.0")]
+[assembly: AssemblyFileVersion("2.1.1.0")]
 
 namespace ClawLab.CursorRefresh
 {
@@ -73,7 +73,7 @@ namespace ClawLab.CursorRefresh
         private const int RidevInputSink = 0x00000100;
         private const int CursorShowing = 0x00000001;
 
-        private static readonly long TailTicks = Stopwatch.Frequency * 500L / 1000L;
+        private static readonly long TailTicks = Stopwatch.Frequency * 1500L / 1000L;
         private static readonly Brush NearBlackBrush = CreateNearBlackBrush();
 
         private readonly DispatcherTimer animationTimer;
@@ -83,9 +83,14 @@ namespace ClawLab.CursorRefresh
         private long activityUntil;
         private bool toggle;
         private bool timerResolutionActive;
+        private bool deepIdle;
         private long rawInputEvents;
         private long animationTicks;
         private long suppressedInputEvents;
+        private long deepIdleEntries;
+        private long timerResolutionAcquisitions;
+        private long timerResolutionReleases;
+        private long workingSetTrimAttempts;
         private HwndSource source;
 
         internal RefreshSurface(int testSeconds, bool visibleTest, bool continuousTest)
@@ -109,7 +114,7 @@ namespace ClawLab.CursorRefresh
             Topmost = true;
             AllowsTransparency = true;
             Background = Brushes.Black;
-            Opacity = visibleTest ? 1.0 : 0.01;
+            Opacity = continuousTest ? (visibleTest ? 1.0 : 0.01) : 0;
 
             animationTimer = new DispatcherTimer(DispatcherPriority.Render)
             {
@@ -147,11 +152,15 @@ namespace ClawLab.CursorRefresh
             source.AddHook(WindowProcedure);
             RegisterForRawMouseInput(handle);
 
-            timerResolutionActive = NativeMethods.timeBeginPeriod(1) == 0;
             if (continuousTest)
             {
+                ExitDeepIdle();
                 activityUntil = long.MaxValue;
                 animationTimer.Start();
+            }
+            else
+            {
+                EnterDeepIdle();
             }
             if (testTimer != null)
                 testTimer.Start();
@@ -174,14 +183,12 @@ namespace ClawLab.CursorRefresh
                 if (!IsSystemCursorVisible())
                 {
                     suppressedInputEvents++;
-                    animationTimer.Stop();
-                    activityUntil = 0;
-                    Opacity = 0;
+                    EnterDeepIdle();
                     return IntPtr.Zero;
                 }
 
-                Opacity = visibleTest ? 1.0 : 0.01;
                 activityUntil = Stopwatch.GetTimestamp() + TailTicks;
+                ExitDeepIdle();
                 if (!animationTimer.IsEnabled)
                 {
                     animationTimer.Start();
@@ -205,9 +212,7 @@ namespace ClawLab.CursorRefresh
         {
             if (!continuousTest && Stopwatch.GetTimestamp() > activityUntil)
             {
-                animationTimer.Stop();
-                toggle = false;
-                Background = Brushes.Black;
+                EnterDeepIdle();
                 return;
             }
 
@@ -221,6 +226,45 @@ namespace ClawLab.CursorRefresh
                     : Brushes.Black;
         }
 
+        private void ExitDeepIdle()
+        {
+            deepIdle = false;
+            Opacity = visibleTest ? 1.0 : 0.01;
+            if (!timerResolutionActive)
+            {
+                timerResolutionActive = NativeMethods.timeBeginPeriod(1) == 0;
+                if (timerResolutionActive)
+                    timerResolutionAcquisitions++;
+            }
+        }
+
+        private void EnterDeepIdle()
+        {
+            animationTimer.Stop();
+            activityUntil = 0;
+            toggle = false;
+            Background = Brushes.Black;
+            Opacity = 0;
+
+            if (timerResolutionActive)
+            {
+                NativeMethods.timeEndPeriod(1);
+                timerResolutionActive = false;
+                timerResolutionReleases++;
+            }
+
+            if (!deepIdle)
+            {
+                deepIdle = true;
+                deepIdleEntries++;
+                workingSetTrimAttempts++;
+                NativeMethods.SetProcessWorkingSetSize(
+                    NativeMethods.GetCurrentProcess(),
+                    new IntPtr(-1),
+                    new IntPtr(-1));
+            }
+        }
+
         private void OnClosed(object sender, EventArgs e)
         {
             animationTimer.Stop();
@@ -229,7 +273,11 @@ namespace ClawLab.CursorRefresh
             if (source != null)
                 source.RemoveHook(WindowProcedure);
             if (timerResolutionActive)
+            {
                 NativeMethods.timeEndPeriod(1);
+                timerResolutionActive = false;
+                timerResolutionReleases++;
+            }
             if (testTimer != null || visibleTest || continuousTest)
                 WriteTestLog();
         }
@@ -276,7 +324,11 @@ namespace ClawLab.CursorRefresh
                     "ContinuousTest=" + continuousTest + Environment.NewLine +
                     "RawInputEvents=" + rawInputEvents + Environment.NewLine +
                     "AnimationTicks=" + animationTicks + Environment.NewLine +
-                    "SuppressedInputEvents=" + suppressedInputEvents + Environment.NewLine;
+                    "SuppressedInputEvents=" + suppressedInputEvents + Environment.NewLine +
+                    "DeepIdleEntries=" + deepIdleEntries + Environment.NewLine +
+                    "TimerResolutionAcquisitions=" + timerResolutionAcquisitions + Environment.NewLine +
+                    "TimerResolutionReleases=" + timerResolutionReleases + Environment.NewLine +
+                    "WorkingSetTrimAttempts=" + workingSetTrimAttempts + Environment.NewLine;
                 File.WriteAllText(Path.Combine(root, "last-test.txt"), content);
             }
             catch
@@ -328,6 +380,16 @@ namespace ClawLab.CursorRefresh
 
             [DllImport("winmm.dll")]
             internal static extern uint timeEndPeriod(uint period);
+
+            [DllImport("kernel32.dll")]
+            internal static extern IntPtr GetCurrentProcess();
+
+            [DllImport("kernel32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            internal static extern bool SetProcessWorkingSetSize(
+                IntPtr process,
+                IntPtr minimumWorkingSetSize,
+                IntPtr maximumWorkingSetSize);
         }
     }
 }

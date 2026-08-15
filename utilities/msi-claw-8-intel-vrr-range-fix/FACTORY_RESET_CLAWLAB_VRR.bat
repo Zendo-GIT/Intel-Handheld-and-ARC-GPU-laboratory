@@ -2,13 +2,15 @@
 setlocal
 cd /d "%~dp0"
 title MSI Claw Intel ClawLab VRR Factory Reset
+set "CLAWLAB_SCRIPTS=%~dp0"
+if exist "%~dp0..\scripts\MSI-Claw-VRR-Fix.ps1" set "CLAWLAB_SCRIPTS=%~dp0..\scripts\"
 echo This recovery removes every exact ClawLab VRR override and managed task.
 echo It restores the detected panel's native resolution at 120 Hz and Intel RECOMMENDED mode.
 echo Unknown third-party EDID overrides are refused and will not be removed.
 echo.
 choice /C YN /N /M "Continue with the ClawLab VRR factory reset? [Y/N] "
 if errorlevel 2 exit /b 0
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-Intel-LFC-Fix.ps1" -Action Restore
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CLAWLAB_SCRIPTS%MSI-Claw-Intel-LFC-Fix.ps1" -Action Restore
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (
@@ -17,7 +19,7 @@ if not "%CLAWLAB_EXIT%"=="0" (
   pause
   exit /b %CLAWLAB_EXIT%
 )
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-VRR-Fix.ps1" -Action FactoryReset
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CLAWLAB_SCRIPTS%MSI-Claw-VRR-Fix.ps1" -Action FactoryReset
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (

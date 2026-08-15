@@ -1,6 +1,6 @@
 # MSI Claw A1M EDID reference
 
-Release 2.1.0 includes a strict definition for the Intel-powered MSI Claw A1M
+Release 2.1.0 and later include a strict definition for the Intel-powered MSI Claw A1M
 internal display. This document records the immutable inputs used by the
 installer; it is not an instruction to flash panel firmware.
 
@@ -44,7 +44,8 @@ created.
 Generated SHA-256:
 `7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647`.
 
-Run `tools\Test-A1M-Edid.ps1` to rebuild and verify the custom identity without
+Run `SOURCE\Test-A1M-Edid.ps1` from the release ZIP, or
+`tools\Test-A1M-Edid.ps1` from the repository, to rebuild and verify the custom identity without
 accessing a display device.
 
 ## Validation boundary

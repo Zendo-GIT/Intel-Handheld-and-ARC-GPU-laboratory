@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.1.0'
+    [string]$Version = '2.1.1'
 )
 
 Set-StrictMode -Version Latest
@@ -29,7 +29,7 @@ if ($cursorHelperAssembly.Version.ToString() -ne "$Version.0") {
 }
 $cursorHelperSourcePath = Join-Path $projectRoot 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'
 $cursorHelperSourceText = Get-Content -LiteralPath $cursorHelperSourcePath -Raw
-foreach ($value in @('500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices')) {
+foreach ($value in @('1500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices', 'SetProcessWorkingSetSize', 'timeEndPeriod(1)')) {
     if ($cursorHelperSourceText -notmatch [regex]::Escape($value)) {
         throw "Cursor Refresh Helper source is missing the validated allocation-free marker: $value"
     }
@@ -41,39 +41,44 @@ foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')
 }
 
 $releaseFiles = @(
-    'MSI-Claw-VRR-Fix.ps1',
-    'MSI-Claw-Intel-LFC-Fix.ps1',
-    'Intel-VRR-LFC-Driver-Interface.ps1',
-    'ClawLab-Cursor-Refresh-Helper.exe',
-    'ClawLab-VRR-Startup.vbs',
-    'ClawLab-LFC-Startup.vbs',
-    'INSTALL_48_120_VRR.bat',
-    'INSTALL_30_120_VRR.bat',
-    'FACTORY_RESET_CLAWLAB_VRR.bat',
-    'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
-    'Collect-Claw-Display-Diagnostics.ps1',
-    'RESTORE_ORIGINAL_VRR.bat',
-    'RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'CHECK_STATUS.bat',
-    'EMERGENCY_REMOVE_CLAWLAB_EDID.bat',
-    'README.txt',
-    'CHANGELOG.txt',
-    'LICENSE.txt',
-    'docs\COMPATIBILITY.md',
-    'docs\SAFETY.md',
-    'docs\TECHNICAL_DETAILS.md',
-    'docs\NEXUS_MODS.md',
-    'docs\A1M_EDID_REFERENCE.md',
-    'docs\RELEASE_NOTES_2.1.0.md',
-    'tools\Test-A1M-Edid.ps1',
-    'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs',
-    'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
-    'tools\CursorRefreshHelper\README.md'
+    [pscustomobject]@{ Source = 'INSTALL_48_120_VRR.bat'; Destination = 'INSTALL_48_120_VRR.bat' },
+    [pscustomobject]@{ Source = 'INSTALL_30_120_VRR.bat'; Destination = 'INSTALL_30_120_VRR.bat' },
+    [pscustomobject]@{ Source = 'CHECK_STATUS.bat'; Destination = 'CHECK_STATUS.bat' },
+    [pscustomobject]@{ Source = 'README.txt'; Destination = 'README.txt' },
+    [pscustomobject]@{ Source = 'CHANGELOG.txt'; Destination = 'CHANGELOG.txt' },
+    [pscustomobject]@{ Source = 'LICENSE.txt'; Destination = 'LICENSE.txt' },
+
+    [pscustomobject]@{ Source = 'RESTORE_ORIGINAL_VRR.bat'; Destination = 'RECOVERY\RESTORE_ORIGINAL_VRR.bat' },
+    [pscustomobject]@{ Source = 'RESTORE_INTEL_LFC_DEFAULTS.bat'; Destination = 'RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat' },
+    [pscustomobject]@{ Source = 'FACTORY_RESET_CLAWLAB_VRR.bat'; Destination = 'EMERGENCY\FACTORY_RESET_CLAWLAB_VRR.bat' },
+    [pscustomobject]@{ Source = 'EMERGENCY_REMOVE_CLAWLAB_EDID.bat'; Destination = 'EMERGENCY\EMERGENCY_REMOVE_CLAWLAB_EDID.bat' },
+    [pscustomobject]@{ Source = 'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat'; Destination = 'DIAGNOSTICS\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat' },
+
+    [pscustomobject]@{ Source = 'MSI-Claw-VRR-Fix.ps1'; Destination = 'scripts\MSI-Claw-VRR-Fix.ps1' },
+    [pscustomobject]@{ Source = 'MSI-Claw-Intel-LFC-Fix.ps1'; Destination = 'scripts\MSI-Claw-Intel-LFC-Fix.ps1' },
+    [pscustomobject]@{ Source = 'Intel-VRR-LFC-Driver-Interface.ps1'; Destination = 'scripts\Intel-VRR-LFC-Driver-Interface.ps1' },
+    [pscustomobject]@{ Source = 'ClawLab-Health-Check.ps1'; Destination = 'scripts\ClawLab-Health-Check.ps1' },
+    [pscustomobject]@{ Source = 'Collect-Claw-Display-Diagnostics.ps1'; Destination = 'scripts\Collect-Claw-Display-Diagnostics.ps1' },
+    [pscustomobject]@{ Source = 'ClawLab-Cursor-Refresh-Helper.exe'; Destination = 'scripts\ClawLab-Cursor-Refresh-Helper.exe' },
+    [pscustomobject]@{ Source = 'ClawLab-VRR-Startup.vbs'; Destination = 'scripts\ClawLab-VRR-Startup.vbs' },
+    [pscustomobject]@{ Source = 'ClawLab-LFC-Startup.vbs'; Destination = 'scripts\ClawLab-LFC-Startup.vbs' },
+
+    [pscustomobject]@{ Source = 'docs\COMPATIBILITY.md'; Destination = 'docs\COMPATIBILITY.md' },
+    [pscustomobject]@{ Source = 'docs\SAFETY.md'; Destination = 'docs\SAFETY.md' },
+    [pscustomobject]@{ Source = 'docs\TECHNICAL_DETAILS.md'; Destination = 'docs\TECHNICAL_DETAILS.md' },
+    [pscustomobject]@{ Source = 'docs\NEXUS_MODS.md'; Destination = 'docs\NEXUS_MODS.md' },
+    [pscustomobject]@{ Source = 'docs\A1M_EDID_REFERENCE.md'; Destination = 'docs\A1M_EDID_REFERENCE.md' },
+    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.1.1.md'; Destination = 'docs\RELEASE_NOTES_2.1.1.md' },
+
+    [pscustomobject]@{ Source = 'tools\Test-A1M-Edid.ps1'; Destination = 'SOURCE\Test-A1M-Edid.ps1' },
+    [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs' },
+    [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'; Destination = 'SOURCE\CursorRefreshHelper\Build-CursorRefreshHelper.ps1' },
+    [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\README.md'; Destination = 'SOURCE\CursorRefreshHelper\README.md' }
 )
 
-foreach ($relativePath in $releaseFiles) {
-    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $relativePath) -PathType Leaf)) {
-        throw "Release file missing: $relativePath"
+foreach ($releaseFile in $releaseFiles) {
+    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $releaseFile.Source) -PathType Leaf)) {
+        throw "Release file missing: $($releaseFile.Source)"
     }
 }
 
@@ -132,7 +137,8 @@ $requiredIntegrityValues = @(
     'Install-CursorRefreshHelper',
     'Start-CursorRefreshHelper',
     'Remove-CursorRefreshHelper',
-    'RUNNING_EVENT_DRIVEN'
+    'RUNNING_EVENT_DRIVEN',
+    'VERSION_MISMATCH'
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
@@ -225,10 +231,10 @@ if (Test-Path -LiteralPath $archivePath) {
 }
 New-Item -ItemType Directory -Path $stagedPackageRoot -Force | Out-Null
 
-foreach ($relativePath in $releaseFiles) {
-    $destination = Join-Path $stagedPackageRoot $relativePath
+foreach ($releaseFile in $releaseFiles) {
+    $destination = Join-Path $stagedPackageRoot $releaseFile.Destination
     [IO.Directory]::CreateDirectory((Split-Path $destination -Parent)) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot $relativePath) -Destination $destination
+    Copy-Item -LiteralPath (Join-Path $projectRoot $releaseFile.Source) -Destination $destination
 }
 
 $manifest = @(Get-ChildItem -LiteralPath $stagedPackageRoot -Recurse -File | Sort-Object FullName | ForEach-Object {
@@ -255,6 +261,44 @@ try {
     })
     if ($forbiddenEntries.Count -gt 0) {
         throw "Forbidden file detected in release ZIP:`n$($forbiddenEntries.FullName -join "`n")"
+    }
+
+    $packagePrefix = "$packageName/"
+    $relativeEntries = @($entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object {
+            if (-not $_.FullName.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Release ZIP entry escaped the package root: $($_.FullName)"
+            }
+            $_.FullName.Substring($packagePrefix.Length)
+        })
+    $expectedRootFiles = @(
+        'INSTALL_30_120_VRR.bat',
+        'INSTALL_48_120_VRR.bat',
+        'CHECK_STATUS.bat',
+        'README.txt',
+        'CHANGELOG.txt',
+        'LICENSE.txt',
+        'FILES_SHA256.txt'
+    )
+    $actualRootFiles = @($relativeEntries | Where-Object { $_ -notmatch '/' } | Sort-Object)
+    $unexpectedRootFiles = @($actualRootFiles | Where-Object { $_ -notin $expectedRootFiles })
+    $missingRootFiles = @($expectedRootFiles | Where-Object { $_ -notin $actualRootFiles })
+    if ($unexpectedRootFiles.Count -gt 0 -or $missingRootFiles.Count -gt 0) {
+        throw "Unexpected public ZIP root layout. Missing: $($missingRootFiles -join ', '). Unexpected: $($unexpectedRootFiles -join ', ')."
+    }
+    foreach ($requiredEntry in @(
+            'RECOVERY/RESTORE_ORIGINAL_VRR.bat',
+            'RECOVERY/RESTORE_INTEL_LFC_DEFAULTS.bat',
+            'EMERGENCY/FACTORY_RESET_CLAWLAB_VRR.bat',
+            'EMERGENCY/EMERGENCY_REMOVE_CLAWLAB_EDID.bat',
+            'DIAGNOSTICS/COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
+            'scripts/MSI-Claw-VRR-Fix.ps1',
+            'scripts/MSI-Claw-Intel-LFC-Fix.ps1',
+            'scripts/ClawLab-Health-Check.ps1',
+            'scripts/ClawLab-Cursor-Refresh-Helper.exe'
+        )) {
+        if ($requiredEntry -notin $relativeEntries) {
+            throw "Required structured ZIP entry is missing: $requiredEntry"
+        }
     }
 }
 finally {

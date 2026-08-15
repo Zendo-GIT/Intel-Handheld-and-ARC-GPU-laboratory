@@ -28,6 +28,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Intel-VRR-LFC-Driver-Interface.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Health-Check.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1',
@@ -40,7 +41,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.1.0.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.1.1.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\docs\A1M_EDID_REFERENCE.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
 )
@@ -143,7 +144,7 @@ foreach ($relativePath in $retiredVrrPublicFiles) {
     }
 }
 $requiredVrrValues = @(
-    "`$fixVersion = '2.1.0'",
+    "`$fixVersion = '2.1.1'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -181,6 +182,8 @@ $requiredVrrValues = @(
     'Start-CursorRefreshHelper',
     'Remove-CursorRefreshHelper',
     'RUNNING_EVENT_DRIVEN'
+    'DEEP_IDLE_NO_TIMER_RESOLUTION'
+    'VERSION_MISMATCH'
 )
 foreach ($value in $requiredVrrValues) {
     if ($vrrScript -notmatch [regex]::Escape($value)) {
@@ -201,7 +204,7 @@ if ($null -eq $a1mCatalogResult -or [string]$a1mCatalogResult.Result -ne 'PASS')
 
 $cursorHelperPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe'
 $cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
-if ($cursorHelperAssembly.Version.ToString() -ne '2.1.0.0') {
+if ($cursorHelperAssembly.Version.ToString() -ne '2.1.1.0') {
     throw "Cursor Refresh Helper has unexpected assembly version $($cursorHelperAssembly.Version)."
 }
 $cursorHelperSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs') -Raw
@@ -215,8 +218,11 @@ foreach ($value in @(
     'IsSystemCursorVisible',
     'GetCursorInfo',
     'CursorShowing',
-    '500L / 1000L',
-    'NearBlackBrush'
+    '1500L / 1000L',
+    'NearBlackBrush',
+    'EnterDeepIdle',
+    'SetProcessWorkingSetSize',
+    'timeEndPeriod(1)'
 )) {
     if ($cursorHelperSource -notmatch [regex]::Escape($value)) {
         throw "Cursor Refresh Helper source no longer contains required safety value: $value"
@@ -274,6 +280,11 @@ foreach ($installerName in $lfcInstallers) {
     $installerText = Get-Content -LiteralPath $installerPath -Raw
     if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
         throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
+    }
+    foreach ($cruMarker in @('reset-all.exe', 'Has CRU never been used')) {
+        if ($installerText -notmatch [regex]::Escape($cruMarker)) {
+            throw "Managed VRR installer is missing the interactive CRU preflight: $installerName / $cruMarker"
+        }
     }
 }
 

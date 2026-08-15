@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.1 — 2026-08-16
+
+- Starts the Cursor Refresh Helper near the beginning of sign-in reapply instead
+  of after the slower Intel driver stabilization path.
+- Extends the cursor activity tail from 500 ms to 1.5 seconds to reduce rapid
+  floor/ceiling transitions during short pauses.
+- Adds source-agnostic controller/game deep idle: no usable visible-mouse input
+  stops animation, releases the 1 ms timer-resolution request and trims the
+  helper's own working set. The first visible raw-mouse packet resumes it.
+- Keeps controller detection independent of ClawTweaks, MSI Center M or any
+  other profile manager and adds no polling loop or game-process inspection.
+- Adds an overall health report with explicit `HEALTHY`, `INITIALIZING` and
+  `ATTENTION_REQUIRED` states plus Intel driver-change verification.
+- Treats an installed helper from an older package as `VERSION_MISMATCH` rather
+  than accepting its internally consistent old hash as current.
+- Adds an interactive CRU preflight to both installers.
+- Reorganizes the public ZIP: installers and status at root, normal restore in
+  `RECOVERY`, destructive fallbacks in `EMERGENCY`, diagnostics in
+  `DIAGNOSTICS`, and internal runtime components in `scripts`.
+- Retains the unchanged 2.0.3 Intel LFC driver correction and both supported
+  30-120 and official 48-120 profiles.
+
 ## 2.1.0 — 2026-08-16
 
 - Added the real-hardware-validated Cursor Refresh Helper for the Windows

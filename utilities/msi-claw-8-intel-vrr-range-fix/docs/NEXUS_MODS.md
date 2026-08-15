@@ -1,7 +1,7 @@
 # Optional Nexus Mods publication draft
 
 - Title: **MSI Claw Intel VRR Range Fix**
-- Version: **2.1.0**
+- Version: **2.1.1**
 - Category: **Utilities** or **Bug Fixes**
 - Installation: **Manual only**
 
@@ -19,7 +19,7 @@ individual panel. The package is restricted to exact pinned Claw 8/8 EX
 EDIDs. Unknown CRU overrides are refused. A1M EDID generation is verified, but
 real A1M driver/LFC and panel testing remains community-validation pending.
 
-The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.0
+The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.1
 also supports driver installations where Intel Graphics Software is absent.
 The retired signatures remain only to restore an older ClawLab installation
 safely to 120 Hz. Do not advertise 144 Hz as an available feature.
@@ -40,6 +40,11 @@ during visible mouse movement by animating a nearly transparent 2x2 WPF/DWM
 surface at the extreme lower-right corner. It stops at idle, is suppressed for
 hidden cursors and supports Xbox Full Screen Experience. Its complete C# source
 and rebuild script are included.
+
+After 1.5 seconds without usable mouse input, the helper releases its 1 ms timer
+request, trims its own working set and waits for the next raw-mouse packet. This
+tool-independent deep idle covers controller/game profiles without monitoring
+ClawTweaks, MSI Center M, another utility or any game process.
 
 The archive contains no driver, Intel DLL, CRU binary, EDID dump, game file,
 injector or anti-cheat component. Its only executable is the 13 KB rebuildable

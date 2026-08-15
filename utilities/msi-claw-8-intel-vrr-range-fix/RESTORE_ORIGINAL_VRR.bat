@@ -1,7 +1,9 @@
 @echo off
 setlocal
 title Restore original MSI Claw VRR profile
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-Intel-LFC-Fix.ps1" -Action Restore
+set "CLAWLAB_SCRIPTS=%~dp0"
+if exist "%~dp0..\scripts\MSI-Claw-VRR-Fix.ps1" set "CLAWLAB_SCRIPTS=%~dp0..\scripts\"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CLAWLAB_SCRIPTS%MSI-Claw-Intel-LFC-Fix.ps1" -Action Restore
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (
@@ -10,7 +12,7 @@ if not "%CLAWLAB_EXIT%"=="0" (
   pause
   exit /b %CLAWLAB_EXIT%
 )
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0MSI-Claw-VRR-Fix.ps1" -Action Restore
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CLAWLAB_SCRIPTS%MSI-Claw-VRR-Fix.ps1" -Action Restore
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.
 if not "%CLAWLAB_EXIT%"=="0" (

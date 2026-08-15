@@ -54,7 +54,7 @@ window animation immediately raises the panel to 120 Hz. Tests with
 `DCompositionBoostCompositorClock` and Windows pointer trails did not change
 this behavior. A genuine changing WPF/DWM surface did.
 
-Version 2.1.0 therefore installs `ClawLab-Cursor-Refresh-Helper.exe`. The helper
+Version 2.1.1 therefore installs `ClawLab-Cursor-Refresh-Helper.exe`. The helper
 registers a standard Raw Input mouse sink and changes a nearly transparent 2x2
 WPF surface at the extreme lower-right coordinates:
 
@@ -64,10 +64,11 @@ Y = PrimaryScreenHeight - 2
 ```
 
 The render timer runs at an 8 ms request interval only while Raw Input arrives
-and stops 500 ms after the last event. At idle, the timer is stopped and the
-process waits in the Windows message loop. Real-hardware tests confirmed the
-panel rises to 120 Hz during mouse activity, falls back to 30 Hz after activity,
-and repeats that transition without a visible square at 1 percent opacity.
+and stops 1.5 seconds after the last usable event. At idle, the helper also
+releases its 1 ms timer-resolution request, trims its own working set and waits
+in the Windows message loop. Real-hardware tests confirmed the panel rises to
+120 Hz during mouse activity, falls back to 30 Hz after activity, and repeats
+that transition without a visible square at 1 percent opacity.
 
 Before starting animation, the helper verifies that the system cursor is
 visible. It deliberately does not reject full-monitor windows because Windows
@@ -75,11 +76,24 @@ Xbox Full Screen Experience is itself a full-monitor shell. It uses no DLL
 injection, process handle, global code hook, game-file access,
 network access, driver request or LFC operation.
 
-The existing limited current-user sign-in task launches the helper only after
-the managed Arc Sync profile has been reapplied and verified. Installation
-copies the exact packaged binary, records its SHA-256, and startup refuses a
-hash mismatch. Restore stops only the process whose executable path equals the
-installed ClawLab path, then removes the binary and state record.
+The same event state is a profile-manager-independent controller guard. A
+controller/game profile produces no usable visible-mouse event, so the helper
+remains in deep idle. It resumes on the next visible mouse packet without
+enumerating ClawTweaks, MSI Center M, another utility or a game process.
+
+The existing limited current-user sign-in task launches the helper immediately
+after validating the supported panel and Intel GPU, before the slower Arc Sync
+stabilization loop. A second call after profile verification is idempotent and
+acts as the final health check. Installation copies the exact packaged binary,
+records its SHA-256, and startup refuses a hash mismatch. Restore stops only the
+process whose executable path equals the installed ClawLab path, then removes
+the binary and state record.
+
+`ClawLab-Health-Check.ps1` combines the direct VRR state, helper state, Intel LFC
+flags and scheduled-task state. A running sign-in task yields `INITIALIZING`
+instead of a premature failure. It also compares the current Intel driver
+version with the version saved in the original-profile record; a driver change
+is informational when every current state still verifies.
 
 The LFC task starts the VRR reapply as a direct child and calls `WaitForExit()`
 on that process object. `Start-Process -Wait` is deliberately not used here:
@@ -122,7 +136,7 @@ backs up both original values before using them and operations 3 and 5 restore
 them. Every change is read back, and a range change or failed flag verification
 causes rollback.
 
-The 2.0.3 LFC correction remains unchanged in release 2.1.0 and is integrated
+The 2.0.3 LFC correction remains unchanged in release 2.1.1 and is integrated
 into both supported installers. Before
 changing either flag, the shared script requires the exact managed-mode record,
 the exact physical or pinned custom EDID expected for that mode, and the exact
@@ -207,7 +221,7 @@ range readback on the target device.
 
 ## Retired 144 Hz recovery identifiers
 
-Version 2.1.0 contains no 144 Hz installer, installation action, fixed-refresh
+Version 2.1.1 contains no 144 Hz installer, installation action, fixed-refresh
 selector or confirmation task. Exact complete and per-block hashes from older
 ClawLab 48-144 and 30-144 releases remain pinned only to identify a known legacy
 override. Normal restore first selects the detected panel's native resolution
@@ -221,7 +235,7 @@ a retired 144 Hz managed record and direct the user to recovery.
 The ordered startup path pins the exact Intel Graphics Software identity after
 validating its canonical path, `-s` argument and Windows Authenticode signature.
 Graphics-driver updates can legitimately replace that executable. Version
-2.1.0 compares the current SHA-256 and saved schema at every managed startup.
+2.1.1 compares the current SHA-256 and saved schema at every managed startup.
 
 When they differ, the task performs a fresh Authenticode validation, requires a
 valid signer whose certificate subject identifies Intel Corporation, recomputes
