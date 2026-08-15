@@ -77,3 +77,5 @@ EDID, so it is deliberately excluded.
   visibly flickered while that range was active.
 - The tool does not prove that every game presents frames through a VRR-capable
   swap chain.
+- The factory reset is universal only across ClawLab VRR modes on the exact
+  validated panel. It is not a generic CRU, monitor-driver or Windows reset.

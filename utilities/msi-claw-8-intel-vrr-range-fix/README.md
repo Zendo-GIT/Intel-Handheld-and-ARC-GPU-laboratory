@@ -3,7 +3,7 @@
 A transparent and reversible utility for the `CSW0801 / PN8007QB1-2` internal
 panel used by compatible MSI Claw 8 AI+ and Claw 8 EX AI+ configurations.
 
-![Version](https://img.shields.io/badge/release-1.0.1-blue)
+![Version](https://img.shields.io/badge/release-1.0.2-blue)
 ![Official mode](https://img.shields.io/badge/official-48--120_Hz-green)
 ![Experimental modes](https://img.shields.io/badge/experimental-30--120_%7C_48--144_Hz-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -45,9 +45,9 @@ task named `ClawLab MSI Claw 8 VRR Range`.
 To guarantee startup order, installation verifies and backs up Intel's signed
 `Intel® Graphics Software` Run entry, then removes only that entry. At sign-in,
 a small readable Windows Script Host launcher starts PowerShell with window
-style `0`. The script waits silently for the display driver, applies and
-verifies `EXCELLENT`, and only then starts Intel Graphics Software with its
-original `-s` argument. No console window is displayed.
+style `0`. The script waits silently for the display driver, starts the verified
+Intel Graphics Software command, allows display initialization to settle, then
+applies and verifies `EXCELLENT`. No console window is displayed.
 
 This mode does not modify the EDID, graphics driver, monitor firmware or any
 game. Its only registry change is the reversible startup-order entry described
@@ -85,6 +85,13 @@ device reloaded. This does not prove that every unit has identical electrical
 headroom. Persistent flicker, lines or blanking means the profile is unsuitable
 for that unit and must be restored immediately.
 
+Windows can return to the fixed 120 Hz display mode after a restart even while
+the 48-144 EDID override remains installed. For this profile only, the hidden
+sign-in task verifies that 1920x1200 at 144 Hz is exposed, selects it through
+the Windows display API, waits for the Intel transition to settle, and then
+applies and verifies `EXCELLENT / 48-144 Hz`. No manual visit to Windows Display
+Settings is required after startup.
+
 The combined 30-144 Hz profile is deliberately not distributed. It was
 accepted by the driver as `EXCELLENT / 30-144 Hz` but produced visible panel
 flicker during real-hardware testing.
@@ -108,7 +115,19 @@ flicker during real-hardware testing.
 The experimental installer first establishes the verified official profile,
 then installs the EDID override. If status reports
 an `EXPERIMENTAL_*_PENDING_RESTART` state, restart before evaluating the result.
-Always restore one mode before selecting another.
+
+### Mandatory profile-switch procedure
+
+Never run a different installer over an installed mode. Run
+`RESTORE_ORIGINAL_VRR.bat`, require a successful result, restart when requested,
+and only then install the new mode. Version 1.0.2 enforces this rule: every
+successful installation records its exact managed mode, and every installer
+refuses a different mode. Reinstalling the same mode remains allowed for repair
+or package updates.
+
+Legacy managed files without a trustworthy mode record are also refused until
+normal restore completes. This conservative behavior prevents the utility from
+guessing whether an incomplete state came from official mode or EDID recovery.
 
 ## Status versus Intel Graphics Software
 
@@ -138,6 +157,13 @@ UNKNOWN_EDID_OVERRIDE
 `IntelGraphicsStartup` must show `CLAWLAB_ORDERED`; any unknown startup entry is
 refused rather than overwritten.
 
+`ManagedMode` identifies the installed mode and `ProfileSwitchGuard` must show
+`CONSISTENT`. Any `RESTORE_REQUIRED`, `INCONSISTENT` or `UNSUPPORTED` state means
+that no installer should be run; use restore or factory recovery.
+
+For the experimental 48-144 profile, `WindowsDisplayMode` must additionally
+show `1920x1200 @ 144 Hz`.
+
 ## Restore and emergency recovery
 
 Run `RESTORE_ORIGINAL_VRR.bat` to restore the first saved Intel Arc Sync profile
@@ -156,6 +182,23 @@ If experimental mode causes a display problem, boot Windows Safe Mode and run
 Intel graphics API. It removes only override blocks whose SHA-256 values match
 this package, then asks for a restart. After normal Windows returns, run the
 regular restore script to restore the saved Intel profile.
+
+If normal restore cannot complete because ClawLab state files were mixed,
+deleted or damaged, run `FACTORY_RESET_CLAWLAB_VRR.bat`. This recovery does not
+need the saved original Arc Sync profile. On the exact validated panel it:
+
+- selects the enumerated 1920x1200 at 120 Hz Windows mode;
+- selects Intel's factory `RECOMMENDED` Arc Sync profile;
+- removes exact, partial or cross-profile combinations only when every present
+  EDID block has a pinned ClawLab hash;
+- removes the ClawLab task and installed helper scripts;
+- restores Intel Graphics Software startup from a verified backup or its
+  Authenticode-validated factory path;
+- deletes all ClawLab VRR state and requires a restart.
+
+An unknown third-party EDID override or unexpected Intel startup entry is
+refused, not overwritten. “Factory reset” means factory recovery for the
+validated ClawLab VRR utility, not a generic monitor or Windows reset.
 
 ## Compatibility boundary
 
@@ -204,7 +247,7 @@ available when reporting compatibility.
 ## Building the release
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 1.0.1
+.\tools\Build-Release.ps1 -Version 1.0.2
 ```
 
 The ZIP contains only readable scripts and documentation. It contains no Intel

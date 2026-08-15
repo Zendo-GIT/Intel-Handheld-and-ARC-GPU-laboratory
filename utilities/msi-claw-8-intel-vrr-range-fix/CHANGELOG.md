@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.2 — 2026-08-15
+
+- Added an optional 48-144 Hz DisplayID profile after guarded hardware testing
+  confirmed 1920x1200 at 144 Hz and Intel `EXCELLENT / 48-144 Hz` readback.
+- Recorded and withheld 30-144 Hz after visible flicker on the reference panel.
+- Added a read-only display/EDID collector for unsupported Claw models such as
+  the A1M; this is diagnostics only, not an A1M compatibility claim.
+- Added verified fixed-refresh persistence for the 48-144 profile after
+  community testing found Windows returning to 120 Hz after restart.
+- Added startup-safe SHA-256 verification of the previously Authenticode-
+  validated Intel Graphics Software executable.
+- Added a mandatory managed-mode interlock that refuses every profile change
+  until `RESTORE_ORIGINAL_VRR.bat` completes; same-mode repair remains allowed.
+- Added `FACTORY_RESET_CLAWLAB_VRR.bat` to recover mixed or damaged ClawLab VRR
+  state without requiring the saved original Arc Sync profile.
+
 ## 1.0.1 — 2026-08-15
 
 - Added persistent `EXCELLENT / 48-120 Hz` reapply after restart validation
@@ -10,11 +26,6 @@
 - Added exact backup and restoration of Intel Graphics Software's verified,
   Intel-signed machine-wide startup entry to guarantee launch order.
 - Added task, startup-order and last-run status reporting.
-- Added an optional 48-144 Hz DisplayID profile after guarded hardware testing
-  confirmed 1920x1200 at 144 Hz and Intel `EXCELLENT / 48-144 Hz` readback.
-- Recorded and withheld 30-144 Hz after visible flicker on the reference panel.
-- Added a read-only display/EDID collector for unsupported Claw models such as
-  the A1M; this is diagnostics only, not an A1M compatibility claim.
 
 ## 1.0.0 — 2026-08-14
 

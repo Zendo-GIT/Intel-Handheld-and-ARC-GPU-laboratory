@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.1'
+    [string]$Version = '1.0.2'
 )
 
 Set-StrictMode -Version Latest
@@ -22,6 +22,7 @@ $releaseFiles = @(
     'INSTALL_48_120_VRR.bat',
     'INSTALL_EXPERIMENTAL_30_120_VRR.bat',
     'INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'FACTORY_RESET_CLAWLAB_VRR.bat',
     'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
     'Collect-Claw-Display-Diagnostics.ps1',
     'RESTORE_ORIGINAL_VRR.bat',
@@ -44,6 +45,10 @@ foreach ($relativePath in $releaseFiles) {
 
 $scriptPath = Join-Path $projectRoot 'MSI-Claw-VRR-Fix.ps1'
 $scriptText = Get-Content -LiteralPath $scriptPath -Raw
+$expectedFixVersionLine = "`$fixVersion = '$Version'"
+if ($scriptText -notmatch [regex]::Escape($expectedFixVersionLine)) {
+    throw "Release version $Version does not match the source fix version."
+}
 $requiredIntegrityValues = @(
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
@@ -52,10 +57,17 @@ $requiredIntegrityValues = @(
     '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
     '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
     'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
+    'Set-Experimental144DisplayMode',
+    'WindowsDisplayMode',
+    'FileSha256',
+    'Assert-ProfileTransitionAllowed',
+    'managed-mode.json',
+    "'FactoryReset'",
+    'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
 )
 foreach ($value in $requiredIntegrityValues) {

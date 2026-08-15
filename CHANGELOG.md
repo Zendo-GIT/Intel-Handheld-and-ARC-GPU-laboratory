@@ -10,6 +10,10 @@
 - Added guarded 48-144 Hz support after direct Intel-driver and display-mode
   validation; rejected the combined 30-144 Hz range after visible panel flicker.
 - Added a read-only display/EDID collector for future Claw A1M research.
+- Fixed 48-144 Hz restart persistence by making the ordered task reselect the
+  fixed 144 Hz Windows mode before final Intel Arc Sync verification.
+- Added a mandatory VRR profile-switch interlock and a hash-restricted ClawLab
+  factory recovery path for damaged or mixed VRR state.
 
 ## 2026-08-14
 

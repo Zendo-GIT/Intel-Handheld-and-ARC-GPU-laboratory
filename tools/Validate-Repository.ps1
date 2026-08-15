@@ -29,6 +29,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_30_120_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_EXPERIMENTAL_48_144_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\FACTORY_RESET_CLAWLAB_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
@@ -116,6 +117,7 @@ foreach ($value in $requiredDetroitValues) {
 
 $vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 $requiredVrrValues = @(
+    "`$fixVersion = '1.0.2'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -123,10 +125,17 @@ $requiredVrrValues = @(
     '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
     '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
     'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]",
+    "[ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
+    'Set-Experimental144DisplayMode',
+    'WindowsDisplayMode',
+    'FileSha256',
+    'Assert-ProfileTransitionAllowed',
+    'managed-mode.json',
+    "'FactoryReset'",
+    'Set-Safe120DisplayMode',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
 )
 foreach ($value in $requiredVrrValues) {

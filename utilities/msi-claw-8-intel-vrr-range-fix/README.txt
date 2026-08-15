@@ -1,4 +1,4 @@
-MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 1.0.1
+MSI CLAW 8 AI+ / 8 EX AI+ INTEL VRR RANGE FIX 1.0.2
 ====================================================
 
 SUPPORTED PANEL
@@ -20,8 +20,9 @@ This selects Intel's official EXCELLENT Arc Sync profile and verifies the
 driver's active range as 48-120 Hz. Because Intel can restore 60-120 Hz after a
 Windows restart, it also installs a current-user task. Installation backs up
 and replaces only Intel Graphics Software's automatic startup order. At sign-in,
-a readable Windows Script Host launcher applies 48-120 Hz through a fully hidden
-PowerShell process, verifies it, and then starts Intel Graphics Software.
+a readable Windows Script Host launcher starts the verified Intel application,
+allows display initialization to settle, then applies and verifies 48-120 Hz
+through a fully hidden PowerShell process.
 
 EXPERIMENTAL MODE - OPTIONAL
 ----------------------------
@@ -40,6 +41,11 @@ This preserves the 48 Hz minimum and adds a 1920x1200 144 Hz DisplayID timing.
 The reference panel was stable after transient stutter and line artifacts while
 the Intel display device reloaded, and the driver verified EXCELLENT / 48-144
 Hz. Persistent flicker, lines or blanking means restore immediately.
+
+Windows can fall back to the fixed 120 Hz mode after a restart. The hidden
+sign-in task now selects 1920x1200 at 144 Hz for this profile, waits for the
+display transition, and verifies EXCELLENT / 48-144 Hz. No manual Windows
+Display Settings step is required.
 
 The combined 30-144 Hz profile is not distributed because real-hardware testing
 produced visible flicker even though the Intel API accepted the range.
@@ -64,6 +70,12 @@ the EDID override.
 Fully exit and restart the Intel Graphics Software tray process to refresh its
 displayed current range. Restarting the UI does not control the driver profile.
 
+MANDATORY PROFILE SWITCH RULE
+-----------------------------
+Run RESTORE_ORIGINAL_VRR.bat successfully and restart before installing a
+different mode. Version 1.0.2 records the installed mode and refuses every
+cross-profile installation. Reinstalling the same mode is allowed.
+
 RESTORE
 -------
 Run RESTORE_ORIGINAL_VRR.bat, then restart when prompted. Restore removes the
@@ -73,6 +85,12 @@ startup entry.
 If experimental mode causes a blank or unstable display, boot Safe Mode and run
 EMERGENCY_REMOVE_EXPERIMENTAL_EDID.bat. After normal Windows returns, run the
 regular restore script to restore the original Intel profile.
+
+If the saved state has already been mixed or damaged and normal restore cannot
+complete, run FACTORY_RESET_CLAWLAB_VRR.bat. It restores 1920x1200 at 120 Hz,
+Intel RECOMMENDED, the verified Intel startup entry, and removes only exact
+ClawLab EDID overrides plus ClawLab tasks/state. It refuses unknown third-party
+overrides and requires a restart.
 
 SAFETY
 ------

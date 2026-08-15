@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'EmergencyRestoreEdid', 'ApplyStartup')]
+    [ValidateSet('Status', 'Install48', 'Install30', 'Install48_144', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]
     [string]$Action = 'Status'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '1.0.1'
+$fixVersion = '1.0.2'
 $targetManufacturer = 'CSW'
 $targetProductCode = '0801'
 $targetPanelName = 'PN8007QB1-2'
@@ -15,11 +15,13 @@ $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
 $experimentalMaximumHz = 144.0
+$profileRecommended = 1
 $profileExcellent = 2
 $profileCustom = 7
 $stateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $backupPath = Join-Path $stateRoot 'original-profile.json'
 $experimentalStatePath = Join-Path $stateRoot 'experimental-edid.json'
+$managedModeStatePath = Join-Path $stateRoot 'managed-mode.json'
 $installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
 $startupLauncherName = 'ClawLab-VRR-Startup.vbs'
 $installedLauncherPath = Join-Path $stateRoot $startupLauncherName
@@ -95,6 +97,20 @@ function Get-ByteArraySha256 {
     }
 }
 
+function Get-FileSha256 {
+    param([Parameter(Mandatory)][string]$LiteralPath)
+
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '')
+    }
+    finally {
+        $sha.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Test-ByteArrayEqual {
     param(
         [AllowNull()][byte[]]$Left,
@@ -152,11 +168,35 @@ function Get-PanelRegistryContext {
     $reportedHash = Get-ByteArraySha256 -Bytes $reportedEdid
     $physicalEdid = [byte[]]$reportedEdid.Clone()
     if ($reportedHash -ne $validatedPhysicalEdidSha256) {
-        if ($reportedHash -notin @(
+        $knownCompleteOverride = $reportedHash -in @(
                 $validated30_120EdidSha256,
                 $validated48_144EdidSha256,
                 $validated30_144EdidSha256
-            )) {
+            )
+        $recoverableClawLabBlocks = $false
+        if (-not $knownCompleteOverride -and $Action -eq 'FactoryReset') {
+            $overridePath = Join-Path $deviceParameters 'EDID_OVERRIDE'
+            if (Test-Path -LiteralPath $overridePath -PathType Container) {
+                $block0 = $null
+                $block1 = $null
+                try { $block0 = [byte[]](Get-ItemPropertyValue -LiteralPath $overridePath -Name '0' -ErrorAction Stop) } catch {}
+                try { $block1 = [byte[]](Get-ItemPropertyValue -LiteralPath $overridePath -Name '1' -ErrorAction Stop) } catch {}
+                $knownBlock0 = $null -eq $block0 -or
+                    (Get-ByteArraySha256 -Bytes $block0) -in @(
+                        $validated30_120Block0Sha256,
+                        $validated48_144Block0Sha256,
+                        $validated30_144Block0Sha256
+                    )
+                $knownBlock1 = $null -eq $block1 -or
+                    (Get-ByteArraySha256 -Bytes $block1) -in @(
+                        $validated30_120Block1Sha256,
+                        $validated48_144Block1Sha256,
+                        $validated30_144Block1Sha256
+                    )
+                $recoverableClawLabBlocks = ($null -ne $block0 -or $null -ne $block1) -and $knownBlock0 -and $knownBlock1
+            }
+        }
+        if (-not $knownCompleteOverride -and -not $recoverableClawLabBlocks) {
             throw "Unsupported panel EDID: $reportedHash. Experimental mode is restricted to the validated EDID."
         }
 
@@ -345,6 +385,196 @@ function Get-EdidOverrideState {
     }
 }
 
+function Get-ClawLabRecoveryBlockState {
+    param(
+        [AllowNull()][byte[]]$Block0,
+        [AllowNull()][byte[]]$Block1
+    )
+
+    $block0 = $Block0
+    $block1 = $Block1
+    if ($null -eq $block0 -and $null -eq $block1) {
+        return [pscustomobject]@{ State = 'NONE'; Block0Present = $false; Block1Present = $false }
+    }
+
+    $knownBlock0 = $null -eq $block0 -or
+        (Get-ByteArraySha256 -Bytes $block0) -in @(
+            $validated30_120Block0Sha256,
+            $validated48_144Block0Sha256,
+            $validated30_144Block0Sha256
+        )
+    $knownBlock1 = $null -eq $block1 -or
+        (Get-ByteArraySha256 -Bytes $block1) -in @(
+            $validated30_120Block1Sha256,
+            $validated48_144Block1Sha256,
+            $validated30_144Block1Sha256
+        )
+    if (-not $knownBlock0 -or -not $knownBlock1) {
+        return [pscustomobject]@{ State = 'UNKNOWN_THIRD_PARTY'; Block0Present = $null -ne $block0; Block1Present = $null -ne $block1 }
+    }
+    return [pscustomobject]@{
+        State = 'CLAWLAB_RECOVERABLE'
+        Block0Present = $null -ne $block0
+        Block1Present = $null -ne $block1
+    }
+}
+
+function Get-ClawLabRecoveryOverrideState {
+    param([Parameter(Mandatory)][object]$RegistryContext)
+
+    $block0 = $null
+    $block1 = $null
+    if (Test-Path -LiteralPath $RegistryContext.OverridePath -PathType Container) {
+        try { $block0 = [byte[]](Get-ItemPropertyValue -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction Stop) } catch {}
+        try { $block1 = [byte[]](Get-ItemPropertyValue -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction Stop) } catch {}
+    }
+    return Get-ClawLabRecoveryBlockState -Block0 $block0 -Block1 $block1
+}
+
+function Get-ManagedArtifactSnapshot {
+    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
+    $snapshot = [pscustomobject]@{
+        OriginalProfile = Test-Path -LiteralPath $backupPath -PathType Leaf
+        ExperimentalState = Test-Path -LiteralPath $experimentalStatePath -PathType Leaf
+        InstalledScript = Test-Path -LiteralPath $installedScriptPath -PathType Leaf
+        InstalledLauncher = Test-Path -LiteralPath $installedLauncherPath -PathType Leaf
+        StartupStatus = Test-Path -LiteralPath $startupStatusPath -PathType Leaf
+        IntelStartupBackup = Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf
+        StartupTask = $null -ne $task
+    }
+    $snapshot | Add-Member -NotePropertyName Any -NotePropertyValue (
+        $snapshot.OriginalProfile -or
+        $snapshot.ExperimentalState -or
+        $snapshot.InstalledScript -or
+        $snapshot.InstalledLauncher -or
+        $snapshot.StartupStatus -or
+        $snapshot.IntelStartupBackup -or
+        $snapshot.StartupTask
+    )
+    return $snapshot
+}
+
+function Get-ManagedModeRecord {
+    if (-not (Test-Path -LiteralPath $managedModeStatePath -PathType Leaf)) {
+        return $null
+    }
+
+    $record = [IO.File]::ReadAllText($managedModeStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @('SchemaVersion', 'FixVersion', 'Mode', 'InstalledAt')) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The managed VRR mode record is invalid: missing $property. Run RESTORE_ORIGINAL_VRR.bat."
+        }
+    }
+    if ([int]$record.SchemaVersion -ne 1 -or
+        [string]$record.Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+        throw 'The managed VRR mode record contains an unsupported value. Run RESTORE_ORIGINAL_VRR.bat.'
+    }
+    return $record
+}
+
+function Get-EffectiveManagedMode {
+    param([Parameter(Mandatory)][object]$OverrideState)
+
+    $record = Get-ManagedModeRecord
+    $overrideMode = if ($OverrideState.State -eq 'NONE') { 'NONE' } else { [string]$OverrideState.State }
+    if ($null -ne $record) {
+        $expectedOverride = if ([string]$record.Mode -eq 'OFFICIAL_48_120') { 'NONE' } else { [string]$record.Mode }
+        $artifacts = Get-ManagedArtifactSnapshot
+        $requiresExperimentalState = [string]$record.Mode -ne 'OFFICIAL_48_120'
+        $artifactsComplete = (
+            $artifacts.OriginalProfile -and
+            $artifacts.InstalledScript -and
+            $artifacts.InstalledLauncher -and
+            $artifacts.IntelStartupBackup -and
+            $artifacts.StartupTask -and
+            ($artifacts.ExperimentalState -eq $requiresExperimentalState)
+        )
+        if ($overrideMode -ne $expectedOverride -or -not $artifactsComplete) {
+            return [pscustomobject]@{
+                Mode = [string]$record.Mode
+                State = 'INCONSISTENT_RESTORE_REQUIRED'
+                Source = 'MANAGED_RECORD'
+            }
+        }
+        return [pscustomobject]@{
+            Mode = [string]$record.Mode
+            State = 'CONSISTENT'
+            Source = 'MANAGED_RECORD'
+        }
+    }
+
+    if ($OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+        return [pscustomobject]@{
+            Mode = [string]$OverrideState.State
+            State = 'LEGACY_MATCHING_OVERRIDE'
+            Source = 'EDID_OVERRIDE'
+        }
+    }
+    if ($OverrideState.State -ne 'NONE') {
+        return [pscustomobject]@{
+            Mode = [string]$OverrideState.State
+            State = 'UNSUPPORTED_RESTORE_REQUIRED'
+            Source = 'EDID_OVERRIDE'
+        }
+    }
+
+    $artifacts = Get-ManagedArtifactSnapshot
+    if ($artifacts.Any) {
+        return [pscustomobject]@{
+            Mode = 'LEGACY_MANAGED_STATE'
+            State = 'RESTORE_REQUIRED'
+            Source = 'MANAGED_ARTIFACTS'
+        }
+    }
+    return [pscustomobject]@{
+        Mode = 'NONE'
+        State = 'CLEAN'
+        Source = 'NONE'
+    }
+}
+
+function Assert-ProfileTransitionAllowed {
+    param(
+        [Parameter(Mandatory)][object]$OverrideState,
+        [Parameter(Mandatory)][string]$DesiredMode
+    )
+
+    $current = Get-EffectiveManagedMode -OverrideState $OverrideState
+    $sameMode = $current.Mode -eq $DesiredMode -and
+        $current.State -in @('CONSISTENT', 'LEGACY_MATCHING_OVERRIDE')
+    if ($current.Mode -eq 'NONE' -and $current.State -eq 'CLEAN') {
+        return $current
+    }
+    if ($sameMode) {
+        return $current
+    }
+    throw "VRR profile switch refused. Current managed state: $($current.Mode) / $($current.State). Run RESTORE_ORIGINAL_VRR.bat successfully before installing $DesiredMode."
+}
+
+function Set-ManagedModeRecord {
+    param([Parameter(Mandatory)][string]$Mode)
+
+    if ($Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144')) {
+        throw "Internal managed VRR mode is invalid: $Mode"
+    }
+    [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    $record = [ordered]@{
+        SchemaVersion = 1
+        FixVersion = $fixVersion
+        Mode = $Mode
+        InstalledAt = (Get-Date).ToString('o')
+    }
+    [IO.File]::WriteAllText(
+        $managedModeStatePath,
+        ($record | ConvertTo-Json),
+        [Text.UTF8Encoding]::new($false)
+    )
+    $verified = Get-ManagedModeRecord
+    if ([string]$verified.Mode -ne $Mode) {
+        throw 'The managed VRR mode record failed verification.'
+    }
+}
+
 function Confirm-AdministratorOrRelaunch {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -445,7 +675,10 @@ function Write-StartupResult {
 }
 
 function Resolve-IntelGraphicsStartupCommand {
-    param([Parameter(Mandatory)][string]$Command)
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [switch]$SkipAuthenticode
+    )
 
     $match = [regex]::Match(
         $Command,
@@ -464,18 +697,23 @@ function Resolve-IntelGraphicsStartupCommand {
         throw "Intel Graphics Software executable is missing: $executable"
     }
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $executable
-    if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
-        $null -eq $signature.SignerCertificate -or
-        $signature.SignerCertificate.Subject -notmatch '(^|, )O=Intel Corporation(,|$)') {
-        throw 'Intel Graphics Software does not have the expected valid Intel signature.'
+    $signerThumbprint = $null
+    if (-not $SkipAuthenticode) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $executable
+        if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+            $null -eq $signature.SignerCertificate -or
+            $signature.SignerCertificate.Subject -notmatch '(^|, )O=Intel Corporation(,|$)') {
+            throw 'Intel Graphics Software does not have the expected valid Intel signature.'
+        }
+        $signerThumbprint = $signature.SignerCertificate.Thumbprint
     }
 
     [pscustomobject]@{
         Command = $Command
         Executable = $executable
         Arguments = $match.Groups['Arguments'].Value
-        SignerThumbprint = $signature.SignerCertificate.Thumbprint
+        SignerThumbprint = $signerThumbprint
+        FileSha256 = Get-FileSha256 -LiteralPath $executable
     }
 }
 
@@ -484,7 +722,7 @@ function Get-IntelStartupBackup {
         return $null
     }
     $backup = [IO.File]::ReadAllText($intelStartupBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    foreach ($property in @('RegistryPath', 'ValueName', 'Command', 'Executable', 'Arguments')) {
+    foreach ($property in @('RegistryPath', 'ValueName', 'Command', 'Executable', 'Arguments', 'SignerThumbprint')) {
         if ($property -notin $backup.PSObject.Properties.Name) {
             throw "The saved Intel startup entry is invalid: missing $property."
         }
@@ -493,10 +731,22 @@ function Get-IntelStartupBackup {
         [string]$backup.ValueName -ne $intelStartupValueName) {
         throw 'The saved Intel startup registry target is invalid.'
     }
-    $resolved = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
+    $startupMode = $Action -eq 'ApplyStartup'
+    $resolved = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command) -SkipAuthenticode:$startupMode
     if ($resolved.Executable -ne [string]$backup.Executable -or
         $resolved.Arguments -ne [string]$backup.Arguments) {
         throw 'The saved Intel startup command no longer passes verification.'
+    }
+    if ($startupMode) {
+        if ('FileSha256' -notin $backup.PSObject.Properties.Name) {
+            throw 'The Intel startup backup needs an integrity upgrade. Run the selected installer once, then retry.'
+        }
+        if ($resolved.FileSha256 -ne [string]$backup.FileSha256) {
+            throw 'Intel Graphics Software changed after installation. Rerun the selected installer before startup reapply.'
+        }
+    }
+    elseif ($resolved.SignerThumbprint -ne [string]$backup.SignerThumbprint) {
+        throw 'The saved Intel startup signer no longer matches the verified executable.'
     }
     return $backup
 }
@@ -557,6 +807,7 @@ function Set-ManagedIntelStartupOrder {
             Executable = $resolved.Executable
             Arguments = $resolved.Arguments
             SignerThumbprint = $resolved.SignerThumbprint
+            FileSha256 = $resolved.FileSha256
         }
         [IO.File]::WriteAllText(
             $intelStartupBackupPath,
@@ -567,6 +818,17 @@ function Set-ManagedIntelStartupOrder {
     }
     elseif (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
         throw 'An unknown Intel Graphics Software startup entry is present. It was not modified.'
+    }
+
+    if ('FileSha256' -notin $backup.PSObject.Properties.Name) {
+        $resolvedBackup = Resolve-IntelGraphicsStartupCommand -Command ([string]$backup.Command)
+        $backup | Add-Member -NotePropertyName FileSha256 -NotePropertyValue $resolvedBackup.FileSha256
+        [IO.File]::WriteAllText(
+            $intelStartupBackupPath,
+            ($backup | ConvertTo-Json),
+            [Text.UTF8Encoding]::new($false)
+        )
+        $backup = Get-IntelStartupBackup
     }
 
     if (-not [string]::IsNullOrEmpty($current)) {
@@ -592,6 +854,48 @@ function Restore-IntelStartupOrder {
         throw 'The original Intel Graphics Software startup entry could not be verified after restoration.'
     }
     [IO.File]::Delete($intelStartupBackupPath)
+}
+
+function Get-FactoryIntelStartupCommand {
+    $current = Get-IntelStartupRegistryValue
+    if (-not [string]::IsNullOrEmpty($current)) {
+        [void](Resolve-IntelGraphicsStartupCommand -Command $current)
+        return $current
+    }
+
+    if (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf) {
+        try {
+            $backup = Get-IntelStartupBackup
+            if ($null -ne $backup) {
+                return [string]$backup.Command
+            }
+        }
+        catch {
+            Write-Warning "The saved Intel startup entry is unusable; attempting signed factory-path recovery: $($_.Exception.Message)"
+        }
+    }
+
+    $executable = Join-Path $env:ProgramFiles 'Intel\Intel Graphics Software\IntelGraphicsSoftware.exe'
+    $command = '"{0}" -s' -f $executable
+    [void](Resolve-IntelGraphicsStartupCommand -Command $command)
+    return $command
+}
+
+function Set-FactoryIntelStartupCommand {
+    param([Parameter(Mandatory)][string]$Command)
+
+    [void](Resolve-IntelGraphicsStartupCommand -Command $Command)
+    $current = Get-IntelStartupRegistryValue
+    if (-not [string]::IsNullOrEmpty($current) -and $current -ne $Command) {
+        throw 'An unexpected Intel Graphics Software startup entry appeared during factory reset. It was not overwritten.'
+    }
+    if ([string]::IsNullOrEmpty($current)) {
+        New-ItemProperty -LiteralPath $intelStartupRegistryPath -Name $intelStartupValueName `
+            -PropertyType String -Value $Command -Force | Out-Null
+    }
+    if ((Get-IntelStartupRegistryValue) -ne $Command) {
+        throw 'Factory reset could not verify the Intel Graphics Software startup entry.'
+    }
 }
 
 function Start-ManagedIntelGraphicsSoftware {
@@ -901,6 +1205,172 @@ namespace ClawLab.VrrFix
     Add-Type -TypeDefinition $source -Language CSharp
 }
 
+function Add-DisplayModeControlType {
+    if ($null -ne ('ClawLab.VrrFix.DisplayModeControl' -as [type])) {
+        return
+    }
+
+    Add-Type -Language CSharp -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace ClawLab.VrrFix
+{
+    public sealed class DisplayModeSnapshot
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int RefreshHz { get; set; }
+    }
+
+    public static class DisplayModeControl
+    {
+        private const int ENUM_CURRENT_SETTINGS = -1;
+        private const int DM_DISPLAYFREQUENCY = 0x00400000;
+        private const int CDS_UPDATEREGISTRY = 0x00000001;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DEVMODE
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+            public short dmSpecVersion;
+            public short dmDriverVersion;
+            public short dmSize;
+            public short dmDriverExtra;
+            public int dmFields;
+            public int dmPositionX;
+            public int dmPositionY;
+            public int dmDisplayOrientation;
+            public int dmDisplayFixedOutput;
+            public short dmColor;
+            public short dmDuplex;
+            public short dmYResolution;
+            public short dmTTOption;
+            public short dmCollate;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+            public short dmLogPixels;
+            public int dmBitsPerPel;
+            public int dmPelsWidth;
+            public int dmPelsHeight;
+            public int dmDisplayFlags;
+            public int dmDisplayFrequency;
+            public int dmICMMethod;
+            public int dmICMIntent;
+            public int dmMediaType;
+            public int dmDitherType;
+            public int dmReserved1;
+            public int dmReserved2;
+            public int dmPanningWidth;
+            public int dmPanningHeight;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int ChangeDisplaySettingsEx(string deviceName, ref DEVMODE devMode, IntPtr hwnd, int flags, IntPtr param);
+
+        private static DEVMODE NewMode()
+        {
+            DEVMODE mode = new DEVMODE();
+            mode.dmDeviceName = new string('\0', 32);
+            mode.dmFormName = new string('\0', 32);
+            mode.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+            return mode;
+        }
+
+        public static DisplayModeSnapshot Current()
+        {
+            DEVMODE mode = NewMode();
+            if (!EnumDisplaySettings(null, ENUM_CURRENT_SETTINGS, ref mode))
+                throw new InvalidOperationException("EnumDisplaySettings(current) failed.");
+            return new DisplayModeSnapshot
+            {
+                Width = mode.dmPelsWidth,
+                Height = mode.dmPelsHeight,
+                RefreshHz = mode.dmDisplayFrequency
+            };
+        }
+
+        public static bool HasMode(int width, int height, int refreshHz)
+        {
+            for (int index = 0; index < 1024; index++)
+            {
+                DEVMODE mode = NewMode();
+                if (!EnumDisplaySettings(null, index, ref mode))
+                    break;
+                if (mode.dmPelsWidth == width && mode.dmPelsHeight == height && mode.dmDisplayFrequency == refreshHz)
+                    return true;
+            }
+            return false;
+        }
+
+        public static int SetRefresh(int refreshHz)
+        {
+            DEVMODE mode = NewMode();
+            if (!EnumDisplaySettings(null, ENUM_CURRENT_SETTINGS, ref mode))
+                throw new InvalidOperationException("EnumDisplaySettings(current) failed.");
+            mode.dmFields = DM_DISPLAYFREQUENCY;
+            mode.dmDisplayFrequency = refreshHz;
+            return ChangeDisplaySettingsEx(null, ref mode, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero);
+        }
+    }
+}
+'@
+}
+
+function Get-CurrentDisplayMode {
+    $mode = [ClawLab.VrrFix.DisplayModeControl]::Current()
+    return [pscustomobject]@{
+        Width = [int]$mode.Width
+        Height = [int]$mode.Height
+        RefreshHz = [int]$mode.RefreshHz
+    }
+}
+
+function Set-Experimental144DisplayMode {
+    if (-not [ClawLab.VrrFix.DisplayModeControl]::HasMode(1920, 1200, 144)) {
+        throw 'The validated 1920x1200 144 Hz Windows display mode is not available.'
+    }
+
+    $current = Get-CurrentDisplayMode
+    if ($current.Width -eq 1920 -and $current.Height -eq 1200 -and $current.RefreshHz -eq 144) {
+        return $current
+    }
+
+    $result = [ClawLab.VrrFix.DisplayModeControl]::SetRefresh(144)
+    if ($result -notin @(0, 1)) {
+        throw "Windows rejected the 144 Hz display mode with code $result."
+    }
+    Start-Sleep -Seconds 1
+    $after = Get-CurrentDisplayMode
+    if ($after.Width -ne 1920 -or $after.Height -ne 1200 -or $after.RefreshHz -ne 144) {
+        throw "Windows did not activate 1920x1200 at 144 Hz; current mode is $($after.Width)x$($after.Height) at $($after.RefreshHz) Hz."
+    }
+    return $after
+}
+
+function Set-Safe120DisplayMode {
+    if (-not [ClawLab.VrrFix.DisplayModeControl]::HasMode(1920, 1200, 120)) {
+        throw 'The validated 1920x1200 120 Hz Windows display mode is not available.'
+    }
+
+    $current = Get-CurrentDisplayMode
+    if ($current.Width -eq 1920 -and $current.Height -eq 1200 -and $current.RefreshHz -eq 120) {
+        return $current
+    }
+    $result = [ClawLab.VrrFix.DisplayModeControl]::SetRefresh(120)
+    if ($result -notin @(0, 1)) {
+        throw "Windows rejected the 120 Hz recovery mode with code $result."
+    }
+    Start-Sleep -Seconds 1
+    $after = Get-CurrentDisplayMode
+    if ($after.Width -ne 1920 -or $after.Height -ne 1200 -or $after.RefreshHz -ne 120) {
+        throw "Factory reset did not activate 1920x1200 at 120 Hz; current mode is $($after.Width)x$($after.Height) at $($after.RefreshHz) Hz."
+    }
+    return $after
+}
+
 function Get-TargetSnapshot {
     param([int]$Attempts = 1)
 
@@ -1059,6 +1529,7 @@ function Install-ExperimentalMode {
         throw "Internal experimental profile lookup failed: $DesiredState"
     }
     $variant = $desired[0]
+    [void](Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState)
 
     if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
         throw 'An unknown EDID override is installed. Remove it with its original tool before using experimental mode.'
@@ -1117,11 +1588,13 @@ function Install-ExperimentalMode {
                 throw 'The experimental EDID registry write did not verify.'
             }
             Install-StartupReapply
+            Set-ManagedModeRecord -Mode $DesiredState
         }
         catch {
             Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction SilentlyContinue
             Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction SilentlyContinue
             [IO.File]::Delete($experimentalStatePath)
+            [IO.File]::Delete($managedModeStatePath)
             try { Restore-SnapshotProfile -Target $official -Profile $Before } catch {}
             throw
         }
@@ -1150,12 +1623,14 @@ function Install-ExperimentalMode {
             throw "Experimental driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
         }
         Install-StartupReapply
+        Set-ManagedModeRecord -Mode $DesiredState
         Write-Host "Experimental $($variant.MinimumHz)-$($variant.MaximumHz) Hz mode is active and verified by the Intel driver." -ForegroundColor Yellow
         $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $after -OverrideState $OverrideState
         return $status
     }
 
     Install-StartupReapply
+    Set-ManagedModeRecord -Mode $DesiredState
     Write-Host 'The experimental override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
     Write-Host 'Restart the PC, then run CHECK_STATUS.bat.' -ForegroundColor Yellow
     $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $Before -OverrideState $OverrideState
@@ -1202,6 +1677,9 @@ function Get-StatusObject {
 
     $intelStartupState = Get-IntelStartupOrderState
 
+    $displayMode = Get-CurrentDisplayMode
+    $managedMode = Get-EffectiveManagedMode -OverrideState $OverrideState
+
     [pscustomobject]@{
         FixVersion = $fixVersion
         State = $state
@@ -1212,6 +1690,9 @@ function Get-StatusObject {
         MonitorSupportedRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.MonitorMinimumHz, $Snapshot.MonitorMaximumHz
         DriverProfile = $Snapshot.ProfileName
         DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.ActiveMinimumHz, $Snapshot.ActiveMaximumHz
+        WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
+        ManagedMode = $managedMode.Mode
+        ProfileSwitchGuard = $managedMode.State
         OriginalProfileSaved = Test-Path -LiteralPath $backupPath -PathType Leaf
         BackupPath = $backupPath
         StartupReapply = Get-StartupReapplyState
@@ -1264,6 +1745,7 @@ try {
     $experimentalEdids = @(Get-ExperimentalEdidCatalog -PhysicalEdid $registryContext.PhysicalEdid)
     $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
     Add-ArcSyncControlType
+    Add-DisplayModeControlType
     $snapshotAttempts = if ($Action -eq 'ApplyStartup') { 180 } else { 5 }
     $before = Get-TargetSnapshot -Attempts $snapshotAttempts
 
@@ -1276,6 +1758,11 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Startup reapply was cancelled.'
             }
+            $expectedManagedMode = if ($overrideState.State -eq 'NONE') { 'OFFICIAL_48_120' } else { [string]$overrideState.State }
+            $managedMode = Get-EffectiveManagedMode -OverrideState $overrideState
+            if ($managedMode.Mode -ne $expectedManagedMode -or $managedMode.State -ne 'CONSISTENT') {
+                throw "Startup reapply refused an unmanaged or inconsistent VRR state: $($managedMode.Mode) / $($managedMode.State). Run RESTORE_ORIGINAL_VRR.bat."
+            }
             $expectedMinimumHz = [float]$overrideState.MinimumHz
             $expectedMaximumHz = [float]$overrideState.MaximumHz
             if ([Math]::Abs($before.MonitorMinimumHz - $expectedMinimumHz) -gt 0.1 -or
@@ -1283,19 +1770,49 @@ try {
                 throw "Startup reapply found an unexpected monitor range: $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
             }
 
-            Invoke-SetProfile -Target $before -ProfileId $profileExcellent
-            $after = Get-TargetSnapshot -Attempts 10
+            $displayMode = $null
+            if ($overrideState.State -eq 'CLAWLAB_48_144') {
+                # Intel caps the active Arc Sync maximum to the current fixed
+                # Windows refresh. Select 144 Hz before applying EXCELLENT so
+                # the API can expose and verify the full 48-144 Hz range.
+                $displayMode = Set-Experimental144DisplayMode
+                Start-Sleep -Seconds 3
+            }
+
+            # The refresh transition and Intel Graphics Software startup can
+            # transiently restore RECOMMENDED. Start the UI first, then apply
+            # EXCELLENT against the settled output and verify the final state.
+            Start-ManagedIntelGraphicsSoftware
+            Start-Sleep -Seconds 2
+
+            $after = $null
+            for ($profileAttempt = 1; $profileAttempt -le 3; $profileAttempt++) {
+                $target = Get-TargetSnapshot -Attempts 10
+                Invoke-SetProfile -Target $target -ProfileId $profileExcellent
+                Start-Sleep -Seconds 1
+                $after = Get-TargetSnapshot -Attempts 10
+                if ($after.ProfileId -eq $profileExcellent -and
+                    [Math]::Abs($after.ActiveMinimumHz - $expectedMinimumHz) -le 0.1 -and
+                    [Math]::Abs($after.ActiveMaximumHz - $expectedMaximumHz) -le 0.1) {
+                    break
+                }
+                if ($profileAttempt -lt 3) { Start-Sleep -Seconds 1 }
+            }
             if ($after.ProfileId -ne $profileExcellent -or
                 [Math]::Abs($after.ActiveMinimumHz - $expectedMinimumHz) -gt 0.1 -or
                 [Math]::Abs($after.ActiveMaximumHz - $expectedMaximumHz) -gt 0.1) {
-                throw "Startup profile verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
+                throw "Startup profile verification failed after display stabilization: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
             }
-            Write-StartupResult -Success $true -Message ("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz)
-            Start-ManagedIntelGraphicsSoftware
+            $displaySuffix = ''
+            if ($null -ne $displayMode) {
+                $displaySuffix = ", $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz"
+            }
+            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix)
             exit 0
         }
 
         'Install48' {
+            [void](Assert-ProfileTransitionAllowed -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120')
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }
@@ -1313,6 +1830,7 @@ try {
                 [Math]::Abs($before.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
                 [Math]::Abs($before.ActiveMaximumHz - $targetMaximumHz) -le 0.1) {
                 Install-StartupReapply
+                Set-ManagedModeRecord -Mode 'OFFICIAL_48_120'
                 Write-Host 'Official Intel Arc Sync 48-120 Hz mode is already active.' -ForegroundColor Green
                 Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
                 break
@@ -1338,6 +1856,7 @@ try {
             }
 
             Install-StartupReapply
+            Set-ManagedModeRecord -Mode 'OFFICIAL_48_120'
             Write-Host 'Official Intel Arc Sync 48-120 Hz mode is active and verified.' -ForegroundColor Green
             Write-Host 'Automatic reapply is installed for future Windows sign-ins.' -ForegroundColor Green
             Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState
@@ -1353,6 +1872,62 @@ try {
             Install-ExperimentalMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
                 -DesiredState 'CLAWLAB_48_144'
+        }
+
+        'FactoryReset' {
+            $recoveryOverride = Get-ClawLabRecoveryOverrideState -RegistryContext $registryContext
+            if ($recoveryOverride.State -eq 'UNKNOWN_THIRD_PARTY') {
+                throw 'Factory reset found an unknown EDID override block. It was not created by ClawLab and will not be removed.'
+            }
+
+            # Resolve and validate a signed Intel startup command before making
+            # any display or profile change.
+            $factoryIntelStartupCommand = Get-FactoryIntelStartupCommand
+            Confirm-AdministratorOrRelaunch
+
+            $safeMode = Set-Safe120DisplayMode
+            Start-Sleep -Seconds 2
+            $factoryTarget = Get-TargetSnapshot -Attempts 10
+            Invoke-SetProfile -Target $factoryTarget -ProfileId $profileRecommended
+            Start-Sleep -Seconds 1
+            $factoryProfile = Get-TargetSnapshot -Attempts 10
+            if ($factoryProfile.ProfileId -ne $profileRecommended) {
+                throw "Factory reset could not verify Intel RECOMMENDED mode; current profile is $($factoryProfile.ProfileName)."
+            }
+
+            if ($recoveryOverride.State -eq 'CLAWLAB_RECOVERABLE') {
+                if ($recoveryOverride.Block0Present) {
+                    Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '0' -ErrorAction Stop
+                }
+                if ($recoveryOverride.Block1Present) {
+                    Remove-ItemProperty -LiteralPath $registryContext.OverridePath -Name '1' -ErrorAction Stop
+                }
+                $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
+                if ($overrideState.State -ne 'NONE') {
+                    throw 'Factory reset could not remove the verified ClawLab EDID override completely.'
+                }
+            }
+
+            Remove-StartupReapply
+            Set-FactoryIntelStartupCommand -Command $factoryIntelStartupCommand
+            [IO.File]::Delete($backupPath)
+            [IO.File]::Delete($experimentalStatePath)
+            [IO.File]::Delete($managedModeStatePath)
+            [IO.File]::Delete($intelStartupBackupPath)
+
+            Write-Host 'ClawLab VRR factory reset completed.' -ForegroundColor Green
+            Write-Host 'Windows is at 1920x1200 120 Hz and Intel RECOMMENDED is selected.' -ForegroundColor Green
+            Write-Host 'Restart the PC to unload any previously active EDID override and restore the physical 48-120 Hz panel data.' -ForegroundColor Yellow
+            [pscustomobject]@{
+                FixVersion = $fixVersion
+                State = 'FACTORY_RESET_COMPLETE_RESTART_REQUIRED'
+                WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $safeMode.Width, $safeMode.Height, $safeMode.RefreshHz
+                DriverProfile = $factoryProfile.ProfileName
+                EdidOverride = $overrideState.State
+                StartupReapply = Get-StartupReapplyState
+                IntelGraphicsStartup = Get-IntelStartupOrderState
+                RestartRequired = $true
+            }
         }
 
         'Restore' {
@@ -1394,6 +1969,7 @@ try {
             Restore-IntelStartupOrder
             [IO.File]::Delete($backupPath)
             [IO.File]::Delete($experimentalStatePath)
+            [IO.File]::Delete($managedModeStatePath)
             Write-Host "Restored the original Intel Arc Sync profile: $($after.ProfileName)." -ForegroundColor Green
             Write-Host 'Restart the PC to make Windows reload the physical panel EDID.' -ForegroundColor Yellow
             $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState

@@ -38,9 +38,10 @@ from 60-120 to 48-120 Hz.
 
 To guarantee correct text on the application's first launch as well as correct
 driver state, installation backs up and removes Intel Graphics Software's exact
-machine-wide Run value. The windowless task applies and verifies the profile,
-then launches the previously verified Intel-signed command with its original
-`-s` argument. Normal restore writes the exact original Run value back.
+machine-wide Run value. The windowless task launches the previously verified
+Intel-signed command with its original `-s` argument, allows initialization to
+settle, then applies and verifies the profile. Normal restore writes the exact
+original Run value back.
 
 ## Why custom 30 Hz is not the official path
 
@@ -106,6 +107,53 @@ and `EXCELLENT / 48-120 Hz` profile.
 A separate guarded 30-144 test was also accepted by the Intel API as
 `EXCELLENT / 30-144 Hz`, but the panel visibly flickered while active. That
 combination failed visual validation and has no public installer.
+
+## Fixed-refresh persistence for 48-144 Hz
+
+Community testing found that the EDID override survived a Windows restart but
+Windows selected the fixed 120 Hz mode again. Because Intel caps the reported
+active Arc Sync maximum to the current fixed refresh, applying `EXCELLENT`
+before selecting 144 Hz produced only `48-120 Hz`.
+
+The ordered sign-in routine now performs the validated sequence below only when
+the exact 48-144 override is present:
+
+1. require the enumerated 1920x1200 at 144 Hz mode;
+2. select 144 Hz with `ChangeDisplaySettingsEx` and verify the current mode;
+3. allow the Intel display transition and Graphics Software startup to settle;
+4. apply `EXCELLENT`, retry transient resets and verify `48-144 Hz`;
+5. record both the Arc Sync range and fixed Windows display mode.
+
+The installed task passed a controlled 144-to-120-to-144 test with final direct
+readback `EXCELLENT / 48-144 Hz` and `1920x1200 @ 144 Hz`.
+
+## Managed-mode transition model
+
+The utility treats mode selection as an explicit state transition:
+
+```text
+CLEAN -> one installer -> MANAGED MODE
+MANAGED MODE -> same installer -> MANAGED MODE
+MANAGED MODE -> different installer -> REFUSED
+MANAGED MODE -> RESTORE_ORIGINAL_VRR -> CLEAN
+BROKEN/UNKNOWN -> FACTORY_RESET_CLAWLAB_VRR -> CLEAN after restart
+```
+
+The managed record is written only after installation verification. The current
+EDID override must match the recorded experimental mode, while official mode
+requires no EDID override. `ApplyStartup` also requires this invariant before it
+can touch the fixed refresh or Arc Sync profile.
+
+Factory recovery deliberately restores Intel profile ID 1 (`RECOMMENDED`), not
+`EXCELLENT`, because its objective is the vendor-default software state. Once
+the physical EDID reloads after restart, the expected default active range is
+the driver-selected subset of the native 48-120 Hz panel capability.
+
+Recovery classification is block-based rather than requiring a valid complete
+experimental pair. This permits repair after an interrupted or cross-profile
+write left block 0 and block 1 from different ClawLab variants. Each present
+block must still match one of the pinned ClawLab hashes; an unknown block is
+never removed.
 
 ## Restart model
 

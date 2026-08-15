@@ -3,7 +3,7 @@
 Recommended metadata:
 
 - Title: **MSI Claw 8 AI+ / 8 EX AI+ Intel VRR Range Fix**
-- Version: **1.0.1**
+- Version: **1.0.2**
 - Category: **Utilities** or **Bug Fixes**
 - Installation: **Manual only**
 
@@ -27,15 +27,22 @@ EDID differs. The AMD-powered Claw A8 is not compatible with this Intel package.
 The combined 30-144 range is not included because it visibly flickered during
 reference-hardware validation, despite being accepted by the Intel driver.
 
-The archive contains no driver, Intel DLL, CRU executable, prepackaged EDID dump, compiled
-binary, game file, injector or anti-cheat component. It modifies no monitor
+The archive contains no driver, Intel DLL, CRU executable, prepackaged EDID
+dump, compiled binary, game file, injector or anti-cheat component. It modifies no monitor
 firmware. Experimental mode uses Windows' reversible EDID override mechanism.
 Official installation creates one documented current-user scheduled task
 because Intel restores its constrained profile during a full Windows restart.
 Installation backs up and removes only Intel Graphics Software's exact signed
-automatic-startup entry. The windowless task applies and verifies the profile,
-then starts Intel Graphics Software with its original command. Normal restore
+automatic-startup entry. The windowless task starts Intel Graphics Software
+with its original command, allows initialization to settle, then applies and
+verifies the profile. Normal restore
 removes the task and scripts and restores the exact Intel startup entry.
+
+Version 1.0.2 refuses every cross-profile installation. Users must run
+`RESTORE_ORIGINAL_VRR.bat` successfully and restart before choosing another
+mode. `FACTORY_RESET_CLAWLAB_VRR.bat` is included only for mixed or damaged
+ClawLab state that normal restore cannot repair; it refuses unknown third-party
+EDID overrides.
 
 The project includes AI-assisted code and documentation. Do not enter it in an
 event whose rules prohibit generative-AI-assisted submissions.
@@ -44,4 +51,6 @@ event whose rules prohibit generative-AI-assisted submissions.
 
 GitHub should remain the canonical source and checksum location. Publish the
 48-144 profile only as an optional experimental file with an explicit panel
-overclock warning and immediate restore instructions.
+overclock warning and immediate restore instructions. Version 1.0.2 also
+reselects 1920x1200 at 144 Hz at sign-in, because Windows can otherwise return
+to the fixed 120 Hz mode after a restart.

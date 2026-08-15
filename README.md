@@ -24,7 +24,7 @@ checks, safety model and restoration path.
 
 | Utility | Direct download | Release page |
 |---|---|---|
-| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.1/MSI-Claw-8-Intel-VRR-Range-Fix-1.0.1.zip) | [claw8-vrr-v1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.1) |
+| MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix | [Download utility 1.0.2](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw8-vrr-v1.0.2/MSI-Claw-8-Intel-VRR-Range-Fix-1.0.2.zip) | [claw8-vrr-v1.0.2](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw8-vrr-v1.0.2) |
 
 ## Published projects
 
@@ -39,7 +39,7 @@ checks, safety model and restoration path.
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Activates the documented 48-120 Hz Arc Sync range; includes separate experimental 30-120 and panel-overclocked 48-144 options | Claw 8 AI+ validated; Claw 8 EX AI+ accepted only when the same panel and EDID are detected; A1M diagnostics only | Exact panel/EDID validation, original-profile backup, verified registry removal and Safe Mode recovery |
+| [MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Activates the documented 48-120 Hz Arc Sync range; includes separate experimental 30-120 and panel-overclocked 48-144 options | Claw 8 AI+ validated; Claw 8 EX AI+ accepted only when the same panel and EDID are detected; A1M diagnostics only | Mandatory restore-before-switch interlock, exact panel/EDID validation, original backup, factory recovery and Safe Mode recovery |
 
 ## Start here
 
