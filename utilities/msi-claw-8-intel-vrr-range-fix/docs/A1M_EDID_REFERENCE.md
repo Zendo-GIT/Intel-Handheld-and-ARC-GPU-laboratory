@@ -1,13 +1,15 @@
-# MSI Claw A1M EDID reference
+# MSI Claw A1M / Claw 7 AI+ EDID reference
 
-Release 2.1.0 and later include a strict definition for the Intel-powered MSI Claw A1M
-internal display. This document records the immutable inputs used by the
+Release 2.1.0 and later include a strict definition for the Intel-powered MSI
+Claw A1M internal display. The Claw 7 AI+ uses the same panel and shares this
+exact EDID path. This document records the immutable inputs used by the
 installer; it is not an instruction to flash panel firmware.
 
 ## Identity
 
 | Field | Value |
 |---|---|
+| Documented handhelds | MSI Claw A1M; MSI Claw 7 AI+ |
 | Panel manufacturer | Tianma Micro-Electronics |
 | Module | `TL070FVXS02-00` |
 | EDID product name | `TL070FVXS02-0` |
@@ -51,7 +53,7 @@ accessing a display device.
 ## Validation boundary
 
 The physical bytes, checksum, identity and deterministic 30-120 transformation
-are verified. Installation additionally fails closed unless the target A1M
-returns the exact identity, EDID and Intel Arc Sync range. Real A1M panel/LFC
-behavior was not available for development validation and remains explicitly
-community-validation pending.
+are verified. Installation additionally fails closed unless the target A1M or
+Claw 7 AI+ returns the exact identity, EDID and Intel Arc Sync range. Real A1M
+and Claw 7 AI+ panel/LFC behavior was not available for development validation
+and remains explicitly community-validation pending for each model.

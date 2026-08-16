@@ -15,9 +15,11 @@ panel/EDID checks, backup, windowless sign-in reapply and complete recovery.
 
 The 30-120 profile is outside MSI's official 48 Hz floor and may flicker on an
 individual panel. The package is restricted to exact pinned Claw 8/8 EX
-`CSW0801 / PN8007QB1-2` and Claw A1M `TMA2027 / TL070FVXS02-0` identities and
-EDIDs. Unknown CRU overrides are refused. A1M EDID generation is verified, but
-real A1M driver/LFC and panel testing remains community-validation pending.
+`CSW0801 / PN8007QB1-2` and Claw A1M / Claw 7 AI+
+`TMA2027 / TL070FVXS02-0` identities and EDIDs. Unknown CRU overrides are
+refused. The shared A1M / Claw 7 AI+ EDID generation is verified, but real
+driver/LFC and panel testing remains community-validation pending for both
+models.
 
 The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.1
 also supports driver installations where Intel Graphics Software is absent.

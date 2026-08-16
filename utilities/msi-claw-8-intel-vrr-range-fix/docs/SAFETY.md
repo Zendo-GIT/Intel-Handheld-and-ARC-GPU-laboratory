@@ -6,10 +6,11 @@ Version 2.1.1 installs only corrected 30-120 and official Intel/MSI 48-120.
 Both require one exact catalogued panel identity, pinned EDID state, one active Intel output
 and exact driver range readback before the shared LFC flags can change.
 
-The Claw A1M definition uses a different one-block EDID path from the Claw 8
-family. The installer refuses cross-panel hashes and never invents or writes an
-extension block for the A1M. Exact EDID transformation is release-tested; real
-A1M display and driver behavior remains community-validation pending.
+The Claw A1M / Claw 7 AI+ definition uses a different one-block EDID path from
+the Claw 8 family. The installer refuses cross-panel hashes and never invents
+or writes an extension block for this shared Tianma panel. Exact EDID
+transformation is release-tested; real A1M and Claw 7 AI+ display and driver
+behavior remains community-validation pending for each model.
 
 The 30-120 profile uses a reversible Windows EDID override. It does not write
 monitor firmware. The 48-120 profile does not modify EDID.

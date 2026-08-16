@@ -5,6 +5,7 @@
 - MSI Claw 8 AI+ A2VM / A2VMX
 - MSI Claw 8 EX AI+ CG3EM / CG3EMX
 - MSI Claw A1M
+- MSI Claw 7 AI+
 
 Each family is accepted only when the internal display returns one exact
 catalogued identity and physical EDID. The installer does not infer
@@ -13,7 +14,7 @@ compatibility from a model name or public display specification alone.
 | Family | Exact panel | Native mode | Physical EDID SHA-256 |
 |---|---|---:|---|
 | Claw 8 AI+ / 8 EX AI+ | `CSW0801 / PN8007QB1-2` | 1920x1200 at 120 Hz | `E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0` |
-| Claw A1M | `TMA2027 / TL070FVXS02-0` | 1920x1080 at 120 Hz | `3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1` |
+| Claw A1M / Claw 7 AI+ | `TMA2027 / TL070FVXS02-0` | 1920x1080 at 120 Hz | `3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1` |
 
 ## Real-hardware validation configuration
 
@@ -36,13 +37,13 @@ count. Any mismatch is rejected without modification.
 This permits another Claw configuration using the exact validated display to
 pass while still rejecting a future panel revision whose EDID differs.
 
-The A1M definition is based on its exact 128-byte Tianma EDID, including valid
-base-block checksum and its native 48-120 Hz range descriptor. The generated
-30-120 block is also pinned by full SHA-256. Release 2.1.1 performs the same
-fail-closed Intel API and active-range readback used on the Claw 8 family.
-Because no physical A1M was available during development, A1M driver/LFC and
-panel behavior remain community-validation pending; this is not presented as
-completed real-hardware validation.
+The Claw A1M and Claw 7 AI+ share the exact 128-byte Tianma EDID definition,
+including its valid base-block checksum and native 48-120 Hz range descriptor.
+The generated 30-120 block is also pinned by full SHA-256. Release 2.1.1
+performs the same fail-closed Intel API and active-range readback used on the
+Claw 8 family. Because no physical A1M or Claw 7 AI+ was available during
+development, their driver/LFC and panel behavior remain community-validation
+pending; this is not presented as completed real-hardware validation.
 
 Disconnect external VRR displays while installing. The public build requires
 exactly one active Intel Arc Sync output because the current Intel API does not
@@ -72,8 +73,9 @@ supported by the standalone ClawLab installer.
 The official `EXCELLENT` profile is part of Intel Control Library and is not
 specific to Arc 140V. The underlying technique may therefore work on other
 Intel Arc Sync systems. This release remains exact-panel-specific: the Claw 8
-path has real-hardware validation, while the A1M entry has exact EDID validation
-and deliberately awaits its first real-device result.
+path has real-hardware validation, while the shared A1M / Claw 7 AI+ entry has
+exact EDID validation and deliberately awaits a first real-device result for
+each model.
 
 The custom EDID transformation is never generic. A different monitor can
 store its range in different blocks and can have different electrical limits.

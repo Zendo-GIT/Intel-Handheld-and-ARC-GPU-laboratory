@@ -8,7 +8,7 @@ Version 2.1.1 provides two deliberately separate profiles for two exact,
 pinned MSI Claw internal-panel definitions:
 
 - Claw 8 AI+ / 8 EX AI+: `CSW0801 / PN8007QB1-2`, 1920x1200;
-- Claw A1M: `TMA2027 / TL070FVXS02-0`, 1920x1080.
+- Claw A1M / Claw 7 AI+: `TMA2027 / TL070FVXS02-0`, 1920x1080.
 
 - `INSTALL_30_120_VRR.bat`: default ClawLab 30-120 Hz profile;
 - `INSTALL_48_120_VRR.bat`: official Intel/MSI 48-120 Hz profile.

@@ -190,9 +190,10 @@ Both 128-byte blocks retain a checksum sum of zero modulo 256. The script writes
 them as separate Windows EDID override blocks, matching Microsoft's documented
 monitor-driver mechanism. The physical EEPROM remains unchanged.
 
-### Claw A1M 30-120 transformation
+### Claw A1M / Claw 7 AI+ 30-120 transformation
 
-The A1M Tianma EDID contains one 128-byte base block and no extension:
+The Tianma EDID shared by the Claw A1M and Claw 7 AI+ contains one 128-byte
+base block and no extension:
 
 ```text
 Panel:   TMA2027 / TL070FVXS02-0
@@ -200,24 +201,24 @@ Bytes:   128
 SHA-256: 3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1
 ```
 
-Only two byte positions differ in the generated A1M override:
+Only two byte positions differ in the generated shared override:
 
 | Absolute offset | Meaning | Physical | ClawLab 30-120 |
 |---:|---|---:|---:|
 | `0x5F` | Base EDID range-descriptor minimum | `0x30` (48) | `0x1E` (30) |
 | `0x7F` | Base-block checksum | `0x83` | `0x95` |
 
-Generated A1M 30-120 SHA-256:
+Generated A1M / Claw 7 AI+ 30-120 SHA-256:
 
 ```text
 7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647
 ```
 
 The catalog test reconstructs this block from pinned source bytes and verifies
-its checksum and both hashes during release validation. The A1M path writes no
-extension block. This validates the transformation, not untested physical-panel
-behavior; the runtime installer additionally requires Intel Arc Sync and exact
-range readback on the target device.
+its checksum and both hashes during release validation. The shared A1M / Claw 7
+AI+ path writes no extension block. This validates the transformation, not
+untested physical-panel behavior; the runtime installer additionally requires
+Intel Arc Sync and exact range readback on the target device.
 
 ## Retired 144 Hz recovery identifiers
 

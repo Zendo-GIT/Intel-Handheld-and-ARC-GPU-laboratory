@@ -39,7 +39,7 @@ checks, safety model and restoration path.
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw Intel VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Default corrected 30-120 Hz profile and official Intel/MSI 48-120 Hz | Claw 8 AI+ reference validation; matching-panel Claw 8 EX community validation; exact A1M EDID path pending first-device validation | Intel LFC x2 correction plus event-driven 120 Hz desktop-cursor refresh, exact panel/EDID validation, mandatory restore-before-switch interlock, original backup, factory and Safe Mode recovery; retired 144 Hz modes are recovery-only |
+| [MSI Claw Intel VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Default corrected 30-120 Hz profile and official Intel/MSI 48-120 Hz | Claw 8 AI+ reference validation; matching-panel Claw 8 EX community validation; exact Claw A1M / Claw 7 AI+ EDID path pending per-model real-device validation | Intel LFC x2 correction plus event-driven 120 Hz desktop-cursor refresh, exact panel/EDID validation, mandatory restore-before-switch interlock, original backup, factory and Safe Mode recovery; retired 144 Hz modes are recovery-only |
 
 ## Start here
 
