@@ -1,89 +1,140 @@
 # MSI Claw Intel VRR Range Fix
 
-![Version](https://img.shields.io/badge/release-2.1.2-blue)
-![Profiles](https://img.shields.io/badge/profiles-30--120_%2F_48--120_Hz-green)
-![144 Hz](https://img.shields.io/badge/144_Hz-removed-red)
+![Version](https://img.shields.io/badge/release-2.2.0-blue)
+![Stable profiles](https://img.shields.io/badge/stable-30--120_%2F_48--120_Hz-green)
+![Experimental maximum](https://img.shields.io/badge/experimental-up_to_180_Hz-orange)
 
-Version 2.1.2 provides two deliberately separate profiles for two exact,
-pinned MSI Claw internal-panel definitions:
+ClawLab 2.2.0 corrects Intel Arc VRR/LFC behavior on exact, pinned internal
+panels used by these handhelds:
 
-- Claw 8 AI+ / 8 EX AI+: `CSW0801 / PN8007QB1-2`, 1920x1200;
-- Claw A1M / Claw 7 AI+: `TMA2027 / TL070FVXS02-0`, 1920x1080.
+- MSI Claw A1M;
+- MSI Claw 7 AI+;
+- MSI Claw 8 AI+;
+- MSI Claw 8 EX AI+.
 
-- `INSTALL_30_120_VRR.bat`: default ClawLab 30-120 Hz profile;
-- `INSTALL_48_120_VRR.bat`: official Intel/MSI 48-120 Hz profile.
+The utility changes global Windows/Intel display state only. It never injects
+into, patches, hooks, opens or monitors a game process.
 
-Both include the shared Intel LFC x2 correction. The 48-144 and 30-144 profiles
-were removed and cannot be installed or persisted by this release.
+See the [2.2.0 release notes](docs/RELEASE_NOTES_2.2.0.md),
+[compatibility](docs/COMPATIBILITY.md), [safety](docs/SAFETY.md), and
+[technical details](docs/TECHNICAL_DETAILS.md).
 
-See [release notes](docs/RELEASE_NOTES_2.1.2.md),
-[compatibility](docs/COMPATIBILITY.md) and [safety](docs/SAFETY.md).
+## Stable public profiles
 
-## What the correction addresses
+- `INSTALL_30_120_VRR.bat` — ClawLab default 30–120 Hz profile. The 30 Hz
+  floor is outside MSI's official 48 Hz minimum but is the primary validated
+  ClawLab profile.
+- `INSTALL_48_120_VRR.bat` — official Intel/MSI 48–120 Hz panel range.
 
-Affected Intel systems can multiply refresh inside the intended direct-VRR
-range, for example `60 FPS -> 120 Hz` or `68 FPS -> 136 Hz`. The shared module:
+Both profiles include the Intel LFC x2 correction. It saves the original Intel
+low/high-FPS solution flags, disables both as one verified combination, reads
+the final state back from the driver, and reapplies it once at sign-in. It does
+not install a continuous LFC watcher.
 
-- verifies the exact managed mode, EDID and active range;
-- saves the original Intel low/high-FPS solution flags;
-- disables both flags as one empirically tested combination;
-- reads the flags and selected range back from the driver;
-- reapplies once at sign-in through a windowless task;
-- installs no continuous LFC watcher and never accesses a game process.
+## Experimental display-overclock profiles
 
-Removal of the observed x2 behavior was validated on real hardware at 30-120
-Hz. The same guarded flag operation is included in official 48-120. Disabling
-Intel's low-FPS solution means refresh multiplication below the selected 30 or
-48 Hz floor is unavailable.
+The `EXPERIMENTAL` folder contains:
 
-## Profile choices
+| Profile | Classification | Validation |
+|---|---|---|
+| 48–144 Hz | **Stable Experimental** | Tested on one MSI Claw 8 AI+ Polar Tempest Edition |
+| 48–165 Hz | **Unstable Experimental** | Untested; panel silicon lottery |
+| 48–180 Hz | **Unstable Experimental** | Untested; panel silicon lottery |
+| 30–144 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus overclock |
+| 30–165 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus overclock |
+| 30–180 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus overclock |
 
-### Default: 30-120 Hz
+“Stable Experimental” is a ClawLab classification, not an MSI specification or
+a guarantee for another unit. Every refresh rate above 120 Hz is a display
+overclock. Success depends on the individual panel silicon lottery, even when
+the model and EDID are identical.
 
-This uses a reversible Windows EDID override to change the validated panel's
-minimum from 48 to 30 Hz. It is outside MSI's official floor and may flicker on
-individual units. The physical panel firmware is never modified.
+### Mandatory guarded overclock test
 
-### Official: 48-120 Hz
+Every experimental installer enforces the complete safety sequence:
 
-This keeps the native panel EDID and selects Intel Control Library's
-`EXCELLENT` Arc Sync profile, then requires exact 48-120 Hz readback.
+1. It shows a prominent overclock warning and cannot continue for 10 seconds.
+2. The user must type `I ACCEPT THE OVERCLOCK RISK` exactly.
+3. The initial elevated installation transaction stages the exact-hash EDID and
+   registers a one-time normal-user trial for the next sign-in. A scheduling
+   failure rolls the pending EDID and partial trial artifacts back together;
+   the limited task runs only from a SHA-256-manifested `%ProgramData%` runtime
+   that standard users cannot modify.
+4. The trial explicitly selects the requested Windows refresh rate for no more
+   than 15 seconds.
+5. It automatically returns Windows to the safe 120 Hz mode before asking any
+   question.
+6. The requested profile is persisted only after the user confirms that the
+   target refresh was reached and remained stable, then accepts the visible UAC
+   prompt for the persistent machine-level change. That elevation also executes
+   only the protected, re-verified runtime.
+7. **No, no answer within 30 seconds, any error, or failed verification restores
+   the saved original VRR/LFC state and restarts Windows.**
 
-## Installation
+The screen may flicker, show artifacts or go black during those 15 seconds. If
+that happens, wait patiently for the automatic 120 Hz restoration. **Do not
+power off or reboot during the trial.**
 
-1. Extract the ZIP completely.
-2. Close games and display-control applications.
-3. If CRU has ever been used on this Windows installation, at any time and even
-   if it was later removed or appears inactive, download the current official
+After a successful confirmation, Windows is explicitly set to the chosen
+maximum refresh, Intel `EXCELLENT` is verified at the requested range, the same
+LFC patch is applied, and normal one-shot sign-in persistence is installed.
+
+## Mandatory pre-install conditions
+
+1. Extract the complete ZIP to a normal folder.
+2. **Upgrade from 2.1.2 or any older ClawLab VRR release:** use that release's
+   `RECOVERY\RESTORE_ORIGINAL_VRR.bat`, complete the Windows restart, then use
+   the newly extracted 2.2.0 package. Version 2.2.0 detects and refuses to
+   overwrite an older managed installation. Do not use Factory Reset for a
+   normal upgrade.
+3. Close games and display-control applications.
+4. If Custom Resolution Utility (CRU) has ever been used on this Windows
+   installation, download the current official
    [CRU release](https://www.monitortests.com/forum/Thread-Custom-Resolution-Utility-CRU),
-   run its included `reset-all.exe`, and restart Windows. Do not continue until
-   this reset and restart are complete.
-4. Remove any other unknown third-party EDID override with the tool that created
-   it, then restart Windows.
-5. If another ClawLab profile is installed, run
-   `RECOVERY\RESTORE_ORIGINAL_VRR.bat` and restart first.
-6. Run exactly one installer: `INSTALL_30_120_VRR.bat` or
-   `INSTALL_48_120_VRR.bat`.
-7. Accept the restart prompt and run `CHECK_STATUS.bat` after sign-in.
+   run `reset-all.exe`, and restart Windows before using ClawLab.
+   **If CRU has never been used on this Windows installation, no CRU reset is
+   needed.**
+5. Disable or uninstall every other application that writes, restores,
+   synchronizes or reapplies VRR/EDID settings.
+6. The only supported coexistence exception is
+   [ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks),
+   which includes the ClawLab VRR compatibility patch. **ClawTweaks is optional
+   and is not required for this VRR fix to work.** Earlier ClawTweaks versions
+   and every other VRR-writing tool must be disabled.
+7. Disconnect every external display during installation and any guarded
+   overclock trial. Only the validated internal panel may be active while
+   Windows refresh rate is changed.
+8. If any different ClawLab profile is installed, successfully run
+   `RECOVERY\RESTORE_ORIGINAL_VRR.bat` and complete the restart first.
 
-Cross-profile installation is refused. Reinstalling the same supported mode is
-allowed for repair or package updates.
+Every installer asks for CRU-cleanup and exclusive VRR-ownership confirmation
+before doing anything. Experimental installers then add the separate mandatory
+10-second overclock warning and typed risk acknowledgement.
 
-Version 2.1.2 supports systems where Intel Graphics Software itself and its
-machine Run entry are both absent. That original absence is saved and restored
-without inventing a command or requiring the application. Elevated failures
-are also copied into a persistent `last-error.txt` report.
+## Strict restore-before-switch interlock
 
-ClawTweaks is optional and is not bundled or required. If its helper task is
-present, the one-shot ClawLab startup waits for that existing initialization to
-settle before reapplying the profile. If ClawTweaks is absent, this check is
-skipped and every VRR, LFC, persistence and Cursor Refresh feature remains
-available.
+The switch guard applies identically to every supported model and every stable
+or experimental profile:
 
-## Status
+- clean state → any one profile is allowed;
+- exact same fully installed **2.2.0** profile → idempotent repair/reinstall is
+  allowed;
+- an older ClawLab release → refused until its original profile is restored and
+  Windows is restarted;
+- any profile → any different profile → refused until
+  `RECOVERY\RESTORE_ORIGINAL_VRR.bat` succeeds and Windows restarts;
+- mixed, legacy, pending or inconsistent state → fail closed and request
+  recovery.
 
-The VRR block should report the selected managed mode and
-`ProfileSwitchGuard: CONSISTENT`. The LFC block should report:
+This prevents ranges, EDID hashes, LFC backups and startup tasks from different
+profiles being combined.
+
+## Intel LFC correction
+
+Affected Intel configurations can multiply refresh inside the requested direct
+VRR range, for example `60 FPS → 120 Hz` or `68 FPS → 136 Hz`. ClawLab disables
+Intel's low- and high-FPS “solutions” only after the managed profile, exact EDID
+and range identity verify. Expected status:
 
 ```text
 CLAWLAB_LFC_FIX_ACTIVE
@@ -93,97 +144,75 @@ StartupPersistence     = INSTALLED_ONE_SHOT_AT_LOGON
 LfcFixActive            = True
 ```
 
-Intel Graphics Software may display cached range text. `CHECK_STATUS.bat`
-queries the Intel driver directly and is authoritative. Version 2.1.2 reports
-the game-facing VRR/LFC core separately from the optional desktop helper. A
-`CORE_HEALTHY_HELPER_ATTENTION` result means the game correction is operational
-and only the desktop cursor helper needs attention.
-Do not repair or restore while startup is still `INITIALIZING`; wait up to two
-minutes and check again. The report also detects an Intel driver version change
-and distinguishes a changed-but-verified configuration from one that needs the
-same profile installed again.
+This removes Intel refresh multiplication below the selected floor. Traditional
+LFC below 30 FPS in a 30 Hz profile, or below 48 FPS in a 48 Hz profile, is
+therefore unavailable.
+
+## A1M and Claw 7 AI+ telemetry handling
+
+The exact `TMA2027 / TL070FVXS02-0` panel can expose `24–120 Hz` through one
+Intel Control Library monitor-capability query even though its physical EDID is
+48–120 Hz and the selected active profile is independently 30–120 or 48–120 Hz.
+Version 2.2.0 recognizes that value only as a telemetry anomaly on the exact
+pinned Tianma EDID. It never creates, offers or installs a 24 Hz profile.
+
+`CHECK_STATUS.bat` reports physical panel range, Intel monitor telemetry and
+the independently selected driver-active range separately. The active profile
+must still read back exactly as the requested profile.
 
 ## Cursor Refresh Helper
 
-Version 2.1.2 also installs a small event-driven desktop helper. Windows can
-leave the complete desktop at the selected VRR floor while only the hardware
-cursor moves; a scroll or window animation immediately raises it to 120 Hz.
-Real-hardware testing confirmed that a genuine WPF/DWM animation wakes the
-reference panel.
+Windows may leave the complete desktop at the VRR floor while only the hardware
+cursor moves. The event-driven helper animates a nearly transparent 2×2 DWM
+surface in the extreme lower-right corner while a visible mouse moves. It stops
+1.5 seconds after input, releases its timer-resolution request, trims only its
+own working set and enters deep idle. Controller use naturally leaves it idle.
 
-The helper receives standard Windows Raw Input and animates a nearly transparent
-2x2 pixel surface in the extreme lower-right corner only while the mouse moves.
-The animation remains active for 1.5 seconds after the latest input, reducing
-rapid floor/ceiling transitions during short mouse pauses. At idle, the
-animation stops, the helper releases its 1 ms timer-resolution request, trims
-its own working set and waits in the Windows message loop.
+It does not inject into games, inspect launchers, or alter VRR/LFC settings.
+Elevated always-on-top windows can cover its non-elevated surface; this does not
+affect game VRR or the Intel LFC correction.
 
-This is also the controller-mode guard. A controller/game profile naturally
-produces no usable visible-mouse activity, so the helper enters deep idle
-regardless of whether the profile was selected by ClawTweaks, MSI Center M,
-another utility, or manually. It resumes on the first visible raw-mouse packet.
-It does not inspect, depend on, stop or modify any profile-management process.
-It is suppressed when the system cursor is hidden and remains compatible with
-Windows Xbox Full Screen Experience. Elevated always-on-top windows such as
-Task Manager can cover the non-elevated helper surface; this does not change the
-VRR profile or Intel LFC correction.
+## Status and driver updates
 
-The helper does not inject into, hook, patch, enumerate or read a game process.
-Its C# source and rebuild script are included. `CHECK_STATUS.bat` reports
-`CursorRefreshHelper: RUNNING_EVENT_DRIVEN` after sign-in.
+After every installation and Intel graphics-driver update, run
+`CHECK_STATUS.bat`. Intel Graphics Software may cache old text; the ClawLab
+report queries both Intel interfaces directly and separates capability
+telemetry from the selected profile.
 
-## Restore and recovery
+Do not repair while status is `INITIALIZING`; wait up to two minutes and check
+again. If the driver update reset the profile, reinstall the **same** profile.
+Switching profiles still requires a verified restore and restart.
 
-`RECOVERY\RESTORE_ORIGINAL_VRR.bat` restores the saved Intel solution flags, Arc Sync
-profile, ClawLab EDID, tasks, scripts and original Intel startup state.
+## Restore and emergency recovery
 
-`RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat` restores only the Intel low/high-FPS flags and
-leaves the selected 30-120 or 48-120 range intact.
+- `RECOVERY\RESTORE_ORIGINAL_VRR.bat` restores the exact saved Intel VRR/LFC
+  state, removes the known ClawLab EDID and tasks, and requires a restart.
+- `RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat` restores only the saved Intel
+  low/high-FPS flags.
+- `EMERGENCY` is reserved for the explicitly named recovery failures.
+- `DIAGNOSTICS\EXPORT_STATUS_REPORT.bat` creates the support JSON to share.
 
-If an older release installed 48-144 or 30-144, version 2.1.2 recognizes those
-exact hashes only for recovery. Run `RECOVERY\RESTORE_ORIGINAL_VRR.bat`; do not
-attempt to keep or reapply the retired mode. The scripts under `EMERGENCY` also
-retain exact legacy recovery support.
-
-Unknown CRU or third-party EDID overrides are never removed by this package.
-ClawLab does not bundle CRU or `reset-all.exe` and cannot prove that CRU was
-never used historically; completing the mandatory pre-install reset is the
-user's responsibility.
-
-Never manually delete `%LOCALAPPDATA%\ClawLab`. It contains the original Arc
-Sync, EDID, startup and Intel low/high-FPS flag backups needed for a verified
-restore. Use `RECOVERY` first; use `EMERGENCY` only for its named failure case.
-For support, run `DIAGNOSTICS\EXPORT_STATUS_REPORT.bat` and share the generated
-JSON file instead of deleting state or repeatedly running Factory Reset.
-If that backup was already lost and status explicitly reports
-`ORIGINAL_LFC_BACKUP_MISSING_CANNOT_RESTORE`, the separate
-`EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat` can set both Intel solution
-flags to their factory-on state. It refuses to run while an original backup is
-still available.
-
-## Compatibility and anti-cheat boundary
-
-The public build requires an exact catalogued panel identity and EDID, exactly
-one active Intel Arc Sync output and an Intel graphics adapter. It changes only
-global display configuration. It does not patch, inject into, hook or monitor a
-game process and installs no game DLL, overlay, service or driver.
+Never delete `%LOCALAPPDATA%\ClawLab` manually. It contains the original values
+needed for verified restoration. Unknown CRU or third-party EDID data is never
+removed by ClawLab.
 
 ## Build
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 2.1.2
+.\tools\Build-Release.ps1 -Version 2.2.0
 ```
 
-The release contains readable scripts, the rebuildable Cursor Refresh Helper
-source, its small .NET Framework executable, an offline A1M EDID integrity test
-and a SHA-256 manifest. It bundles no Intel DLL, driver, EDID dump or CRU binary.
+The builder parses every PowerShell file, regenerates the helper, verifies all
+12 overclock EDID hashes, checks the A1M/Claw 7 telemetry policy, exercises the
+complete profile-transition matrix, validates warning/timeout/rollback markers,
+and writes a SHA-256 manifest.
 
 ## ZIP layout
 
-- Root: both installers, `CHECK_STATUS.bat`, README, changelog and license.
-- `RECOVERY`: normal original-profile and Intel-flag restoration.
-- `EMERGENCY`: factory reset, exact EDID removal and explicit lost-backup Intel
-  LFC factory defaults.
-- `DIAGNOSTICS`: one-click status export and unsupported-display data collection.
-- `scripts`: internal runtime components used by the launchers.
-- `SOURCE`: rebuildable helper source and offline integrity test.
+- Root: stable installers, status, README, changelog and license.
+- `EXPERIMENTAL`: guarded display-overclock installers.
+- `RECOVERY`: normal exact-state restoration.
+- `EMERGENCY`: explicitly labelled last-resort actions.
+- `DIAGNOSTICS`: support data collection.
+- `scripts`: internal runtime components.
+- `SOURCE`: reproducible source and offline safety tests.

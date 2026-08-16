@@ -1,301 +1,247 @@
 # Technical details
 
-## Confirmed driver behavior
+## Architecture
 
-Direct Intel Control Library queries on the reference panel returned:
+Version 2.2.0 separates six responsibilities:
 
-```text
-ctlGetIntelArcSyncInfoForMonitor:
-  supported = true
-  minimum = 48 Hz
-  maximum = 120 Hz
+1. `MSI-Claw-VRR-Fix.ps1` validates hardware, generates exact EDID variants,
+   selects Intel Arc Sync profiles, manages Windows refresh and owns the
+   restore-before-switch state machine.
+2. `MSI-Claw-Intel-LFC-Fix.ps1` saves and changes Intel low/high-FPS solution
+   flags through a direct D3DKMT Intel private escape.
+3. `ArcSync-Range-Policy.ps1` isolates normal range matching and the exact
+   TMA2027 telemetry exception.
+4. `Experimental-Overclock-VRR-Trial.ps1` schedules and executes the protected
+   one-time 15-second display-overclock trial.
+5. `ClawLab-Cursor-Refresh-Helper.exe` raises normal desktop composition from
+   the VRR floor only in response to visible raw-mouse movement.
+6. Windowless VBS launchers run one-shot sign-in operations without visible
+   PowerShell windows.
 
-ctlGetIntelArcSyncProfile before:
-  profile = RECOMMENDED
-  active minimum = 60 Hz
-  active maximum = 120 Hz
+No component contains game-specific logic or accesses a game process.
 
-ctlGetIntelArcSyncProfile after EXCELLENT:
-  profile = EXCELLENT
-  active minimum = 48 Hz
-  active maximum = 120 Hz
-```
+## Exact hardware definitions
 
-Reopening Intel Graphics Software did not revert the profile. A new direct query
-still returned `EXCELLENT / 48-120 Hz`, even though the application UI could
-continue showing `60-120 Hz`.
+### CSW0801 / PN8007QB1-2
 
-A later full Windows restart did revert the direct driver state to
-`RECOMMENDED / 60-120 Hz`. Release installation therefore creates a
-current-user sign-in task that waits for the display API and applies
-`EXCELLENT` as soon as the driver becomes available.
+- Models: MSI Claw 8 AI+ / 8 EX AI+
+- Mode: 1920×1200 at 120 Hz
+- EDID length: 256 bytes
+- Physical SHA-256:
+  `E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0`
+- Range fields: base descriptor bytes 95/96 and DisplayID bytes 142/143
+- Experimental maximum timing: DisplayID 2.0 Type VII detailed timing in the
+  validated empty slot at bytes 156–178
 
-The task originally waited for Intel Graphics Software, but further testing
-showed that dependency was unnecessary. After task reapply, the direct driver
-state was already `48-120 Hz`; completely exiting and restarting the Intel
-Graphics Software tray process merely refreshed its cached current-range text
-from 60-120 to 48-120 Hz.
+The experimental timing inherits the native 2080×1264 totals. Pixel clock is
+`floor(2080 × 1264 × Hz / 1000) - 1 kHz`; the conservative one-kHz bias
+preserves the previously field-tested 144 Hz timing byte for byte.
 
-To guarantee correct text on the application's first launch as well as correct
-driver state, installation records Intel Graphics Software's machine-wide Run
-state. If the exact signed entry exists, it is backed up and removed. If both
-the entry and Intel Graphics Software are absent, schema 4 records that absence
-without inventing a registry value or command. The windowless task launches the
-verified Intel-signed command with `-s` only when that application originally
-existed, then applies and verifies the profile. Normal restore recreates the
-original entry only when it existed. A new external entry appearing later is
-preserved rather than deleted.
+### TMA2027 / TL070FVXS02-0
 
-## Event-driven desktop cursor refresh
+- Models: MSI Claw A1M / Claw 7 AI+
+- Mode: 1920×1080 at 120 Hz
+- EDID length: 128 bytes
+- Physical SHA-256:
+  `3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1`
+- Range descriptor bytes: 95/96
+- Experimental maximum timing: native 1920×1080 timing cloned into the
+  secondary DTD slot at bytes 72–89 with a recalculated pixel clock
 
-With the validated 30-120 configuration active, Windows can leave the entire
-desktop at 30 Hz when only the hardware cursor changes. A scroll or other true
-window animation immediately raises the panel to 120 Hz. Tests with
-`DCompositionBoostCompositorClock` and Windows pointer trails did not change
-this behavior. A genuine changing WPF/DWM surface did.
+The native 120 Hz preferred DTD remains intact as a recovery mode. The
+horizontal maximum and pixel-clock maximum fields are updated consistently and
+the base checksum is regenerated.
 
-Version 2.1.2 therefore installs `ClawLab-Cursor-Refresh-Helper.exe`. The helper
-registers a standard Raw Input mouse sink and changes a nearly transparent 2x2
-WPF surface at the extreme lower-right coordinates:
+## Managed profiles and hashes
 
-```text
-X = PrimaryScreenWidth  - 2
-Y = PrimaryScreenHeight - 2
-```
+Every generated EDID and block hash is pinned in source and independently
+reproduced by `tools/Test-Experimental-Overclock-Edids.ps1`.
 
-The render timer runs at an 8 ms request interval only while Raw Input arrives
-and stops 1.5 seconds after the last usable event. At idle, the helper also
-releases its 1 ms timer-resolution request, trims its own working set and waits
-in the Windows message loop. Real-hardware tests confirmed the panel rises to
-120 Hz during mouse activity, falls back to 30 Hz after activity, and repeats
-that transition without a visible square at 1 percent opacity.
-
-Before starting animation, the helper verifies that the system cursor is
-visible. It deliberately does not reject full-monitor windows because Windows
-Xbox Full Screen Experience is itself a full-monitor shell. It uses no DLL
-injection, process handle, global code hook, game-file access,
-network access, driver request or LFC operation.
-
-The same event state is a profile-manager-independent controller guard. A
-controller/game profile produces no usable visible-mouse event, so the helper
-remains in deep idle. It resumes on the next visible mouse packet without
-enumerating ClawTweaks, MSI Center M, another utility or a game process.
-
-The existing limited current-user sign-in task launches the helper immediately
-after validating the supported panel and Intel GPU, before the slower Arc Sync
-stabilization loop. A second call after profile verification is idempotent and
-acts as the final health check. Installation copies the exact packaged binary,
-records its SHA-256, and startup refuses a hash mismatch. Restore stops only the
-process whose executable path equals the installed ClawLab path, then removes
-the binary and state record.
-
-`ClawLab-Health-Check.ps1` combines the direct VRR state, helper state, Intel LFC
-flags and scheduled-task state. It reports game-facing VRR/LFC core health and
-optional desktop-helper health separately. A running sign-in task yields `INITIALIZING`
-instead of a premature failure. It also compares the current Intel driver
-version with the version saved in the original-profile record; a driver change
-is informational when every current state still verifies.
-
-The LFC task starts the VRR reapply as a direct child and calls `WaitForExit()`
-on that process object. `Start-Process -Wait` is deliberately not used here:
-Windows PowerShell can wait for the complete descendant tree, which now
-includes the intentionally resident Cursor Refresh Helper.
-
-## Why custom 30 Hz is not the official path
-
-A direct call requesting `CUSTOM / 30-120 Hz` against the physical `48-120 Hz`
-monitor capability returned:
-
-```text
-0x4000000B = CTL_RESULT_ERROR_INVALID_ARGUMENT
-```
-
-Intel's sample documents that custom minimum and maximum values must remain
-inside the panel-supported range. The release therefore never claims that a
-custom profile alone can unlock 30 Hz.
-
-## Shared Intel LFC x2 correction
-
-On driver 32.0.101.8974, game telemetry showed Intel's Adaptive Sync Plus/LFC
-path multiplying refresh inside the desired range (`60 FPS -> 120 Hz` and
-`68 FPS -> 136 Hz` were observed). Installing only the 30-120 EDID was not
-sufficient. The validated result required all of the following at the same time:
-
-```text
-Managed mode:                 CLAWLAB_30_120
-Arc Sync profile:             EXCELLENT
-Monitor/driver range:         30-120 Hz
-LowFpsSolutionEnabled:        false
-HighFpsSolutionEnabled:       false
-Third-party profile overwrite: none
-```
-
-`MSI-Claw-Intel-LFC-Fix.ps1` uses `D3DKMTEscape` with Intel's driver-private
-VRR display payload. Read operation 0 returns the current range and solution
-flags; operations 4 and 6 disable the low- and high-FPS solutions. The script
-backs up both original values before using them and operations 3 and 5 restore
-them. Every change is read back, and a range change or failed flag verification
-causes rollback.
-
-The direct LFC flag combination remains unchanged, while the backup and
-identity layer is version 2.0.4 in release 2.1.2. Schema 4 pins the exact stable
-panel identity, physical EDID, approved EDID-at-save and managed mode, while
-recording the volatile Windows monitor instance separately. A schema-3 backup
-is migrated atomically only after its pinned EDID matches the current exact
-catalogued panel. This prevents a harmless instance rename during an Intel
-driver update from causing a restore loop without weakening cross-panel or
-unknown-EDID refusal. The correction is integrated into both supported
-installers. Before
-changing either flag, the shared script requires the exact managed-mode record,
-the exact physical or pinned custom EDID expected for that mode, and the exact
-active Intel range shown below:
-
-| Managed mode | Required Intel range | Release role |
+| Panel | Range | Full EDID SHA-256 |
 |---|---:|---|
-| `CLAWLAB_30_120` | 30-120 Hz | Default corrected profile |
-| `OFFICIAL_48_120` | 48-120 Hz | Official Intel/MSI range |
+| CSW0801 | 30–120 | `14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918` |
+| CSW0801 | 48–144 | `4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E` |
+| CSW0801 | 48–165 | `FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677` |
+| CSW0801 | 48–180 | `279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62` |
+| CSW0801 | 30–144 | `0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05` |
+| CSW0801 | 30–165 | `8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7` |
+| CSW0801 | 30–180 | `0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B` |
+| TMA2027 | 30–120 | `7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647` |
+| TMA2027 | 48–144 | `AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB` |
+| TMA2027 | 48–165 | `89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2` |
+| TMA2027 | 48–180 | `0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D` |
+| TMA2027 | 30–144 | `DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E` |
+| TMA2027 | 30–165 | `C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51` |
+| TMA2027 | 30–180 | `CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679` |
 
-The observed removal of LFC x2 has been validated on real hardware at 30-120
-Hz. The 48-120 path uses the identical guarded flag operation and per-range
-readback, but this does not turn it into a separate claimed real-hardware LFC
-validation.
+The official 48–120 mode has no EDID override and uses the physical hash.
 
-This driver-private path is independent of both Intel Graphics Software and the
-legacy Intel Graphics Command Center application assemblies. It is transparent
-source code, but it is not a documented public Intel API. The two flags remain
-a single empirically validated combination; the project does not infer which
-one alone causes the x2 behavior.
+## A1M / Claw 7 AI+ range policy
 
-The consequence is intentional: Intel's refresh-multiplication solution below
-the selected floor is disabled. Frames below 30 FPS in a 30 Hz profile, or
-below 48 FPS in a 48 Hz profile, remain outside the corrected direct-VRR range.
+Three sources of truth are intentionally separate:
 
-## Validated 30-120 EDID transformation
+- physical EDID range: 48–120 Hz;
+- Intel Control Library monitor capability: observed as 24–120 Hz on TMA2027;
+- Intel active profile: selected independently as the exact managed range.
 
-Validated physical EDID:
+`ArcSync-Range-Policy.ps1` accepts 24–120 only as
+`INTEL_CONTROL_LIB_HALF_PHYSICAL_FLOOR` for panel key
+`CLAW_A1M_CLAW_7_AI_PLUS`. Expected profile minimum remains restricted to 30 or
+48, and expected maximum to 120, 144, 165 or 180. The direct D3DKMT interface
+may continue to report physical 48–120 on this panel; it is accepted only when
+the loaded EDID hash is the exact expected managed variant. Thus a pending,
+foreign or mismatched EDID cannot be mistaken for a ready profile.
 
-```text
-Bytes:   256
-SHA-256: E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0
-```
+## Intel Control Library path
 
-Only four byte positions differ in the generated override:
+The main script loads the signed system `ControlLib.dll` and calls:
 
-| Absolute offset | Meaning | Physical | ClawLab 30-120 |
-|---:|---|---:|---:|
-| `0x5F` | Base EDID range-descriptor minimum | `0x30` (48) | `0x1E` (30) |
-| `0x7F` | Base-block checksum | `0xEF` | `0x01` |
-| `0x8E` | DisplayID Adaptive-Sync minimum | `0x30` (48) | `0x1E` (30) |
-| `0xFF` | Extension-block checksum | `0x90` | `0xA2` |
+- `ctlGetIntelArcSyncInfoForMonitor`;
+- `ctlGetIntelArcSyncProfile`;
+- `ctlSetIntelArcSyncProfile`.
 
-Generated 30-120 EDID SHA-256:
+Every setter is followed by a fresh query. The final profile must be
+`EXCELLENT` and active minimum/maximum must equal the requested managed range.
+Capability telemetry alone never proves installation.
 
-```text
-14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918
-```
+## Windows display-mode path
 
-Both 128-byte blocks retain a checksum sum of zero modulo 256. The script writes
-them as separate Windows EDID override blocks, matching Microsoft's documented
-monitor-driver mechanism. The physical EEPROM remains unchanged.
+The script enumerates exact resolution/refresh combinations through Win32
+display APIs. Experimental confirmation is impossible unless the requested
+1920×1080 or 1920×1200 maximum refresh appears as a Windows mode after the EDID
+reload. `ChangeDisplaySettingsEx` writes the confirmed selection to the user
+profile and a second query verifies the result.
 
-### Claw A1M / Claw 7 AI+ 30-120 transformation
+Safe rollback explicitly selects 120 Hz before any experimental EDID is
+removed.
 
-The Tianma EDID shared by the Claw A1M and Claw 7 AI+ contains one 128-byte
-base block and no extension:
+## Guarded overclock transaction
 
-```text
-Panel:   TMA2027 / TL070FVXS02-0
-Bytes:   128
-SHA-256: 3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1
-```
+An experimental install is a two-phase transaction.
 
-Only two byte positions differ in the generated shared override:
+### Phase 1: pending state
 
-| Absolute offset | Meaning | Physical | ClawLab 30-120 |
-|---:|---|---:|---:|
-| `0x5F` | Base EDID range-descriptor minimum | `0x30` (48) | `0x1E` (30) |
-| `0x7F` | Base-block checksum | `0x83` | `0x95` |
+- verify clean state or exact same pending mode;
+- save the original Intel profile;
+- write only the exact generated EDID blocks;
+- record panel key, physical/experimental hashes, range and classification;
+- do not install normal persistence or LFC yet;
+- stage exact runtime files and register a limited-interactive one-time task in
+  the same elevated transaction as the pending EDID;
+- roll back the pending EDID, managed state, task and copied trial artifacts if
+  registration or verification fails;
+- place the trial/main elevation payload in a non-reparse `%ProgramData%`
+  directory protected by explicit SYSTEM/Administrators full-control and Users
+  read/execute-only ACLs;
+- bind every protected payload file to a versioned SHA-256 manifest and verify
+  that manifest before the trial or elevated main script proceeds;
+- run the task itself with limited user privileges.
 
-Generated A1M / Claw 7 AI+ 30-120 SHA-256:
+### Phase 2: post-restart trial
 
-```text
-7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647
-```
+- task waits 10 seconds after sign-in for display initialization;
+- exact trial context is revalidated;
+- the validated internal panel must be the only active Windows display;
+- requested Windows maximum and Intel `EXCELLENT` profile are attempted;
+- child execution is bounded to 15 seconds;
+- 120 Hz restoration runs unconditionally in `finally`;
+- confirmation appears only after safe restoration;
+- Yes is written to the trial record before a separate visible UAC request and
+  protected-runtime verification/final persistence can pass;
+- No, timeout or error restores original state and restarts Windows.
 
-The catalog test reconstructs this block from pinned source bytes and verifies
-its checksum and both hashes during release validation. The shared A1M / Claw 7
-AI+ path writes no extension block. Core Ultra 5 and Core Ultra 7 A1M
-diagnostics also showed Windows exposing the exact block followed by 128 zero
-bytes. `Edid-Normalization.ps1` accepts only that zero-filled tail when byte
-126 declares no extension, discards the non-semantic padding, and still
-requires the pinned 128-byte SHA-256. Any non-zero tail is rejected. This
-validates the transformation, not
-untested physical-panel behavior; the runtime installer additionally requires
-Intel Arc Sync and exact range readback on the target device.
+`ConfirmExperimentalTrial` refuses to persist without `UserConfirmed = true` in
+the exact matching trial record. A successful path reapplies the requested
+Windows maximum, re-verifies Intel range, installs normal startup/cursor files,
+applies LFC, removes the trial task and restarts.
 
-## Retired 144 Hz recovery identifiers
+## Restore-before-switch state machine
 
-Version 2.1.2 contains no 144 Hz installer, installation action, fixed-refresh
-selector or confirmation task. Exact complete and per-block hashes from older
-ClawLab 48-144 and 30-144 releases remain pinned only to identify a known legacy
-override. Normal restore first selects the detected panel's native resolution
-at 120 Hz; normal,
-factory and emergency recovery can then remove only those exact known blocks.
-Unknown third-party data is still never removed. Startup and LFC reapply refuse
-a retired 144 Hz managed record and direct the user to recovery.
-
-## Signed Intel Graphics Software update detection
-
-The ordered startup path pins the exact Intel Graphics Software identity after
-validating its canonical path, `-s` argument and Windows Authenticode signature.
-Graphics-driver updates can legitimately replace that executable. Version
-2.1.2 compares the current SHA-256 and saved schema at every managed startup.
-
-When they differ, the task performs a fresh Authenticode validation, requires a
-valid signer whose certificate subject identifies Intel Corporation, recomputes
-the file hash to detect a concurrent replacement, and atomically stores schema
-4 identity metadata containing the original entry-presence flag, signer
-thumbprint, file version and SHA-256.
-The identity is checked again before launch. Failure at any stage prevents the
-application launch and VRR reapply rather than trusting a hash change alone.
-
-## Managed-mode transition model
-
-The utility treats mode selection as an explicit state transition:
+`managed-mode.json` is authoritative only when its expected override and all
+required artifacts agree. `Test-ClawLabProfileTransitionAllowed` implements:
 
 ```text
-CLEAN -> one installer -> MANAGED MODE
-MANAGED MODE -> same installer -> MANAGED MODE
-MANAGED MODE -> different installer -> REFUSED
-MANAGED MODE -> RESTORE_ORIGINAL_VRR -> CLEAN
-BROKEN/UNKNOWN -> FACTORY_RESET_CLAWLAB_VRR -> CLEAN after restart
+CLEAN/NONE                       -> requested mode allowed
+CONSISTENT + current 2.2.0 + same requested mode -> allowed as idempotent repair
+older managed FixVersion -> OLDER_VERSION_RESTORE_REQUIRED
+anything else                    -> RESTORE_ORIGINAL_VRR required
 ```
 
-The managed record is written only after installation verification. The current
-EDID override must match the recorded custom mode, while official mode
-requires no EDID override. `ApplyStartup` also requires this invariant before it
-can touch the fixed refresh or Arc Sync profile.
+No exception exists for stable-to-stable, stable-to-experimental, or one
+experimental range to another. The pure test covers every pair for both panel
+families.
 
-Factory recovery deliberately restores Intel profile ID 1 (`RECOMMENDED`), not
-`EXCELLENT`, because its objective is the vendor-default software state. Once
-the physical EDID reloads after restart, the expected default active range is
-the driver-selected subset of the native 48-120 Hz panel capability.
+## Intel LFC component 2.0.5
 
-Recovery classification is block-based rather than requiring a valid complete
-custom pair. This permits repair after an interrupted or cross-profile
-write left block 0 and block 1 from different ClawLab variants. Each present
-block must still match one of the pinned ClawLab hashes; an unknown block is
-never removed.
+The direct Intel driver interface queries VRR support, range, enable state and
+both solution flags. Before change, schema-4 backup records original values,
+physical panel identity, active EDID, managed mode, driver and monitor-instance
+history. Atomic file replacement uses a real same-directory backup path for
+Windows PowerShell/.NET compatibility.
 
-## Restart model
+Both low- and high-FPS solutions are disabled and read back. Any error restores
+saved values. The one-shot sign-in task first waits for the managed VRR reapply,
+then verifies the exact mode/EDID/range policy before touching flags.
 
-Windows reads monitor EDID override blocks while initializing the monitor
-device. Custom-range installation and removal therefore require a restart.
-Every mutating batch file presents an explicit `Y/N` restart choice. No restart
-occurs without the user selecting `Y`.
+The standalone VRR task and the LFC parent can be triggered at nearly the same
+time. A per-user named mutex serializes only their `ApplyStartup` phase, avoiding
+duplicate profile/helper operations. The mutex is released when startup work
+ends and is not a resident watcher.
 
-Official profile changes are live, but the driver does not persist them reliably
-through a full restart. The sign-in task reapplies the profile only after Intel
-startup initialization. The same restart choice is presented to validate that
-complete ordered-startup path. Stale text from a pre-installation session can be
-refreshed by fully exiting and restarting the tray process.
+All stable and experimental profiles receive the same LFC patch. TMA2027 uses
+the exact-panel direct-range exception described above; CSW0801 still requires
+the direct interface to report the selected range exactly.
+
+## Startup ordering and external tools
+
+ClawLab stores and verifies Intel Graphics Software's signed startup identity,
+removes the original Run entry while managed, runs its own one-shot task, then
+starts the trusted Intel application. Signed application updates are accepted
+only after fresh Authenticode and SHA-256 verification.
+
+Every other VRR/EDID writer must be disabled. The only supported exception is
+[ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks), whose
+compatibility patch prevents it from overwriting ClawLab state. ClawTweaks is
+not a dependency; absent installations skip the optional startup wait.
+
+## Cursor helper implementation
+
+The C#/.NET Framework WPF helper registers Raw Input with `RIDEV_INPUTSINK` and
+uses no per-packet native allocation. While a visible mouse moves it animates a
+nearly transparent 2×2 surface at the extreme lower-right corner. Its 8 ms
+animation timer stays active for 1.5 seconds after the latest input to avoid
+rapid floor/ceiling oscillation. Deep idle stops the timer, calls
+`timeEndPeriod(1)`, trims only its process working set and waits in the Windows
+message loop.
+
+Hidden cursors suppress activation. Controller use therefore consumes no
+continuous animation resources. The helper is non-elevated and does not inject
+into or inspect elevated windows or games.
+
+## Recovery boundaries
+
+Normal restore order is:
+
+1. select safe 120 Hz for an overclock state;
+2. restore saved Intel LFC flags;
+3. restore saved Intel Arc Sync profile;
+4. remove only exact known ClawLab EDID blocks;
+5. remove tasks/helpers/scripts;
+6. restore the original Intel Graphics Software startup state;
+7. require a restart to reload the physical EDID.
+
+Unknown third-party EDID blocks are never removed. Emergency EDID removal also
+requires an exact known hash and exact validated registry path.
+
+## Release verification
+
+`tools/Build-Release.ps1`:
+
+- parses every PowerShell source file;
+- rebuilds and versions the cursor helper;
+- verifies physical and custom EDID hashes for both panels;
+- reproduces all 12 overclock variants;
+- runs the complete profile-switch matrix;
+- validates mandatory 10/15/30-second trial markers and rollback actions;
+- rejects any 24 Hz install marker;
+- validates ZIP layout and emits per-file and archive SHA-256 manifests.

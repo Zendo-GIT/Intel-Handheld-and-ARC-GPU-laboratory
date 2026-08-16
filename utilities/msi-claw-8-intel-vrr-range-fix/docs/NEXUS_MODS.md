@@ -1,59 +1,86 @@
-# Optional Nexus Mods publication draft
+# Nexus Mods listing copy
 
-- Title: **MSI Claw Intel VRR Range Fix**
-- Version: **2.1.2**
-- Category: **Utilities** or **Bug Fixes**
-- Installation: **Manual only**
+## Name
+
+MSI Claw Intel VRR Range and LFC Fix
+
+## Version
+
+2.2.0
 
 ## Short description
 
-Corrected 30-120 Hz and official Intel/MSI 48-120 Hz profiles with a shared
-Intel LFC x2 correction, event-driven 120 Hz desktop cursor refresh, exact
-panel/EDID checks, backup, windowless sign-in reapply and complete recovery.
+Reversible Intel Arc VRR/LFC correction for exact MSI Claw A1M, 7 AI+, 8 AI+
+and 8 EX AI+ internal panels, with stable 30–120/48–120 profiles and guarded
+experimental display-overclock trials.
 
-## Required disclosure
+## Description
 
-The 30-120 profile is outside MSI's official 48 Hz floor and may flicker on an
-individual panel. The package is restricted to exact pinned Claw 8/8 EX
-`CSW0801 / PN8007QB1-2` and Claw A1M / Claw 7 AI+
-`TMA2027 / TL070FVXS02-0` identities and EDIDs. Unknown CRU overrides are
-refused. The shared A1M / Claw 7 AI+ EDID generation is verified, but real
-driver/LFC and panel testing remains community-validation pending for both
-models.
+ClawLab 2.2.0 corrects the Intel refresh-multiplication/LFC behavior that can
+turn values such as 60 FPS into 120 Hz while preserving exact restoration of
+the original driver state. It supports only pinned internal-panel definitions
+used by MSI Claw A1M, Claw 7 AI+, Claw 8 AI+ and Claw 8 EX AI+.
 
-The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.2
-also supports driver installations where Intel Graphics Software is absent.
-The retired signatures remain only to restore an older ClawLab installation
-safely to 120 Hz. Do not advertise 144 Hz as an available feature.
+Stable installers provide ClawLab 30–120 Hz and official Intel/MSI 48–120 Hz.
+Both include the Intel LFC patch, one-shot sign-in persistence and the
+event-driven desktop cursor helper.
 
-State this installation requirement prominently: if CRU was ever used on the
-same Windows installation, no matter when or whether it now appears inactive,
-the user must obtain the current official
-[CRU release](https://www.monitortests.com/forum/Thread-Custom-Resolution-Utility-CRU),
-run its included `reset-all.exe`, and restart before installing ClawLab.
+The optional `EXPERIMENTAL` folder adds 48–144 Hz as Stable Experimental,
+validated on one Claw 8 AI+ Polar Tempest Edition, plus untested Unstable
+Experimental 48–165, 48–180, 30–144, 30–165 and 30–180 profiles. Every value
+above 120 Hz is an overclock outside MSI specifications and depends on the
+individual panel silicon lottery.
 
-The LFC correction uses a readable Windows D3DKMT request to Intel's
-driver-private display interface. It saves and disables both Intel low/high-FPS
-solutions, verifies the result and installs no continuous LFC watcher. It never
-opens, patches or injects into a game process.
+Experimental installation is protected by a mandatory warning and reading
+delay, typed risk acceptance, automatic 15-second trial, unconditional return
+to safe 120 Hz, and a confirmation shown only after safe restoration. A No
+answer, a timeout or any failed verification restores the original state
+automatically.
 
-The event-driven Cursor Refresh Helper raises the Windows desktop to 120 Hz
-during visible mouse movement by animating a nearly transparent 2x2 WPF/DWM
-surface at the extreme lower-right corner. It stops at idle, is suppressed for
-hidden cursors and supports Xbox Full Screen Experience. Its complete C# source
-and rebuild script are included.
+Before installation, run `reset-all.exe` and restart if CRU was ever used. If
+CRU was never used on that Windows installation, no CRU reset is needed.
+Disable every other VRR/EDID-writing tool. The only supported exception is
+[ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks), which
+includes the compatibility patch. ClawTweaks is optional and is not required
+for ClawLab VRR to work.
 
-After 1.5 seconds without usable mouse input, the helper releases its 1 ms timer
-request, trims its own working set and waits for the next raw-mouse packet. This
-tool-independent deep idle covers controller/game profiles without monitoring
-ClawTweaks, MSI Center M, another utility or any game process.
+Changing to any different ClawLab profile always requires a successful
+`RESTORE_ORIGINAL_VRR.bat` and restart first. The package refuses mixed states.
 
-The archive contains no driver, Intel DLL, CRU binary, EDID dump, game file,
-injector or anti-cheat component. Its only executable is the 13 KB rebuildable
-.NET Framework Cursor Refresh Helper described above.
+When upgrading from 2.1.2 or any older managed release, first run
+`RECOVERY\RESTORE_ORIGINAL_VRR.bat` from that older extracted package and
+restart Windows. Then extract 2.2.0 into a new folder and install the desired
+profile. Do not use Factory Reset for a normal upgrade. Version 2.2.0 detects
+an older managed state and refuses installation until this restore is complete.
 
-Version 2.1.2 additionally handles the exact zero-padded EDID representation
-observed on Core Ultra 5 and Core Ultra 7 A1M units, migrates a verified LFC
-backup across Intel-driver monitor-instance renames, separates core/helper
-health, and includes a one-click JSON support export. Tell users never to
-manually delete `%LOCALAPPDATA%\ClawLab`.
+The utility changes global Windows/Intel display settings only. It does not
+inject into, patch, hook or monitor any game process.
+
+## Requirements
+
+- Windows 11;
+- Intel graphics driver with Intel Arc Sync support;
+- exactly one active Intel Arc Sync display during installation;
+- exact catalogued internal panel;
+- complete ZIP extraction;
+- no conflicting VRR/EDID tool.
+
+## Installation
+
+1. Read `README.txt`.
+2. Complete the CRU and software-ownership preflights.
+3. For normal use, run one root stable installer.
+4. For a display overclock, open `EXPERIMENTAL`, read the warning and run only
+   one guarded installer.
+5. Restart when requested and do not interrupt an experimental 15-second test.
+6. Run `CHECK_STATUS.bat` after the final restart.
+
+## Uninstallation
+
+Run `RECOVERY\RESTORE_ORIGINAL_VRR.bat`, accept the restart, then confirm clean
+status. Never delete `%LOCALAPPDATA%\ClawLab` manually.
+
+## Permissions and credits
+
+MIT-licensed source is included. ClawLab is not affiliated with or endorsed by
+MSI, Intel, Microsoft, CRU or ClawTweaks.

@@ -54,7 +54,7 @@ catch {
             AttentionReason = 'SIGN_IN_TASKS_RUNNING'
             RecommendedAction = 'Wait up to two minutes for sign-in initialization to finish, then run CHECK_STATUS.bat again.'
         }
-        exit 0
+        return
     }
     [pscustomobject]@{
         OverallHealth = 'ATTENTION_REQUIRED'
@@ -73,11 +73,21 @@ catch {
         StatusQueryError = $_.Exception.Message
         RecommendedAction = 'Run CHECK_STATUS.bat and read the detailed VRR/LFC error. Do not Factory Reset or delete ClawLab AppData.'
     }
-    exit 0
+    return
 }
 
+$activeManagedStates = @(
+    'CLAWLAB_30_120_ACTIVE',
+    'OFFICIAL_48_120_ACTIVE',
+    'EXPERIMENTAL_48_144_ACTIVE',
+    'EXPERIMENTAL_48_165_ACTIVE',
+    'EXPERIMENTAL_48_180_ACTIVE',
+    'EXPERIMENTAL_30_144_ACTIVE',
+    'EXPERIMENTAL_30_165_ACTIVE',
+    'EXPERIMENTAL_30_180_ACTIVE'
+)
 $managedProfileHealthy = (
-    [string]$vrr.State -in @('CLAWLAB_30_120_ACTIVE', 'OFFICIAL_48_120_ACTIVE') -and
+    [string]$vrr.State -in $activeManagedStates -and
     [string]$vrr.ProfileSwitchGuard -eq 'CONSISTENT'
 )
 $cursorHelperHealthy = [string]$vrr.CursorRefreshHelper -eq 'RUNNING_EVENT_DRIVEN'
@@ -106,6 +116,10 @@ if (Test-Path -LiteralPath $vrrBackupPath -PathType Leaf) {
 $driverChanged = (
     -not [string]::IsNullOrWhiteSpace($savedDriver) -and
     $savedDriver -ne [string]$vrr.IntelDriver
+)
+$experimentalProfileActive = [string]$vrr.ManagedMode -in @(
+    'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180',
+    'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180'
 )
 
 $coreHealth = if ($coreFixHealthy) { 'HEALTHY' } elseif ($startupInitializing) { 'INITIALIZING' } else { 'ATTENTION_REQUIRED' }
@@ -154,10 +168,20 @@ $recommendedAction = switch ($overallHealth) {
             'The original Intel LFC backup is missing. Do not reinstall or delete AppData. Use EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat only if restoring Intel factory defaults is intended.'
         }
         elseif ($managedProfileHealthy -and -not $lfcHealthy) {
-            'Restart Windows once. If LfcFixActive remains False, reinstall the currently selected 30-120 or 48-120 profile.'
+            if ($experimentalProfileActive) {
+                'Restart Windows once. If LfcFixActive remains False, restore the original VRR profile, restart, then rerun the desired guarded experimental installer.'
+            }
+            else {
+                'Restart Windows once. If LfcFixActive remains False, reinstall the currently selected 30-120 or 48-120 profile.'
+            }
         }
         elseif ($managedProfileHealthy -and -not $cursorHelperHealthy) {
-            'Restart Windows once. If the helper is still not running, reinstall the currently selected 30-120 or 48-120 profile.'
+            if ($experimentalProfileActive) {
+                'Restart Windows once. The core VRR/LFC fix remains independent of the optional desktop helper; do not rerun a display-overclock trial only for a helper issue.'
+            }
+            else {
+                'Restart Windows once. If the helper is still not running, reinstall the currently selected 30-120 or 48-120 profile.'
+            }
         }
         else {
             'Restore Original VRR, restart Windows, install the desired 30-120 or 48-120 profile, then restart again.'

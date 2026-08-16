@@ -1,6 +1,35 @@
 MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 ========================================
 
+2.2.0 - 2026-08-17
+------------------
+- Supports the exact Claw A1M / Claw 7 AI+ Intel ControlLib 24-120 telemetry
+  state without ever creating or installing a 24 Hz profile.
+- Keeps only 30-120 and official 48-120 as stable profiles.
+- Adds guarded display-overclock profiles for all four supported Claw models:
+  stable-experimental 48-144, plus unstable-experimental 48-165, 48-180,
+  30-144, 30-165 and 30-180.
+- Uses a 10-second warning delay, typed risk acceptance, a maximum 15-second
+  live test, automatic safe-120 return and explicit post-test confirmation.
+- Runs the one-time trial at limited user privilege from a non-reparse,
+  administrator-protected ProgramData runtime with a verified SHA-256 manifest;
+  confirmed persistence requests elevation only from that protected runtime.
+- Restores the original VRR/LFC state after No, timeout or any failed trial.
+- Refuses guarded refresh-rate changes while any external display is active.
+- Serializes concurrent sign-in VRR requests to prevent task/helper races.
+- Applies the Intel LFC correction to every stable and experimental profile.
+- Refuses to adopt already-disabled Intel flags when their original backup is
+  missing.
+- Refuses to overwrite a managed 2.1.2-or-older installation; restore it with
+  its original package and restart before installing 2.2.0.
+- Requires a successful original-VRR restore and restart before switching to
+  any different profile.
+- Requires all other VRR/EDID writers to be disabled. ClawTweaks 3.0 or later
+  is the only supported exception and remains entirely optional:
+  https://github.com/enterTheVoidCode/ClawTweaks
+- Requires CRU reset-all.exe plus restart if CRU was ever used.
+- Updates the Cursor Refresh Helper and package to 2.2.0.
+
 2.1.2 - 2026-08-16
 ------------------
 - Supports the exact A1M / Claw 7 AI+ 128-byte physical EDID when Windows adds

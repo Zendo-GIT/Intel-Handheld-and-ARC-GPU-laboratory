@@ -1,13 +1,19 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]
+    [ValidateSet(
+        'Status', 'Install48', 'Install30',
+        'Install48_144', 'Install48_165', 'Install48_180',
+        'Install30_144', 'Install30_165', 'Install30_180',
+        'ApplyExperimentalTrial', 'ConfirmExperimentalTrial', 'SetSafe120ForTrial',
+        'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup'
+    )]
     [string]$Action = 'Status'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.1.2'
+$fixVersion = '2.2.0'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
@@ -23,6 +29,9 @@ $installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
 $edidNormalizationModuleName = 'Edid-Normalization.ps1'
 $edidNormalizationModulePath = Join-Path $PSScriptRoot $edidNormalizationModuleName
 $installedEdidNormalizationModulePath = Join-Path $stateRoot $edidNormalizationModuleName
+$arcSyncRangePolicyModuleName = 'ArcSync-Range-Policy.ps1'
+$arcSyncRangePolicyModulePath = Join-Path $PSScriptRoot $arcSyncRangePolicyModuleName
+$installedArcSyncRangePolicyModulePath = Join-Path $stateRoot $arcSyncRangePolicyModuleName
 $startupLauncherName = 'ClawLab-VRR-Startup.vbs'
 $installedLauncherPath = Join-Path $stateRoot $startupLauncherName
 $startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
@@ -31,11 +40,10 @@ $startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
 $cursorRefreshHelperName = 'ClawLab-Cursor-Refresh-Helper.exe'
 $installedCursorRefreshHelperPath = Join-Path $stateRoot $cursorRefreshHelperName
 $cursorRefreshHelperStatePath = Join-Path $stateRoot 'cursor-refresh-helper.json'
-$experimental144TrialTaskName = 'ClawLab MSI Claw 144 Hz Trial Confirmation'
-$experimental144TrialStatePath = Join-Path $stateRoot 'experimental-144-trial.json'
-$installedExperimental144TrialPath = Join-Path $stateRoot 'Experimental-144-VRR-Trial.ps1'
-$installedExperimental144TrialLauncherPath = Join-Path $stateRoot 'ClawLab-144-Trial-Startup.vbs'
-$installedExperimental144TrialDriverPath = Join-Path $stateRoot 'Intel-VRR-144-Trial-Driver-Interface.ps1'
+$experimentalTrialTaskName = 'ClawLab MSI Claw Experimental Overclock Trial'
+$experimentalTrialStatePath = Join-Path $stateRoot 'experimental-overclock-trial.json'
+$installedExperimentalTrialPath = Join-Path $stateRoot 'Experimental-Overclock-VRR-Trial.ps1'
+$installedExperimentalTrialLauncherPath = Join-Path $stateRoot 'ClawLab-Experimental-Trial-Startup.vbs'
 $intelStartupBackupPath = Join-Path $stateRoot 'intel-graphics-startup.json'
 $intelStartupRegistryPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
 $intelStartupValueName = 'Intel' + [char]0x00AE + ' Graphics Software'
@@ -43,10 +51,63 @@ $script:intelStartupIdentityRenewed = $false
 $script:activePanelDefinition = $null
 $script:activeEdidNormalization = 'NOT_READ'
 $script:activeEdidSourceLength = 0
-if (-not (Test-Path -LiteralPath $edidNormalizationModulePath -PathType Leaf)) {
-    throw "The EDID normalization safety module is missing: $edidNormalizationModuleName"
+$startupApplyMutexName = 'Local\ClawLab.MSIClaw.VrrApplyStartup'
+$script:startupApplyMutex = $null
+$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.2.0'
+$protectedRuntimePayloadNames = @(
+    'MSI-Claw-VRR-Fix.ps1',
+    'Edid-Normalization.ps1',
+    'ArcSync-Range-Policy.ps1',
+    'ClawLab-VRR-Startup.vbs',
+    'ClawLab-Cursor-Refresh-Helper.exe',
+    'MSI-Claw-Intel-LFC-Fix.ps1',
+    'Intel-VRR-LFC-Driver-Interface.ps1',
+    'Lfc-Backup-Identity.ps1',
+    'ClawLab-LFC-Startup.vbs',
+    'Experimental-Overclock-VRR-Trial.ps1',
+    'ClawLab-Experimental-Trial-Startup.vbs'
+)
+$protectedRuntimeFileNames = @($protectedRuntimePayloadNames) + @('protected-runtime.json')
+
+function Assert-ProtectedRuntimeIntegrity {
+    $scriptDirectory = [IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+    $expectedDirectory = [IO.Path]::GetFullPath($protectedRuntimeRoot).TrimEnd('\')
+    if (-not $scriptDirectory.Equals($expectedDirectory, [StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
+
+    $manifestPath = Join-Path $expectedDirectory 'protected-runtime.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw 'The protected experimental runtime manifest is missing.'
+    }
+    $manifest = [IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ([int]$manifest.SchemaVersion -ne 1 -or [string]$manifest.FixVersion -ne $fixVersion) {
+        throw 'The protected experimental runtime manifest has an invalid version.'
+    }
+    $entries = @($manifest.Files)
+    if ($entries.Count -ne $protectedRuntimePayloadNames.Count) {
+        throw 'The protected experimental runtime manifest has an unexpected file count.'
+    }
+    foreach ($fileName in $protectedRuntimePayloadNames) {
+        $entry = @($entries | Where-Object { [string]$_.Name -ceq $fileName })
+        if ($entry.Count -ne 1 -or [string]$entry[0].Sha256 -notmatch '^[A-F0-9]{64}$') {
+            throw "The protected experimental runtime manifest is invalid for $fileName."
+        }
+        $filePath = Join-Path $expectedDirectory $fileName
+        if (-not (Test-Path -LiteralPath $filePath -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $filePath -Algorithm SHA256).Hash -cne [string]$entry[0].Sha256) {
+            throw "Protected experimental runtime integrity failed for $fileName."
+        }
+    }
 }
-. $edidNormalizationModulePath
+
+Assert-ProtectedRuntimeIntegrity
+foreach ($requiredModule in @($edidNormalizationModulePath, $arcSyncRangePolicyModulePath)) {
+    if (-not (Test-Path -LiteralPath $requiredModule -PathType Leaf)) {
+        throw "A required VRR safety module is missing: $requiredModule"
+    }
+    . $requiredModule
+}
 
 $panelCatalog = @(
     [pscustomobject]@{
@@ -74,6 +135,26 @@ $panelCatalog = @(
         Legacy30_144Block0Sha256 = '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D'
         Legacy30_144Block1Sha256 = '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640'
         SupportsLegacy144Recovery = $true
+        HighRefreshTimingKind = 'DISPLAYID_TYPE_VII'
+        PhysicalSecondaryTiming = $null
+        Overclock48_144EdidSha256 = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
+        Overclock48_144Block0Sha256 = '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172'
+        Overclock48_144Block1Sha256 = 'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2'
+        Overclock48_165EdidSha256 = 'FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677'
+        Overclock48_165Block0Sha256 = '7009CE8788321E3FE0FAB1BF3789F70DA254048B36D14FDE0BC0A68BE1304788'
+        Overclock48_165Block1Sha256 = 'FAF57667FF2039219CA70124764FB9FA53CC6E1003DDAC27F34860A85269CA10'
+        Overclock48_180EdidSha256 = '279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62'
+        Overclock48_180Block0Sha256 = '441D68C76B23063CDC879B6E119D2F7B43F7067B0F019A7C89D1BA6E94FF7080'
+        Overclock48_180Block1Sha256 = '156506633F8D543C7BE72ADF35D2C4A0311A0156B4C21E0C6A913D4663F0ADD6'
+        Overclock30_144EdidSha256 = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
+        Overclock30_144Block0Sha256 = '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D'
+        Overclock30_144Block1Sha256 = '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640'
+        Overclock30_165EdidSha256 = '8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7'
+        Overclock30_165Block0Sha256 = '61296485EF811F1DA0F38D35F3785C527FDCA71111618E9F1E325A1D287E4969'
+        Overclock30_165Block1Sha256 = '2C6EF47AD7F7EB9A9E13401AC2C1ACE489CD3136CCEF7E335FDABE6781447675'
+        Overclock30_180EdidSha256 = '0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B'
+        Overclock30_180Block0Sha256 = 'BBE14483FE647D0B2F525538820F753A36EB4F4FC5500BB8903CA34F0E7CF5BD'
+        Overclock30_180Block1Sha256 = '0BBB9F4ABCFEF81A270FE926D2BE3AA9E7AA47FD3DB44673E9C75E57D1045292'
     },
     [pscustomobject]@{
         Key = 'CLAW_A1M_CLAW_7_AI_PLUS'
@@ -99,8 +180,56 @@ $panelCatalog = @(
         Legacy30_144Block0Sha256 = $null
         Legacy30_144Block1Sha256 = $null
         SupportsLegacy144Recovery = $false
+        HighRefreshTimingKind = 'BASE_DTD_SECOND_SLOT'
+        PhysicalSecondaryTiming = [byte[]]@(
+            0xC6, 0x37, 0x80, 0xA0, 0x70, 0x38, 0x40, 0x40, 0x30,
+            0x20, 0x62, 0x0C, 0x9B, 0x57, 0x00, 0x00, 0x00, 0x1A
+        )
+        Overclock48_144EdidSha256 = 'AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB'
+        Overclock48_144Block0Sha256 = 'AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB'
+        Overclock48_144Block1Sha256 = $null
+        Overclock48_165EdidSha256 = '89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2'
+        Overclock48_165Block0Sha256 = '89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2'
+        Overclock48_165Block1Sha256 = $null
+        Overclock48_180EdidSha256 = '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D'
+        Overclock48_180Block0Sha256 = '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D'
+        Overclock48_180Block1Sha256 = $null
+        Overclock30_144EdidSha256 = 'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E'
+        Overclock30_144Block0Sha256 = 'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E'
+        Overclock30_144Block1Sha256 = $null
+        Overclock30_165EdidSha256 = 'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51'
+        Overclock30_165Block0Sha256 = 'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51'
+        Overclock30_165Block1Sha256 = $null
+        Overclock30_180EdidSha256 = 'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679'
+        Overclock30_180Block0Sha256 = 'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679'
+        Overclock30_180Block1Sha256 = $null
     }
 )
+
+$experimentalOverclockModes = @{
+    'CLAWLAB_48_144' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; Stability = 'STABLE_EXPERIMENTAL' }
+    'CLAWLAB_48_165' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 165; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_48_180' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 180; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_30_144' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_30_165' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 165; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_30_180' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 180; Stability = 'UNSTABLE_EXPERIMENTAL' }
+}
+$managedModeNames = @('OFFICIAL_48_120', 'CLAWLAB_30_120') + @($experimentalOverclockModes.Keys)
+
+function Test-IsExperimentalOverclockMode {
+    param([Parameter(Mandatory)][string]$Mode)
+
+    return $experimentalOverclockModes.ContainsKey($Mode)
+}
+
+function Get-ExperimentalOverclockMode {
+    param([Parameter(Mandatory)][string]$Mode)
+
+    if (-not (Test-IsExperimentalOverclockMode -Mode $Mode)) {
+        throw "Unknown experimental overclock mode: $Mode"
+    }
+    return $experimentalOverclockModes[$Mode]
+}
 
 function Convert-WmiText {
     param([AllowNull()][object]$Values)
@@ -116,6 +245,74 @@ function Remove-FileIfPresent {
 
     if (Test-Path -LiteralPath $LiteralPath -PathType Leaf) {
         [IO.File]::Delete($LiteralPath)
+    }
+}
+
+function Remove-ProtectedExperimentalRuntime {
+    $programDataRoot = [IO.Path]::GetFullPath($env:ProgramData).TrimEnd('\')
+    $runtimeRoot = [IO.Path]::GetFullPath($protectedRuntimeRoot).TrimEnd('\')
+    if (-not $runtimeRoot.StartsWith(
+            $programDataRoot + [IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe protected runtime path: $runtimeRoot"
+    }
+    $parentRoot = [IO.Path]::GetDirectoryName($runtimeRoot)
+    if (Test-Path -LiteralPath $parentRoot -PathType Container) {
+        $parentItem = Get-Item -LiteralPath $parentRoot -Force
+        if (($parentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to clean through a protected runtime parent reparse point: $parentRoot"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $runtimeRoot -PathType Container)) {
+        return
+    }
+    $runtimeItem = Get-Item -LiteralPath $runtimeRoot -Force
+    if (($runtimeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing to clean a protected runtime reparse point: $runtimeRoot"
+    }
+    foreach ($fileName in $protectedRuntimeFileNames) {
+        Remove-FileIfPresent -LiteralPath (Join-Path $runtimeRoot $fileName)
+    }
+    if (@([IO.Directory]::EnumerateFileSystemEntries($runtimeRoot)).Count -eq 0) {
+        [IO.Directory]::Delete($runtimeRoot, $false)
+    }
+}
+
+function Enter-StartupApplyMutex {
+    $mutex = [Threading.Mutex]::new($false, $startupApplyMutexName)
+    $acquired = $false
+    try {
+        try {
+            $acquired = $mutex.WaitOne(180000)
+        }
+        catch [Threading.AbandonedMutexException] {
+            # The previous process ended unexpectedly. Windows grants this
+            # caller ownership, so startup recovery may continue safely.
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            throw 'Another ClawLab VRR startup reapply did not finish within three minutes.'
+        }
+        $script:startupApplyMutex = $mutex
+    }
+    catch {
+        if (-not $acquired) {
+            $mutex.Dispose()
+        }
+        throw
+    }
+}
+
+function Exit-StartupApplyMutex {
+    if ($null -eq $script:startupApplyMutex) {
+        return
+    }
+    try {
+        $script:startupApplyMutex.ReleaseMutex()
+    }
+    finally {
+        $script:startupApplyMutex.Dispose()
+        $script:startupApplyMutex = $null
     }
 }
 
@@ -213,7 +410,13 @@ function Get-KnownOverrideHashes {
         foreach ($candidate in @(
                 [pscustomobject]@{ Edid = $definition.Custom30EdidSha256; Block0 = $definition.Custom30Block0Sha256; Block1 = $definition.Custom30Block1Sha256 },
                 [pscustomobject]@{ Edid = $definition.Legacy48_144EdidSha256; Block0 = $definition.Legacy48_144Block0Sha256; Block1 = $definition.Legacy48_144Block1Sha256 },
-                [pscustomobject]@{ Edid = $definition.Legacy30_144EdidSha256; Block0 = $definition.Legacy30_144Block0Sha256; Block1 = $definition.Legacy30_144Block1Sha256 }
+                [pscustomobject]@{ Edid = $definition.Legacy30_144EdidSha256; Block0 = $definition.Legacy30_144Block0Sha256; Block1 = $definition.Legacy30_144Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock48_144EdidSha256; Block0 = $definition.Overclock48_144Block0Sha256; Block1 = $definition.Overclock48_144Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock48_165EdidSha256; Block0 = $definition.Overclock48_165Block0Sha256; Block1 = $definition.Overclock48_165Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock48_180EdidSha256; Block0 = $definition.Overclock48_180Block0Sha256; Block1 = $definition.Overclock48_180Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock30_144EdidSha256; Block0 = $definition.Overclock30_144Block0Sha256; Block1 = $definition.Overclock30_144Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock30_165EdidSha256; Block0 = $definition.Overclock30_165Block0Sha256; Block1 = $definition.Overclock30_165Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock30_180EdidSha256; Block0 = $definition.Overclock30_180Block0Sha256; Block1 = $definition.Overclock30_180Block1Sha256 }
             )) {
             if (-not [string]::IsNullOrWhiteSpace([string]$candidate.Edid) -and $EdidSha256 -eq $candidate.Edid) {
                 return [pscustomobject]@{
@@ -258,7 +461,13 @@ function Get-PanelRegistryContext {
         $knownCompleteOverride = $reportedHash -in @(
                 $definition.Custom30EdidSha256,
                 $definition.Legacy48_144EdidSha256,
-                $definition.Legacy30_144EdidSha256
+                $definition.Legacy30_144EdidSha256,
+                $definition.Overclock48_144EdidSha256,
+                $definition.Overclock48_165EdidSha256,
+                $definition.Overclock48_180EdidSha256,
+                $definition.Overclock30_144EdidSha256,
+                $definition.Overclock30_165EdidSha256,
+                $definition.Overclock30_180EdidSha256
             )
         $recoverableClawLabBlocks = $false
         if (-not $knownCompleteOverride -and $Action -eq 'FactoryReset') {
@@ -272,13 +481,25 @@ function Get-PanelRegistryContext {
                     (Get-ByteArraySha256 -Bytes $block0) -in @(
                         $definition.Custom30Block0Sha256,
                         $definition.Legacy48_144Block0Sha256,
-                        $definition.Legacy30_144Block0Sha256
+                        $definition.Legacy30_144Block0Sha256,
+                        $definition.Overclock48_144Block0Sha256,
+                        $definition.Overclock48_165Block0Sha256,
+                        $definition.Overclock48_180Block0Sha256,
+                        $definition.Overclock30_144Block0Sha256,
+                        $definition.Overclock30_165Block0Sha256,
+                        $definition.Overclock30_180Block0Sha256
                     )
                 $knownBlock1 = $null -eq $block1 -or
                     (Get-ByteArraySha256 -Bytes $block1) -in @(
                         $definition.Custom30Block1Sha256,
                         $definition.Legacy48_144Block1Sha256,
-                        $definition.Legacy30_144Block1Sha256
+                        $definition.Legacy30_144Block1Sha256,
+                        $definition.Overclock48_144Block1Sha256,
+                        $definition.Overclock48_165Block1Sha256,
+                        $definition.Overclock48_180Block1Sha256,
+                        $definition.Overclock30_144Block1Sha256,
+                        $definition.Overclock30_165Block1Sha256,
+                        $definition.Overclock30_180Block1Sha256
                     )
                 $recoverableClawLabBlocks = ($null -ne $block0 -or $null -ne $block1) -and $knownBlock0 -and $knownBlock1
             }
@@ -291,10 +512,13 @@ function Get-PanelRegistryContext {
             $physicalEdid[[int]$range.Minimum] = [byte]$targetMinimumHz
             $physicalEdid[[int]$range.Maximum] = [byte]$targetMaximumHz
         }
-        if ([bool]$definition.SupportsLegacy144Recovery) {
-            foreach ($offset in 156..178) {
-                $physicalEdid[$offset] = 0
-            }
+        if ([string]$definition.HighRefreshTimingKind -eq 'DISPLAYID_TYPE_VII') {
+            foreach ($offset in 156..178) { $physicalEdid[$offset] = 0 }
+        }
+        elseif ([string]$definition.HighRefreshTimingKind -eq 'BASE_DTD_SECOND_SLOT') {
+            [Array]::Copy([byte[]]$definition.PhysicalSecondaryTiming, 0, $physicalEdid, 72, 18)
+            $physicalEdid[98] = 140
+            $physicalEdid[99] = 29
         }
         foreach ($checksumStart in $definition.ChecksumStarts) {
             Set-EdidChecksum -Edid $physicalEdid -Start ([int]$checksumStart)
@@ -340,7 +564,7 @@ function New-ExperimentalEdidVariant {
         [Parameter(Mandatory)][string]$ExpectedEdidSha256,
         [Parameter(Mandatory)][string]$ExpectedBlock0Sha256,
         [AllowNull()][string]$ExpectedBlock1Sha256,
-        [switch]$AddLegacy144Timing
+        [int]$ExperimentalTimingHz = 0
     )
 
     $physicalHash = Get-ByteArraySha256 -Bytes $PhysicalEdid
@@ -370,27 +594,63 @@ function New-ExperimentalEdidVariant {
         $modified[[int]$range.Maximum] = [byte]$MaximumHz
     }
 
-    if ($AddLegacy144Timing) {
-        if (-not [bool]$Definition.SupportsLegacy144Recovery -or $PhysicalEdid.Length -ne 256) {
-            throw 'A retired 144 Hz recovery variant was requested for an incompatible panel definition.'
-        }
-        foreach ($offset in 156..178) {
-            if ($PhysicalEdid[$offset] -ne 0) {
-                throw 'The validated DisplayID extension no longer has the empty slot required for the 144 Hz timing.'
-            }
+    if ($ExperimentalTimingHz -ne 0) {
+        if ($ExperimentalTimingHz -notin @(144, 165, 180) -or
+            [Math]::Abs($MaximumHz - $ExperimentalTimingHz) -gt 0.1 -or
+            ([Math]::Abs($MinimumHz - $targetMinimumHz) -gt 0.1 -and
+                [Math]::Abs($MinimumHz - $experimentalMinimumHz) -gt 0.1)) {
+            throw "Unsupported experimental timing request: $MinimumHz-$MaximumHz Hz."
         }
 
-        # DisplayID 2.0 Type VII detailed timing: 1920x1200 @ 144 Hz.
-        # The 2080x1264 totals match the validated native 120 Hz timing.
-        $timingBlock = [byte[]]@(
-            0x22, 0x00, 0x14,
-            0xE0, 0xC6, 0x05, 0x00,
-            0x7F, 0x07, 0x9F, 0x00,
-            0x2F, 0x00, 0x1F, 0x00,
-            0xAF, 0x04, 0x3F, 0x00,
-            0x35, 0x00, 0x05, 0x00
-        )
-        [Array]::Copy($timingBlock, 0, $modified, 156, $timingBlock.Length)
+        switch ([string]$Definition.HighRefreshTimingKind) {
+            'DISPLAYID_TYPE_VII' {
+                if ($PhysicalEdid.Length -ne 256) {
+                    throw 'The validated DisplayID overclock panel no longer has a 256-byte EDID.'
+                }
+                foreach ($offset in 156..178) {
+                    if ($PhysicalEdid[$offset] -ne 0) {
+                        throw 'The validated DisplayID extension no longer has the empty detailed-timing slot.'
+                    }
+                }
+
+                # DisplayID 2.0 Type VII detailed timing. The 2080x1264 totals
+                # are inherited from the validated native panel timing. The
+                # one-kHz conservative bias preserves the previously field-
+                # tested 144 Hz timing byte-for-byte.
+                $pixelClockKHz = [uint32]([Math]::Floor((2080.0 * 1264.0 * $ExperimentalTimingHz) / 1000.0) - 1)
+                $timingBlock = [byte[]]@(
+                    0x22, 0x00, 0x14,
+                    [byte]($pixelClockKHz -band 0xFF),
+                    [byte](($pixelClockKHz -shr 8) -band 0xFF),
+                    [byte](($pixelClockKHz -shr 16) -band 0xFF),
+                    [byte](($pixelClockKHz -shr 24) -band 0xFF),
+                    0x7F, 0x07, 0x9F, 0x00,
+                    0x2F, 0x00, 0x1F, 0x00,
+                    0xAF, 0x04, 0x3F, 0x00,
+                    0x35, 0x00, 0x05, 0x00
+                )
+                [Array]::Copy($timingBlock, 0, $modified, 156, $timingBlock.Length)
+            }
+            'BASE_DTD_SECOND_SLOT' {
+                if ($PhysicalEdid.Length -ne 128 -or
+                    -not (Test-ByteArrayEqual -Left ([byte[]]$PhysicalEdid[72..89]) -Right ([byte[]]$Definition.PhysicalSecondaryTiming))) {
+                    throw 'The validated base EDID no longer has the pinned secondary detailed-timing slot.'
+                }
+
+                # Preserve the vendor native 1920x1080 totals and sync fields,
+                # replacing only the secondary timing pixel clock. The native
+                # 120 Hz timing remains untouched as the recovery mode.
+                [Array]::Copy($PhysicalEdid, 54, $modified, 72, 18)
+                $pixelClock10KHz = [uint16][Math]::Round((2080.0 * 1144.0 * $ExperimentalTimingHz) / 10000.0)
+                $modified[72] = [byte]($pixelClock10KHz -band 0xFF)
+                $modified[73] = [byte](($pixelClock10KHz -shr 8) -band 0xFF)
+                $modified[98] = [byte][Math]::Ceiling((1144.0 * $ExperimentalTimingHz) / 1000.0)
+                $modified[99] = [byte][Math]::Ceiling((2080.0 * 1144.0 * $ExperimentalTimingHz) / 10000000.0)
+            }
+            default {
+                throw "The validated panel has no experimental high-refresh timing policy: $($Definition.HighRefreshTimingKind)"
+            }
+        }
     }
 
     foreach ($checksumStart in $Definition.ChecksumStarts) {
@@ -432,18 +692,37 @@ function Get-ExperimentalEdidCatalog {
             -ExpectedEdidSha256 $Definition.Custom30EdidSha256 `
             -ExpectedBlock0Sha256 $Definition.Custom30Block0Sha256 `
             -ExpectedBlock1Sha256 $Definition.Custom30Block1Sha256))
-    if ([bool]$Definition.SupportsLegacy144Recovery) {
-        $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_48_144' `
-                -MinimumHz $targetMinimumHz -MaximumHz $experimentalMaximumHz `
-                -ExpectedEdidSha256 $Definition.Legacy48_144EdidSha256 `
-                -ExpectedBlock0Sha256 $Definition.Legacy48_144Block0Sha256 `
-                -ExpectedBlock1Sha256 $Definition.Legacy48_144Block1Sha256 -AddLegacy144Timing))
-        $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_144' `
-                -MinimumHz $experimentalMinimumHz -MaximumHz $experimentalMaximumHz `
-                -ExpectedEdidSha256 $Definition.Legacy30_144EdidSha256 `
-                -ExpectedBlock0Sha256 $Definition.Legacy30_144Block0Sha256 `
-                -ExpectedBlock1Sha256 $Definition.Legacy30_144Block1Sha256 -AddLegacy144Timing))
-    }
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_48_144' `
+            -MinimumHz $targetMinimumHz -MaximumHz 144 `
+            -ExpectedEdidSha256 $Definition.Overclock48_144EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock48_144Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock48_144Block1Sha256 -ExperimentalTimingHz 144))
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_48_165' `
+            -MinimumHz $targetMinimumHz -MaximumHz 165 `
+            -ExpectedEdidSha256 $Definition.Overclock48_165EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock48_165Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock48_165Block1Sha256 -ExperimentalTimingHz 165))
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_48_180' `
+            -MinimumHz $targetMinimumHz -MaximumHz 180 `
+            -ExpectedEdidSha256 $Definition.Overclock48_180EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock48_180Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock48_180Block1Sha256 -ExperimentalTimingHz 180))
+
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_144' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz 144 `
+            -ExpectedEdidSha256 $Definition.Overclock30_144EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock30_144Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock30_144Block1Sha256 -ExperimentalTimingHz 144))
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_165' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz 165 `
+            -ExpectedEdidSha256 $Definition.Overclock30_165EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock30_165Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock30_165Block1Sha256 -ExperimentalTimingHz 165))
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_180' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz 180 `
+            -ExpectedEdidSha256 $Definition.Overclock30_180EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock30_180Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock30_180Block1Sha256 -ExperimentalTimingHz 180))
     return @($variants)
 }
 
@@ -509,11 +788,23 @@ function Get-ClawLabRecoveryBlockState {
         $Definition.Custom30Block0Sha256
         $Definition.Legacy48_144Block0Sha256
         $Definition.Legacy30_144Block0Sha256
+        $Definition.Overclock48_144Block0Sha256
+        $Definition.Overclock48_165Block0Sha256
+        $Definition.Overclock48_180Block0Sha256
+        $Definition.Overclock30_144Block0Sha256
+        $Definition.Overclock30_165Block0Sha256
+        $Definition.Overclock30_180Block0Sha256
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
     $knownBlock1Hashes = @(
         $Definition.Custom30Block1Sha256
         $Definition.Legacy48_144Block1Sha256
         $Definition.Legacy30_144Block1Sha256
+        $Definition.Overclock48_144Block1Sha256
+        $Definition.Overclock48_165Block1Sha256
+        $Definition.Overclock48_180Block1Sha256
+        $Definition.Overclock30_144Block1Sha256
+        $Definition.Overclock30_165Block1Sha256
+        $Definition.Overclock30_180Block1Sha256
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
     $knownBlock0 = $null -eq $block0 -or (Get-ByteArraySha256 -Bytes $block0) -in $knownBlock0Hashes
     $knownBlock1 = $null -eq $block1 -or (Get-ByteArraySha256 -Bytes $block1) -in $knownBlock1Hashes
@@ -546,6 +837,7 @@ function Get-ManagedArtifactSnapshot {
         ExperimentalState = Test-Path -LiteralPath $experimentalStatePath -PathType Leaf
         InstalledScript = Test-Path -LiteralPath $installedScriptPath -PathType Leaf
         InstalledEdidNormalizationModule = Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf
+        InstalledArcSyncRangePolicyModule = Test-Path -LiteralPath $installedArcSyncRangePolicyModulePath -PathType Leaf
         InstalledLauncher = Test-Path -LiteralPath $installedLauncherPath -PathType Leaf
         StartupStatus = Test-Path -LiteralPath $startupStatusPath -PathType Leaf
         IntelStartupBackup = Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf
@@ -558,6 +850,7 @@ function Get-ManagedArtifactSnapshot {
         $snapshot.ExperimentalState -or
         $snapshot.InstalledScript -or
         $snapshot.InstalledEdidNormalizationModule -or
+        $snapshot.InstalledArcSyncRangePolicyModule -or
         $snapshot.InstalledLauncher -or
         $snapshot.StartupStatus -or
         $snapshot.IntelStartupBackup -or
@@ -579,8 +872,7 @@ function Get-ManagedModeRecord {
             throw "The managed VRR mode record is invalid: missing $property. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
         }
     }
-    if ([int]$record.SchemaVersion -ne 1 -or
-        [string]$record.Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
+    if ([int]$record.SchemaVersion -ne 1 -or [string]$record.Mode -notin $managedModeNames) {
         throw 'The managed VRR mode record contains an unsupported value. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
     }
     return $record
@@ -592,12 +884,32 @@ function Get-EffectiveManagedMode {
     $record = Get-ManagedModeRecord
     $overrideMode = if ($OverrideState.State -eq 'NONE') { 'NONE' } else { [string]$OverrideState.State }
     if ($null -ne $record) {
+        if ([string]$record.FixVersion -ne $fixVersion) {
+            return [pscustomobject]@{
+                Mode = [string]$record.Mode
+                State = 'OLDER_VERSION_RESTORE_REQUIRED'
+                Source = 'MANAGED_RECORD'
+            }
+        }
         $expectedOverride = if ([string]$record.Mode -eq 'OFFICIAL_48_120') { 'NONE' } else { [string]$record.Mode }
         $artifacts = Get-ManagedArtifactSnapshot
         $requiresExperimentalState = [string]$record.Mode -ne 'OFFICIAL_48_120'
+        $trialPending = (Test-IsExperimentalOverclockMode -Mode ([string]$record.Mode)) -and
+            (Test-Path -LiteralPath $experimentalTrialStatePath -PathType Leaf) -and
+            $null -ne (Get-ScheduledTask -TaskName $experimentalTrialTaskName -ErrorAction SilentlyContinue)
+        if ($trialPending -and $overrideMode -eq $expectedOverride -and
+            $artifacts.OriginalProfile -and $artifacts.ExperimentalState -and $artifacts.InstalledScript) {
+            return [pscustomobject]@{
+                Mode = [string]$record.Mode
+                State = 'EXPERIMENTAL_TRIAL_PENDING'
+                Source = 'MANAGED_RECORD'
+            }
+        }
         $artifactsComplete = (
             $artifacts.OriginalProfile -and
             $artifacts.InstalledScript -and
+            $artifacts.InstalledEdidNormalizationModule -and
+            $artifacts.InstalledArcSyncRangePolicyModule -and
             $artifacts.InstalledLauncher -and
             $artifacts.IntelStartupBackup -and
             $artifacts.StartupTask -and
@@ -617,7 +929,7 @@ function Get-EffectiveManagedMode {
         }
     }
 
-    if ($OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
+    if ($OverrideState.State -in (@('CLAWLAB_30_120') + @($experimentalOverclockModes.Keys))) {
         return [pscustomobject]@{
             Mode = [string]$OverrideState.State
             State = 'LEGACY_MATCHING_OVERRIDE'
@@ -654,12 +966,8 @@ function Assert-ProfileTransitionAllowed {
     )
 
     $current = Get-EffectiveManagedMode -OverrideState $OverrideState
-    $sameMode = $current.Mode -eq $DesiredMode -and
-        $current.State -in @('CONSISTENT', 'LEGACY_MATCHING_OVERRIDE')
-    if ($current.Mode -eq 'NONE' -and $current.State -eq 'CLEAN') {
-        return $current
-    }
-    if ($sameMode) {
+    if (Test-ClawLabProfileTransitionAllowed -CurrentMode ([string]$current.Mode) `
+            -CurrentState ([string]$current.State) -DesiredMode $DesiredMode) {
         return $current
     }
     throw "VRR profile switch refused. Current managed state: $($current.Mode) / $($current.State). Run RECOVERY\RESTORE_ORIGINAL_VRR.bat successfully before installing $DesiredMode."
@@ -668,7 +976,7 @@ function Assert-ProfileTransitionAllowed {
 function Set-ManagedModeRecord {
     param([Parameter(Mandatory)][string]$Mode)
 
-    if ($Mode -notin @('OFFICIAL_48_120', 'CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')) {
+    if ($Mode -notin $managedModeNames) {
         throw "Internal managed VRR mode is invalid: $Mode"
     }
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
@@ -712,21 +1020,78 @@ function Get-StartupReapplyState {
     }
     if (-not (Test-Path -LiteralPath $installedScriptPath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedArcSyncRangePolicyModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
         return 'TASK_WITHOUT_FILES'
     }
     return [string]$task.State
 }
 
-function Remove-Experimental144Trial {
-    $trialTask = Get-ScheduledTask -TaskName $experimental144TrialTaskName -ErrorAction SilentlyContinue
+function Remove-ExperimentalOverclockTrial {
+    $trialTask = Get-ScheduledTask -TaskName $experimentalTrialTaskName -ErrorAction SilentlyContinue
     if ($null -ne $trialTask) {
-        Unregister-ScheduledTask -TaskName $experimental144TrialTaskName -Confirm:$false -ErrorAction Stop
+        Unregister-ScheduledTask -TaskName $experimentalTrialTaskName -Confirm:$false -ErrorAction Stop
     }
-    Remove-FileIfPresent -LiteralPath $experimental144TrialStatePath
-    Remove-FileIfPresent -LiteralPath $installedExperimental144TrialPath
-    Remove-FileIfPresent -LiteralPath $installedExperimental144TrialLauncherPath
-    Remove-FileIfPresent -LiteralPath $installedExperimental144TrialDriverPath
+    Remove-FileIfPresent -LiteralPath $experimentalTrialStatePath
+    Remove-FileIfPresent -LiteralPath $installedExperimentalTrialPath
+    Remove-FileIfPresent -LiteralPath $installedExperimentalTrialLauncherPath
+    Remove-ProtectedExperimentalRuntime
+}
+
+function Get-ExperimentalOverclockTrialRecord {
+    if (-not (Test-Path -LiteralPath $experimentalTrialStatePath -PathType Leaf)) {
+        throw 'The mandatory experimental overclock trial state is missing.'
+    }
+    $record = [IO.File]::ReadAllText($experimentalTrialStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @(
+        'SchemaVersion', 'FixVersion', 'Mode', 'MinimumHz', 'MaximumHz',
+        'PanelKey', 'PhysicalEdidSha256', 'ExperimentalEdidSha256',
+        'Stability', 'ObservationSeconds', 'UserConfirmed'
+    )) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The experimental overclock trial state is invalid: missing $property."
+        }
+    }
+    if ([int]$record.SchemaVersion -ne 1 -or [string]$record.FixVersion -ne $fixVersion -or
+        -not (Test-IsExperimentalOverclockMode -Mode ([string]$record.Mode))) {
+        throw 'The experimental overclock trial state has an unsupported identity.'
+    }
+    $mode = Get-ExperimentalOverclockMode -Mode ([string]$record.Mode)
+    if ([int]$record.MinimumHz -ne [int]$mode.MinimumHz -or
+        [int]$record.MaximumHz -ne [int]$mode.MaximumHz -or
+        [string]$record.Stability -ne [string]$mode.Stability -or
+        [int]$record.ObservationSeconds -ne 15) {
+        throw 'The experimental overclock trial state has unexpected range or timeout values.'
+    }
+    return $record
+}
+
+function Assert-ExperimentalOverclockTrialContext {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$OverrideState,
+        [switch]$RequireUserConfirmation
+    )
+
+    $trial = Get-ExperimentalOverclockTrialRecord
+    $modeName = [string]$trial.Mode
+    $mode = Get-ExperimentalOverclockMode -Mode $modeName
+    if ([string]$Panel.Definition.Key -ne [string]$trial.PanelKey -or
+        [string]$Panel.Definition.PhysicalEdidSha256 -ne [string]$trial.PhysicalEdidSha256 -or
+        [string]$OverrideState.State -ne $modeName -or
+        [string]$OverrideState.Variant.Sha256 -ne [string]$trial.ExperimentalEdidSha256 -or
+        [int]$OverrideState.MinimumHz -ne [int]$mode.MinimumHz -or
+        [int]$OverrideState.MaximumHz -ne [int]$mode.MaximumHz) {
+        throw 'The active panel, EDID override and guarded trial do not have one exact shared identity.'
+    }
+    $managed = Get-ManagedModeRecord
+    if ($null -eq $managed -or [string]$managed.Mode -ne $modeName) {
+        throw 'The guarded trial does not match the managed VRR mode record.'
+    }
+    if ($RequireUserConfirmation -and -not [bool]$trial.UserConfirmed) {
+        throw 'The experimental overclock cannot be persisted before the user confirms the completed 15-second trial.'
+    }
+    return [pscustomobject]@{ Trial = $trial; Mode = $mode }
 }
 
 function Get-CursorRefreshHelperProcesses {
@@ -798,7 +1163,11 @@ function Install-CursorRefreshHelper {
 
     Stop-CursorRefreshHelper
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
-    [IO.File]::Copy($sourcePath, $installedCursorRefreshHelperPath, $true)
+    if (-not [IO.Path]::GetFullPath($sourcePath).Equals(
+            [IO.Path]::GetFullPath($installedCursorRefreshHelperPath),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        [IO.File]::Copy($sourcePath, $installedCursorRefreshHelperPath, $true)
+    }
     $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
     $installedHash = (Get-FileHash -LiteralPath $installedCursorRefreshHelperPath -Algorithm SHA256).Hash
     if ($sourceHash -ne $installedHash) {
@@ -855,18 +1224,30 @@ function Install-StartupReapply {
     if (-not (Test-Path -LiteralPath $sourceLauncherPath -PathType Leaf)) {
         throw "The windowless startup launcher is missing: $startupLauncherName"
     }
-    [IO.File]::Copy($PSCommandPath, $installedScriptPath, $true)
-    [IO.File]::Copy($edidNormalizationModulePath, $installedEdidNormalizationModulePath, $true)
-    [IO.File]::Copy($sourceLauncherPath, $installedLauncherPath, $true)
+    foreach ($pair in @(
+        @($PSCommandPath, $installedScriptPath),
+        @($edidNormalizationModulePath, $installedEdidNormalizationModulePath),
+        @($arcSyncRangePolicyModulePath, $installedArcSyncRangePolicyModulePath),
+        @($sourceLauncherPath, $installedLauncherPath)
+    )) {
+        if (-not [IO.Path]::GetFullPath($pair[0]).Equals(
+                [IO.Path]::GetFullPath($pair[1]),
+                [StringComparison]::OrdinalIgnoreCase)) {
+            [IO.File]::Copy($pair[0], $pair[1], $true)
+        }
+    }
 
     $sourceHash = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     $installedHash = (Get-FileHash -LiteralPath $installedScriptPath -Algorithm SHA256).Hash
     $sourceEdidModuleHash = (Get-FileHash -LiteralPath $edidNormalizationModulePath -Algorithm SHA256).Hash
     $installedEdidModuleHash = (Get-FileHash -LiteralPath $installedEdidNormalizationModulePath -Algorithm SHA256).Hash
+    $sourceRangePolicyHash = (Get-FileHash -LiteralPath $arcSyncRangePolicyModulePath -Algorithm SHA256).Hash
+    $installedRangePolicyHash = (Get-FileHash -LiteralPath $installedArcSyncRangePolicyModulePath -Algorithm SHA256).Hash
     $sourceLauncherHash = (Get-FileHash -LiteralPath $sourceLauncherPath -Algorithm SHA256).Hash
     $installedLauncherHash = (Get-FileHash -LiteralPath $installedLauncherPath -Algorithm SHA256).Hash
     if ($sourceHash -ne $installedHash -or
         $sourceEdidModuleHash -ne $installedEdidModuleHash -or
+        $sourceRangePolicyHash -ne $installedRangePolicyHash -or
         $sourceLauncherHash -ne $installedLauncherHash) {
         throw 'The installed startup files failed their integrity check.'
     }
@@ -901,10 +1282,11 @@ function Remove-StartupReapply {
     if ($null -ne $task) {
         Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
     }
-    Remove-Experimental144Trial
+    Remove-ExperimentalOverclockTrial
     Remove-CursorRefreshHelper
     Remove-FileIfPresent -LiteralPath $installedScriptPath
     Remove-FileIfPresent -LiteralPath $installedEdidNormalizationModulePath
+    Remove-FileIfPresent -LiteralPath $installedArcSyncRangePolicyModulePath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     Remove-FileIfPresent -LiteralPath $startupStatusPath
     if ((Get-StartupReapplyState) -ne 'NOT_INSTALLED') {
@@ -1697,6 +2079,15 @@ namespace ClawLab.VrrFix
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int ChangeDisplaySettingsEx(string deviceName, ref DEVMODE devMode, IntPtr hwnd, int flags, IntPtr param);
 
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int index);
+
+        public static int ActiveDisplayCount()
+        {
+            const int SM_CMONITORS = 80;
+            return GetSystemMetrics(SM_CMONITORS);
+        }
+
         private static DEVMODE NewMode()
         {
             DEVMODE mode = new DEVMODE();
@@ -1755,30 +2146,43 @@ function Get-CurrentDisplayMode {
     }
 }
 
-function Set-Safe120DisplayMode {
+function Set-VerifiedDisplayRefresh {
+    param([Parameter(Mandatory)][int]$RefreshHz)
+
     if ($null -eq $script:activePanelDefinition) {
         throw 'The active panel definition is unavailable.'
     }
     $width = [int]$script:activePanelDefinition.Width
     $height = [int]$script:activePanelDefinition.Height
-    if (-not [ClawLab.VrrFix.DisplayModeControl]::HasMode($width, $height, 120)) {
-        throw "The validated ${width}x${height} 120 Hz Windows display mode is not available."
+    $activeDisplayCount = [ClawLab.VrrFix.DisplayModeControl]::ActiveDisplayCount()
+    if ($activeDisplayCount -ne 1) {
+        throw "Exactly one active display is required for a guarded refresh-rate change; found $activeDisplayCount. Disconnect every external display and retry."
+    }
+    $current = Get-CurrentDisplayMode
+    if ($current.Width -ne $width -or $current.Height -ne $height) {
+        throw "The validated internal panel must be the active primary display at ${width}x${height}. Disconnect external displays and retry."
+    }
+    if (-not [ClawLab.VrrFix.DisplayModeControl]::HasMode($width, $height, $RefreshHz)) {
+        throw "The validated ${width}x${height} $RefreshHz Hz Windows display mode is not available."
     }
 
-    $current = Get-CurrentDisplayMode
-    if ($current.Width -eq $width -and $current.Height -eq $height -and $current.RefreshHz -eq 120) {
+    if ($current.Width -eq $width -and $current.Height -eq $height -and $current.RefreshHz -eq $RefreshHz) {
         return $current
     }
-    $result = [ClawLab.VrrFix.DisplayModeControl]::SetRefresh(120)
+    $result = [ClawLab.VrrFix.DisplayModeControl]::SetRefresh($RefreshHz)
     if ($result -notin @(0, 1)) {
-        throw "Windows rejected the 120 Hz recovery mode with code $result."
+        throw "Windows rejected the $RefreshHz Hz display mode with code $result."
     }
     Start-Sleep -Seconds 1
     $after = Get-CurrentDisplayMode
-    if ($after.Width -ne $width -or $after.Height -ne $height -or $after.RefreshHz -ne 120) {
-        throw "Factory reset did not activate ${width}x${height} at 120 Hz; current mode is $($after.Width)x$($after.Height) at $($after.RefreshHz) Hz."
+    if ($after.Width -ne $width -or $after.Height -ne $height -or $after.RefreshHz -ne $RefreshHz) {
+        throw "Windows did not activate ${width}x${height} at $RefreshHz Hz; current mode is $($after.Width)x$($after.Height) at $($after.RefreshHz) Hz."
     }
     return $after
+}
+
+function Set-Safe120DisplayMode {
+    Set-VerifiedDisplayRefresh -RefreshHz 120
 }
 
 function Get-TargetSnapshot {
@@ -1796,15 +2200,13 @@ function Get-TargetSnapshot {
                     }
             )
             if ($candidates.Count -eq 1) {
-                $knownMinimum = (
-                    [Math]::Abs($candidates[0].MonitorMinimumHz - $targetMinimumHz) -le 0.1 -or
-                    [Math]::Abs($candidates[0].MonitorMinimumHz - $experimentalMinimumHz) -le 0.1
-                )
-                $knownMaximum = (
-                    [Math]::Abs($candidates[0].MonitorMaximumHz - $targetMaximumHz) -le 0.1 -or
-                    [Math]::Abs($candidates[0].MonitorMaximumHz - $experimentalMaximumHz) -le 0.1
-                )
-                if (-not $knownMinimum -or -not $knownMaximum) {
+                $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+                    -PanelKey ([string]$script:activePanelDefinition.Key) `
+                    -MonitorMinimumHz ([float]$candidates[0].MonitorMinimumHz) `
+                    -MonitorMaximumHz ([float]$candidates[0].MonitorMaximumHz) `
+                    -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+                    -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+                if ($telemetryState -eq 'UNSUPPORTED') {
                     throw "Unexpected Arc Sync monitor range: $($candidates[0].MonitorMinimumHz)-$($candidates[0].MonitorMaximumHz) Hz."
                 }
                 return $candidates[0]
@@ -1934,7 +2336,7 @@ function Install-CustomEdidMode {
         [Parameter(Mandatory)][string]$DesiredState
     )
 
-    if ($DesiredState -ne 'CLAWLAB_30_120') {
+    if ($DesiredState -ne 'CLAWLAB_30_120' -and -not (Test-IsExperimentalOverclockMode -Mode $DesiredState)) {
         throw "Unknown ClawLab custom profile: $DesiredState"
     }
 
@@ -1943,6 +2345,7 @@ function Install-CustomEdidMode {
         throw "Internal custom profile lookup failed: $DesiredState"
     }
     $variant = $desired[0]
+    $isOverclock = Test-IsExperimentalOverclockMode -Mode $DesiredState
     [void](Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState)
 
     if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
@@ -1959,8 +2362,13 @@ function Install-CustomEdidMode {
         if (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf) {
             throw 'A stale custom-range state file exists without its EDID override. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before retrying.'
         }
-        if ([Math]::Abs($Before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
-            [Math]::Abs($Before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
+        if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
+                -PanelKey ([string]$Panel.Definition.Key) `
+                -MonitorMinimumHz ([float]$Before.MonitorMinimumHz) `
+                -MonitorMaximumHz ([float]$Before.MonitorMaximumHz) `
+                -ExpectedMinimumHz $targetMinimumHz -ExpectedMaximumHz $targetMaximumHz `
+                -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+                -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
             throw "Custom-range installation must start from the native 48-120 Hz EDID, but the driver reports $($Before.MonitorMinimumHz)-$($Before.MonitorMaximumHz) Hz."
         }
 
@@ -1974,10 +2382,11 @@ function Install-CustomEdidMode {
 
         [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
         $experimentalState = [ordered]@{
-            SchemaVersion = 2
+            SchemaVersion = 3
             FixVersion = $fixVersion
             InstalledAt = (Get-Date).ToString('o')
             Mode = $variant.State
+            PanelKey = [string]$Panel.Definition.Key
             PanelInstanceId = $RegistryContext.InstanceId
             RegistryPath = $RegistryContext.OverridePath
             PhysicalEdidSha256 = $RegistryContext.PhysicalEdidSha256
@@ -1986,6 +2395,8 @@ function Install-CustomEdidMode {
             Block1Sha256 = $variant.Block1Sha256
             ExperimentalMinimumHz = $variant.MinimumHz
             MaximumHz = $variant.MaximumHz
+            Classification = if ($isOverclock) { [string](Get-ExperimentalOverclockMode -Mode $DesiredState).Stability } else { 'STABLE' }
+            RequiresGuardedTrial = $isOverclock
         }
         [IO.File]::WriteAllText(
             $experimentalStatePath,
@@ -2003,10 +2414,84 @@ function Install-CustomEdidMode {
             if ($writtenState.State -ne $DesiredState) {
                 throw 'The custom EDID registry write did not verify.'
             }
-            Install-StartupReapply
             Set-ManagedModeRecord -Mode $DesiredState
+            if ($isOverclock) {
+                $trialSchedulerPath = Join-Path $PSScriptRoot 'Experimental-Overclock-VRR-Trial.ps1'
+                if (-not (Test-Path -LiteralPath $trialSchedulerPath -PathType Leaf)) {
+                    throw "The guarded-trial scheduler is missing: $trialSchedulerPath"
+                }
+                # This function already required elevation. Register the
+                # limited one-time trial inside the same transaction so a
+                # scheduler failure rolls the pending EDID back atomically.
+                & $trialSchedulerPath -Action Schedule -Mode $DesiredState
+            }
+            else {
+                Install-StartupReapply
+            }
         }
         catch {
+            if ($isOverclock) {
+                $installFailure = $_.Exception
+                $rollbackFailures = [Collections.Generic.List[string]]::new()
+                try { Remove-ExperimentalOverclockTrial }
+                catch { $rollbackFailures.Add("trial cleanup: $($_.Exception.Message)") }
+
+                Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction SilentlyContinue
+                Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction SilentlyContinue
+                try {
+                    $rolledBackOverride = Get-EdidOverrideState -RegistryContext $RegistryContext -ExperimentalEdids $ExperimentalEdids
+                    if ($rolledBackOverride.State -ne 'NONE') {
+                        throw "EDID override remains in state $($rolledBackOverride.State)."
+                    }
+                }
+                catch { $rollbackFailures.Add("EDID rollback: $($_.Exception.Message)") }
+
+                try {
+                    Restore-SnapshotProfile -Target $official -Profile $Before
+                    $rolledBackProfile = Get-TargetSnapshot -Attempts 10
+                    if ($rolledBackProfile.ProfileId -ne [int]$Before.ProfileId) {
+                        throw "expected profile ID $($Before.ProfileId), got $($rolledBackProfile.ProfileId)."
+                    }
+                    if ([int]$Before.ProfileId -eq $profileCustom -and
+                        ([Math]::Abs($rolledBackProfile.ActiveMinimumHz - [float]$Before.ActiveMinimumHz) -gt 0.1 -or
+                         [Math]::Abs($rolledBackProfile.ActiveMaximumHz - [float]$Before.ActiveMaximumHz) -gt 0.1)) {
+                        throw "original custom range verification failed."
+                    }
+                }
+                catch { $rollbackFailures.Add("Intel profile rollback: $($_.Exception.Message)") }
+
+                if ($rollbackFailures.Count -eq 0) {
+                    # A new overclock transaction can reach this block only
+                    # from CLEAN/NONE. Once EDID and Intel profile rollback are
+                    # verified, remove every file created solely by the failed
+                    # transaction. Keep the original backup until last.
+                    foreach ($failedTransactionPath in @(
+                            $experimentalStatePath,
+                            $managedModeStatePath,
+                            $installedScriptPath,
+                            $installedEdidNormalizationModulePath,
+                            $installedArcSyncRangePolicyModulePath,
+                            $installedLauncherPath,
+                            $installedCursorRefreshHelperPath,
+                            (Join-Path $stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'),
+                            (Join-Path $stateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'),
+                            (Join-Path $stateRoot 'Lfc-Backup-Identity.ps1'),
+                            (Join-Path $stateRoot 'ClawLab-LFC-Startup.vbs')
+                        )) {
+                        try { Remove-FileIfPresent -LiteralPath $failedTransactionPath }
+                        catch { $rollbackFailures.Add("artifact cleanup: $($_.Exception.Message)") }
+                    }
+                    if ($rollbackFailures.Count -eq 0) {
+                        try { Remove-FileIfPresent -LiteralPath $backupPath }
+                        catch { $rollbackFailures.Add("backup cleanup: $($_.Exception.Message)") }
+                    }
+                }
+
+                if ($rollbackFailures.Count -gt 0) {
+                    throw "Experimental installation failed: $($installFailure.Message) Automatic rollback also reported: $($rollbackFailures -join ' | '). Keep the ClawLab state folder and run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
+                }
+                throw $installFailure
+            }
             Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '0' -ErrorAction SilentlyContinue
             Remove-ItemProperty -LiteralPath $RegistryContext.OverridePath -Name '1' -ErrorAction SilentlyContinue
             Remove-FileIfPresent -LiteralPath $experimentalStatePath
@@ -2015,7 +2500,11 @@ function Install-CustomEdidMode {
             throw
         }
 
-        Write-Host "ClawLab default $($variant.MinimumHz)-$($variant.MaximumHz) Hz EDID override is installed and verified." -ForegroundColor Yellow
+        $modeLabel = if ($isOverclock) { [string](Get-ExperimentalOverclockMode -Mode $DesiredState).Stability } else { 'ClawLab default' }
+        Write-Host "$modeLabel $($variant.MinimumHz)-$($variant.MaximumHz) Hz EDID override is installed and verified." -ForegroundColor Yellow
+        if ($isOverclock) {
+            Write-Warning 'This display overclock is not active yet. Its mandatory guarded trial is scheduled for the next sign-in.'
+        }
         Write-Host 'Restart the PC to make Windows and the Intel driver reload the display EDID.' -ForegroundColor Yellow
         $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $official -OverrideState $writtenState
         $status.RestartRequired = $true
@@ -2026,8 +2515,20 @@ function Install-CustomEdidMode {
         throw 'The matching EDID override exists without its ClawLab state file. It was not adopted or modified.'
     }
 
-    if ([Math]::Abs($Before.MonitorMinimumHz - $variant.MinimumHz) -le 0.1 -and
-        [Math]::Abs($Before.MonitorMaximumHz - $variant.MaximumHz) -le 0.1) {
+    if ($isOverclock) {
+        Write-Host 'The experimental overclock EDID is present. Complete or recover the mandatory guarded trial.' -ForegroundColor Yellow
+        $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $Before -OverrideState $OverrideState
+        $status.RestartRequired = $true
+        return $status
+    }
+
+    if (Test-ClawLabArcSyncMonitorRangeCompatible `
+            -PanelKey ([string]$Panel.Definition.Key) `
+            -MonitorMinimumHz ([float]$Before.MonitorMinimumHz) `
+            -MonitorMaximumHz ([float]$Before.MonitorMaximumHz) `
+            -ExpectedMinimumHz ([float]$variant.MinimumHz) -ExpectedMaximumHz ([float]$variant.MaximumHz) `
+            -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+            -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz) {
         Invoke-SetProfile -Target $Before -ProfileId $profileExcellent
         $after = Get-TargetSnapshot -Attempts 10
         if ($after.ProfileId -ne $profileExcellent -or
@@ -2065,7 +2566,7 @@ function Get-StatusObject {
         [Math]::Abs($Snapshot.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
         [Math]::Abs($Snapshot.ActiveMaximumHz - $targetMaximumHz) -le 0.1
     )
-    $knownExperimentalOverride = $OverrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')
+    $knownExperimentalOverride = $OverrideState.State -in (@('CLAWLAB_30_120') + @($experimentalOverclockModes.Keys))
     $experimentalRangeActive = (
         $knownExperimentalOverride -and
         $Snapshot.ProfileId -eq $profileExcellent -and
@@ -2104,6 +2605,13 @@ function Get-StatusObject {
     $displayMode = Get-CurrentDisplayMode
     $managedMode = Get-EffectiveManagedMode -OverrideState $OverrideState
 
+    $monitorTelemetryState = Get-ClawLabArcSyncMonitorRangeState `
+        -PanelKey ([string]$Panel.Definition.Key) `
+        -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+        -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+        -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+
     [pscustomobject]@{
         FixVersion = $fixVersion
         State = $state
@@ -2112,6 +2620,8 @@ function Get-StatusObject {
         IntelGpu = [string]$Gpu.Name
         IntelDriver = [string]$Gpu.DriverVersion
         MonitorSupportedRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.MonitorMinimumHz, $Snapshot.MonitorMaximumHz
+        PhysicalPanelRange = '{0:0.#}-{1:0.#} Hz' -f $targetMinimumHz, $targetMaximumHz
+        ArcSyncMonitorTelemetry = $monitorTelemetryState
         DriverProfile = $Snapshot.ProfileName
         DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.ActiveMinimumHz, $Snapshot.ActiveMaximumHz
         WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
@@ -2157,8 +2667,14 @@ try {
             throw 'The ClawLab custom-range state file has no EDID hash. Nothing was removed.'
         }
         $expectedEmergencyHashes = Get-KnownOverrideHashes -EdidSha256 ([string]$emergencyState.ExperimentalEdidSha256)
-        $expectedEmergencyPath = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\DISPLAY\$($expectedEmergencyHashes.Definition.Manufacturer)$($expectedEmergencyHashes.Definition.ProductCode)\*\Device Parameters\EDID_OVERRIDE"
-        if ($emergencyOverridePath -notlike $expectedEmergencyPath) {
+        $emergencyPanelId = [regex]::Escape(
+            "$($expectedEmergencyHashes.Definition.Manufacturer)$($expectedEmergencyHashes.Definition.ProductCode)"
+        )
+        $expectedEmergencyPattern = '^Registry::HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Enum\\DISPLAY\\{0}\\[^\\]+\\Device Parameters\\EDID_OVERRIDE$' -f $emergencyPanelId
+        if (-not [regex]::IsMatch(
+                $emergencyOverridePath,
+                $expectedEmergencyPattern,
+                [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
             throw "Unsafe or unexpected EDID override path: $emergencyOverridePath"
         }
         $emergencyBlock0 = [byte[]](Get-ItemPropertyValue -LiteralPath $emergencyOverridePath -Name '0' -ErrorAction Stop)
@@ -2185,6 +2701,9 @@ try {
         exit 0
     }
 
+    if ($Action -eq 'ApplyStartup') {
+        Enter-StartupApplyMutex
+    }
     $panel = Get-ValidatedPanel
     $gpu = Get-IntelGpu
     if ($Action -eq 'ApplyStartup') {
@@ -2206,26 +2725,111 @@ try {
             Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
         }
 
+        'ApplyExperimentalTrial' {
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel -OverrideState $overrideState
+            $mode = $context.Mode
+            if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
+                    -PanelKey ([string]$panel.Definition.Key) `
+                    -MonitorMinimumHz ([float]$before.MonitorMinimumHz) `
+                    -MonitorMaximumHz ([float]$before.MonitorMaximumHz) `
+                    -ExpectedMinimumHz ([float]$mode.MinimumHz) `
+                    -ExpectedMaximumHz ([float]$mode.MaximumHz) `
+                    -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+                    -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
+                throw "The guarded trial found an unexpected monitor range: $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
+            }
+
+            $displayMode = Set-VerifiedDisplayRefresh -RefreshHz ([int]$mode.MaximumHz)
+            $target = Get-TargetSnapshot -Attempts 10
+            Invoke-SetProfile -Target $target -ProfileId $profileExcellent
+            Start-Sleep -Milliseconds 750
+            $after = Get-TargetSnapshot -Attempts 10
+            if ($after.ProfileId -ne $profileExcellent -or
+                [Math]::Abs($after.ActiveMinimumHz - [float]$mode.MinimumHz) -gt 0.1 -or
+                [Math]::Abs($after.ActiveMaximumHz - [float]$mode.MaximumHz) -gt 0.1) {
+                throw "The guarded trial could not verify Intel EXCELLENT at $($mode.MinimumHz)-$($mode.MaximumHz) Hz."
+            }
+            [pscustomobject]@{
+                State = 'EXPERIMENTAL_OVERCLOCK_TRIAL_ACTIVE'
+                Mode = [string]$context.Trial.Mode
+                WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
+                DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $after.ActiveMinimumHz, $after.ActiveMaximumHz
+            }
+        }
+
+        'SetSafe120ForTrial' {
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel -OverrideState $overrideState
+            $safeMode = Set-Safe120DisplayMode
+            [pscustomobject]@{
+                State = 'EXPERIMENTAL_OVERCLOCK_TRIAL_SAFE_120'
+                Mode = [string]$context.Trial.Mode
+                WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $safeMode.Width, $safeMode.Height, $safeMode.RefreshHz
+            }
+        }
+
+        'ConfirmExperimentalTrial' {
+            Confirm-AdministratorOrRelaunch
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel -OverrideState $overrideState -RequireUserConfirmation
+            $mode = $context.Mode
+            $displayMode = Set-VerifiedDisplayRefresh -RefreshHz ([int]$mode.MaximumHz)
+            $target = Get-TargetSnapshot -Attempts 10
+            Invoke-SetProfile -Target $target -ProfileId $profileExcellent
+            Start-Sleep -Milliseconds 750
+            $after = Get-TargetSnapshot -Attempts 10
+            if ($after.ProfileId -ne $profileExcellent -or
+                [Math]::Abs($after.ActiveMinimumHz - [float]$mode.MinimumHz) -gt 0.1 -or
+                [Math]::Abs($after.ActiveMaximumHz - [float]$mode.MaximumHz) -gt 0.1) {
+                throw "The confirmed overclock could not verify Intel EXCELLENT at $($mode.MinimumHz)-$($mode.MaximumHz) Hz."
+            }
+            Set-ManagedModeRecord -Mode ([string]$context.Trial.Mode)
+            Install-StartupReapply
+            $protectedLfcToolPath = Join-Path $PSScriptRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
+            if (-not (Test-Path -LiteralPath $protectedLfcToolPath -PathType Leaf)) {
+                throw 'The protected Intel LFC component is missing.'
+            }
+            $lfcResults = @(& $protectedLfcToolPath -Action Apply)
+            $lfcResult = if ($lfcResults.Count -gt 0) { $lfcResults[-1] } else { $null }
+            if ($null -eq $lfcResult -or -not [bool]$lfcResult.LfcFixActive) {
+                throw 'The protected Intel LFC component did not verify an active correction.'
+            }
+            try { Remove-ProtectedExperimentalRuntime }
+            catch { Write-Warning "Protected trial-runtime cleanup will be retried by Restore: $($_.Exception.Message)" }
+            [pscustomobject]@{
+                State = 'EXPERIMENTAL_OVERCLOCK_CONFIRMED'
+                Mode = [string]$context.Trial.Mode
+                WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
+                DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $after.ActiveMinimumHz, $after.ActiveMaximumHz
+                LfcFixActive = $true
+            }
+        }
+
         'ApplyStartup' {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Startup reapply was cancelled.'
             }
             $expectedManagedMode = if ($overrideState.State -eq 'NONE') { 'OFFICIAL_48_120' } else { [string]$overrideState.State }
-            if ($expectedManagedMode -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
-                throw 'This retired 144 Hz profile is no longer reapplied. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat to return to a supported 120 Hz profile.'
-            }
             $managedMode = Get-EffectiveManagedMode -OverrideState $overrideState
             if ($managedMode.Mode -ne $expectedManagedMode -or $managedMode.State -ne 'CONSISTENT') {
                 throw "Startup reapply refused an unmanaged or inconsistent VRR state: $($managedMode.Mode) / $($managedMode.State). Run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
             }
             $expectedMinimumHz = [float]$overrideState.MinimumHz
             $expectedMaximumHz = [float]$overrideState.MaximumHz
-            if ([Math]::Abs($before.MonitorMinimumHz - $expectedMinimumHz) -gt 0.1 -or
-                [Math]::Abs($before.MonitorMaximumHz - $expectedMaximumHz) -gt 0.1) {
+            if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
+                    -PanelKey ([string]$panel.Definition.Key) `
+                    -MonitorMinimumHz ([float]$before.MonitorMinimumHz) `
+                    -MonitorMaximumHz ([float]$before.MonitorMaximumHz) `
+                    -ExpectedMinimumHz $expectedMinimumHz -ExpectedMaximumHz $expectedMaximumHz `
+                    -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+                    -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
                 throw "Startup reapply found an unexpected monitor range: $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
             }
 
-            $displayMode = $null
+            $displayMode = if (Test-IsExperimentalOverclockMode -Mode ([string]$managedMode.Mode)) {
+                Set-VerifiedDisplayRefresh -RefreshHz ([int]$expectedMaximumHz)
+            }
+            else {
+                $null
+            }
 
             # The refresh transition and Intel Graphics Software startup can
             # transiently restore RECOMMENDED. Start the UI first, then apply
@@ -2258,6 +2862,7 @@ try {
             $identitySuffix = if ($script:intelStartupIdentityRenewed) { ', signed Intel Graphics Software update trusted' } else { '' }
             Start-CursorRefreshHelper
             Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz, event-driven cursor refresh active" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix + $identitySuffix)
+            Exit-StartupApplyMutex
             exit 0
         }
 
@@ -2269,8 +2874,13 @@ try {
             if ($overrideState.State -ne 'NONE') {
                 throw "ClawLab custom mode $($overrideState.State) is installed. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before installing official mode."
             }
-            if ([Math]::Abs($before.MonitorMinimumHz - $targetMinimumHz) -gt 0.1 -or
-                [Math]::Abs($before.MonitorMaximumHz - $targetMaximumHz) -gt 0.1) {
+            if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
+                    -PanelKey ([string]$panel.Definition.Key) `
+                    -MonitorMinimumHz ([float]$before.MonitorMinimumHz) `
+                    -MonitorMaximumHz ([float]$before.MonitorMaximumHz) `
+                    -ExpectedMinimumHz $targetMinimumHz -ExpectedMaximumHz $targetMaximumHz `
+                    -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+                    -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
                 throw "Official mode expected the panel's native 48-120 Hz range, but the driver reports $($before.MonitorMinimumHz)-$($before.MonitorMaximumHz) Hz."
             }
 
@@ -2316,6 +2926,42 @@ try {
             Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
                 -DesiredState 'CLAWLAB_30_120'
+        }
+
+        'Install48_144' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_48_144'
+        }
+
+        'Install48_165' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_48_165'
+        }
+
+        'Install48_180' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_48_180'
+        }
+
+        'Install30_144' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_30_144'
+        }
+
+        'Install30_165' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_30_165'
+        }
+
+        'Install30_180' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_30_180'
         }
 
         'FactoryReset' {
@@ -2383,7 +3029,7 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. It was not created by this package and will not be removed.'
             }
-            $knownExperimentalOverride = $overrideState.State -in @('CLAWLAB_30_120', 'CLAWLAB_48_144', 'CLAWLAB_30_144')
+            $knownExperimentalOverride = $overrideState.State -in (@('CLAWLAB_30_120') + @($experimentalOverclockModes.Keys))
             if (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf) {
                 $startupOrderState = Get-IntelStartupOrderState
                 if ($startupOrderState -notin @('CLAWLAB_ORDERED', 'ORIGINAL_STILL_PRESENT', 'MANAGED_COMMAND_REAPPEARED')) {
@@ -2395,9 +3041,9 @@ try {
                 Confirm-AdministratorOrRelaunch
             }
 
-            if ($overrideState.State -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
-                # Leave the experimental fixed 144 Hz timing before removing
-                # its EDID blocks. This gives trial rollback a visibly safe
+            if (Test-IsExperimentalOverclockMode -Mode ([string]$overrideState.State)) {
+                # Leave the experimental fixed high-refresh timing before
+                # removing its EDID blocks. This gives rollback a visibly safe
                 # 120 Hz mode even before the required restart.
                 [void](Set-Safe120DisplayMode)
                 Start-Sleep -Seconds 2
@@ -2437,6 +3083,7 @@ catch {
     if ($Action -eq 'ApplyStartup') {
         try { Write-StartupResult -Success $false -Message $_.Exception.Message } catch {}
         try { Start-ManagedIntelGraphicsSoftware } catch {}
+        try { Exit-StartupApplyMutex } catch {}
     }
     else {
         try {
@@ -2454,5 +3101,7 @@ catch {
         catch {}
     }
     Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+    # Preserve a non-zero exit for direct -File execution while still allowing
+    # Health/diagnostic callers that invoke this script to catch the failure.
+    throw
 }

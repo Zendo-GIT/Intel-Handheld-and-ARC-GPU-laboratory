@@ -10,12 +10,23 @@ if (-not (Test-Path -LiteralPath $identityModule -PathType Leaf)) {
 }
 . $identityModule
 
+$managedModeEdids = [ordered]@{
+    'OFFICIAL_48_120' = 'PHYSICAL'
+    'CLAWLAB_30_120' = 'CUSTOM30'
+    'CLAWLAB_48_144' = 'CUSTOM48_144'
+    'CLAWLAB_48_165' = 'CUSTOM48_165'
+    'CLAWLAB_48_180' = 'CUSTOM48_180'
+    'CLAWLAB_30_144' = 'CUSTOM30_144'
+    'CLAWLAB_30_165' = 'CUSTOM30_165'
+    'CLAWLAB_30_180' = 'CUSTOM30_180'
+}
+
 $common = @{
     PanelManufacturer = 'CSW'
     PanelProductCode = '0801'
     PanelName = 'PN8007QB1-2'
     PhysicalEdidSha256 = 'PHYSICAL'
-    ValidatedEdidHashes = @('PHYSICAL', 'CUSTOM30')
+    ValidatedEdidHashes = @($managedModeEdids.Values)
     CurrentPanelInstanceName = 'DISPLAY\CSW0801\NEW_0'
     CurrentManagedMode = 'CLAWLAB_30_120'
 }
@@ -68,6 +79,27 @@ if ($rejectedPanel.Accepted -or $rejectedPanel.State -ne 'STABLE_PANEL_IDENTITY_
     throw 'A mismatched schema 4 stable panel identity was not rejected.'
 }
 
+$managedModeMatrixChecks = 0
+foreach ($savedMode in $managedModeEdids.Keys) {
+    $modeBackup = $schema4.PSObject.Copy()
+    $modeBackup.ManagedVrrMode = $savedMode
+    $modeBackup.PanelEdidSha256AtSave = $managedModeEdids[$savedMode]
+    foreach ($currentMode in $managedModeEdids.Keys) {
+        $modeContext = $common.Clone()
+        $modeContext.CurrentManagedMode = $currentMode
+        $resolution = Resolve-ClawLabLfcBackupIdentity @modeContext -Backup $modeBackup -Action Apply
+        if ($savedMode -eq $currentMode) {
+            if (-not $resolution.Accepted) {
+                throw "Matching LFC backup mode was rejected: $savedMode."
+            }
+        }
+        elseif ($resolution.Accepted -or $resolution.State -ne 'MANAGED_MODE_MISMATCH') {
+            throw "Cross-profile LFC backup was not refused: $savedMode -> $currentMode."
+        }
+        $managedModeMatrixChecks++
+    }
+}
+
 $schema2 = [pscustomobject]@{
     SchemaVersion = 2
     PanelInstanceName = 'DISPLAY\CSW0801\OLD_0'
@@ -86,4 +118,5 @@ if ($legacyRejected.Accepted -or $legacyRejected.State -ne 'LEGACY_INSTANCE_MISM
     Schema4InstanceRefresh = $refreshed.State
     StableIdentityRejection = $rejectedPanel.State
     UnverifiableLegacyRejection = $legacyRejected.State
+    ManagedModeMatrixChecks = $managedModeMatrixChecks
 }

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.1.2'
+    [string]$Version = '2.2.0'
 )
 
 Set-StrictMode -Version Latest
@@ -43,6 +43,12 @@ foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')
 $releaseFiles = @(
     [pscustomobject]@{ Source = 'INSTALL_48_120_VRR.bat'; Destination = 'INSTALL_48_120_VRR.bat' },
     [pscustomobject]@{ Source = 'INSTALL_30_120_VRR.bat'; Destination = 'INSTALL_30_120_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat' },
     [pscustomobject]@{ Source = 'CHECK_STATUS.bat'; Destination = 'CHECK_STATUS.bat' },
     [pscustomobject]@{ Source = 'README.txt'; Destination = 'README.txt' },
     [pscustomobject]@{ Source = 'CHANGELOG.txt'; Destination = 'CHANGELOG.txt' },
@@ -64,20 +70,26 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'Collect-Claw-Display-Diagnostics.ps1'; Destination = 'scripts\Collect-Claw-Display-Diagnostics.ps1' },
     [pscustomobject]@{ Source = 'Edid-Normalization.ps1'; Destination = 'scripts\Edid-Normalization.ps1' },
     [pscustomobject]@{ Source = 'Lfc-Backup-Identity.ps1'; Destination = 'scripts\Lfc-Backup-Identity.ps1' },
+    [pscustomobject]@{ Source = 'ArcSync-Range-Policy.ps1'; Destination = 'scripts\ArcSync-Range-Policy.ps1' },
+    [pscustomobject]@{ Source = 'Experimental-Overclock-VRR-Trial.ps1'; Destination = 'scripts\Experimental-Overclock-VRR-Trial.ps1' },
     [pscustomobject]@{ Source = 'ClawLab-Cursor-Refresh-Helper.exe'; Destination = 'scripts\ClawLab-Cursor-Refresh-Helper.exe' },
     [pscustomobject]@{ Source = 'ClawLab-VRR-Startup.vbs'; Destination = 'scripts\ClawLab-VRR-Startup.vbs' },
     [pscustomobject]@{ Source = 'ClawLab-LFC-Startup.vbs'; Destination = 'scripts\ClawLab-LFC-Startup.vbs' },
+    [pscustomobject]@{ Source = 'ClawLab-Experimental-Trial-Startup.vbs'; Destination = 'scripts\ClawLab-Experimental-Trial-Startup.vbs' },
 
     [pscustomobject]@{ Source = 'docs\COMPATIBILITY.md'; Destination = 'docs\COMPATIBILITY.md' },
     [pscustomobject]@{ Source = 'docs\SAFETY.md'; Destination = 'docs\SAFETY.md' },
     [pscustomobject]@{ Source = 'docs\TECHNICAL_DETAILS.md'; Destination = 'docs\TECHNICAL_DETAILS.md' },
     [pscustomobject]@{ Source = 'docs\NEXUS_MODS.md'; Destination = 'docs\NEXUS_MODS.md' },
     [pscustomobject]@{ Source = 'docs\A1M_EDID_REFERENCE.md'; Destination = 'docs\A1M_EDID_REFERENCE.md' },
-    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.1.2.md'; Destination = 'docs\RELEASE_NOTES_2.1.2.md' },
+    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.2.0.md'; Destination = 'docs\RELEASE_NOTES_2.2.0.md' },
 
     [pscustomobject]@{ Source = 'tools\Test-A1M-Edid.ps1'; Destination = 'SOURCE\Test-A1M-Edid.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Lfc-Backup-Identity.ps1'; Destination = 'SOURCE\Test-Lfc-Backup-Identity.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Lfc-Atomic-Replace.ps1'; Destination = 'SOURCE\Test-Lfc-Atomic-Replace.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-ArcSync-Range-Policy.ps1'; Destination = 'SOURCE\Test-ArcSync-Range-Policy.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Experimental-Overclock-Edids.ps1'; Destination = 'SOURCE\Test-Experimental-Overclock-Edids.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Public-Installer-Matrix.ps1'; Destination = 'SOURCE\Test-Public-Installer-Matrix.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'; Destination = 'SOURCE\CursorRefreshHelper\Build-CursorRefreshHelper.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\README.md'; Destination = 'SOURCE\CursorRefreshHelper\README.md' }
@@ -120,8 +132,17 @@ $requiredIntegrityValues = @(
     '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
     '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1',
     '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647',
+    'FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677',
+    '279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62',
+    '8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7',
+    '0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B',
+    'AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB',
+    '89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2',
+    '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D',
+    'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E',
+    'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51',
+    'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679',
     "Name = 'TL070FVXS02-0'",
-    "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
     'Start-ManagedIntelGraphicsSoftware',
@@ -138,8 +159,17 @@ $requiredIntegrityValues = @(
     'Assert-ProfileTransitionAllowed',
     'managed-mode.json',
     "'FactoryReset'",
-    'This retired 144 Hz profile is no longer reapplied',
+    'ApplyExperimentalTrial',
+    'ConfirmExperimentalTrial',
+    'SetSafe120ForTrial',
     'Set-Safe120DisplayMode',
+    'ActiveDisplayCount()',
+    'Exactly one active display is required',
+    'ClawLab.MSIClaw.VrrApplyStartup',
+    'Enter-StartupApplyMutex',
+    'Exit-StartupApplyMutex',
+    '$expectedEmergencyPattern',
+    '[^\\]+\\Device Parameters\\EDID_OVERRIDE',
     "'Intel' + [char]0x00AE + ' Graphics Software'"
     'Install-CursorRefreshHelper',
     'Start-CursorRefreshHelper',
@@ -147,15 +177,12 @@ $requiredIntegrityValues = @(
     'RUNNING_EVENT_DRIVEN',
     'VERSION_MISMATCH'
     'CLAW_A1M_CLAW_7_AI_PLUS'
+    'Overclock48_180EdidSha256'
+    'Overclock30_180EdidSha256'
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
         throw "Required integrity value is missing from the release source: $value"
-    }
-}
-foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function Set-Experimental144DisplayMode')) {
-    if ($scriptText -match [regex]::Escape($forbiddenMarker)) {
-        throw "Retired 144 Hz installation capability remains in the release source: $forbiddenMarker"
     }
 }
 $installActions = @(
@@ -163,14 +190,20 @@ $installActions = @(
         ForEach-Object { $_.Value } |
         Sort-Object -Unique
 )
-if (($installActions -join ',') -ne "'Install30','Install48'") {
+$expectedInstallActions = @(
+    "'Install30'", "'Install48'",
+    "'Install30_144'", "'Install30_165'", "'Install30_180'",
+    "'Install48_144'", "'Install48_165'", "'Install48_180'"
+)
+if (@(Compare-Object -ReferenceObject $expectedInstallActions -DifferenceObject $installActions).Count -ne 0) {
     throw "Unexpected VRR installation actions: $($installActions -join ', ')"
 }
 foreach ($requiredRangeMarker in @(
         '$targetMinimumHz = 48.0',
         '$experimentalMinimumHz = 30.0',
         '$targetMaximumHz = 120.0',
-        "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]"
+        "'Install48_144', 'Install48_165', 'Install48_180'",
+        "'Install30_144', 'Install30_165', 'Install30_180'"
     )) {
     if ($scriptText -notmatch [regex]::Escape($requiredRangeMarker)) {
         throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
@@ -193,6 +226,31 @@ $a1mCatalogTest = Join-Path $projectRoot 'tools\Test-A1M-Edid.ps1'
 $a1mResult = & $a1mCatalogTest
 if ($null -eq $a1mResult -or [string]$a1mResult.Result -ne 'PASS') {
     throw 'The pinned Claw A1M EDID generator test failed.'
+}
+
+$rangePolicyTest = Join-Path $projectRoot 'tools\Test-ArcSync-Range-Policy.ps1'
+$rangePolicyResult = & $rangePolicyTest
+if ($null -eq $rangePolicyResult -or [string]$rangePolicyResult.Result -ne 'PASS' -or
+    [string]$rangePolicyResult.ProfileSwitchMatrix -ne 'PASS' -or
+    [bool]$rangePolicyResult.TelemetryFloorInstallable) {
+    throw 'The Arc Sync telemetry and all-profile transition-guard test failed.'
+}
+
+$overclockEdidTest = Join-Path $projectRoot 'tools\Test-Experimental-Overclock-Edids.ps1'
+$overclockEdidResult = & $overclockEdidTest
+if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne 'PASS' -or
+    [int]$overclockEdidResult.ProfilesVerified -ne 12 -or
+    [int]$overclockEdidResult.Unsupported24HzProfiles -ne 0) {
+    throw 'The two-panel guarded overclock EDID test failed.'
+}
+
+$installerMatrixTest = Join-Path $projectRoot 'tools\Test-Public-Installer-Matrix.ps1'
+$installerMatrixResult = & $installerMatrixTest
+if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -ne 'PASS' -or
+    [int]$installerMatrixResult.LfcIntegratedProfiles -ne 8 -or
+    [string]$installerMatrixResult.GuardedTrialOrder -ne 'PASS' -or
+    [int]$installerMatrixResult.Forbidden24HzProfiles -ne 0) {
+    throw 'The public installer/action/LFC/guarded-trial matrix test failed.'
 }
 
 $lfcIdentityTest = Join-Path $projectRoot 'tools\Test-Lfc-Backup-Identity.ps1'
@@ -221,12 +279,16 @@ foreach ($value in @(
 
 $lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.4'",
+    "`$toolVersion = '2.0.5'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
     "'CLAWLAB_48_144'",
     "'CLAWLAB_30_144'",
+    "'CLAWLAB_48_165'",
+    "'CLAWLAB_48_180'",
+    "'CLAWLAB_30_165'",
+    "'CLAWLAB_30_180'",
     '$managedProfiles.ContainsKey($managedModeName)',
     'OriginalLowFpsSolutionEnabled',
     'OriginalHighFpsSolutionEnabled',
@@ -241,6 +303,7 @@ foreach ($value in @(
     'InstanceMigrationCount'
     '[IO.File]::Replace($temporaryPath, $lfcBackupPath, $replacementBackupPath)'
     'No backup, persistence task or LFC flag was changed.'
+    'Refusing to save an unknown modified state as the original.'
 )) {
     if ($lfcScriptText -notmatch [regex]::Escape($value)) {
         throw "Required LFC safety value is missing from the release source: $value"
@@ -271,6 +334,109 @@ foreach ($installerName in $lfcInstallers) {
     $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
     if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
         throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
+    }
+    foreach ($marker in @('reset-all.exe', 'If CRU has never been used', 'VRR ownership preflight', 'ClawTweaks', '3.0 or later', 'ClawLab VRR compatibility patch', 'optional and is not required')) {
+        if ($installerText -notmatch [regex]::Escape($marker)) {
+            throw "Managed VRR installer is missing a conflict preflight: $installerName / $marker"
+        }
+    }
+}
+
+$experimentalInstallers = @(
+    'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'
+)
+foreach ($installerName in $experimentalInstallers) {
+    $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
+    foreach ($marker in @(
+            'DISPLAY OVERCLOCK',
+            'silicon lottery',
+            'timeout /t 10 /nobreak',
+            'I ACCEPT THE OVERCLOCK RISK',
+            '15 SECONDS',
+            'DO NOT POWER OFF OR REBOOT',
+            'Disconnect every external display',
+            'reset-all.exe',
+            'If CRU has never been used',
+            'Has CRU never been used, or was reset-all.exe followed by a restart?',
+            'Is every conflicting VRR/EDID tool disabled or removed?',
+            'ClawLab VRR compatibility patch',
+            '3.0 or later',
+            'optional and is not required'
+        )) {
+        if ($installerText -notmatch [regex]::Escape($marker)) {
+            throw "Experimental installer is missing a mandatory guard: $installerName / $marker"
+        }
+    }
+}
+
+$mainVrrScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-VRR-Fix.ps1') -Raw
+foreach ($marker in @(
+        '& $trialSchedulerPath -Action Schedule -Mode $DesiredState',
+        'try { Remove-ExperimentalOverclockTrial }',
+        '$backupPath,',
+        "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
+        'ClawLab-VRR-Privileged\2.2.0',
+        'Assert-ProtectedRuntimeIntegrity',
+        'protected-runtime.json',
+        'Remove-ProtectedExperimentalRuntime',
+        '& $protectedLfcToolPath -Action Apply',
+        'LfcFixActive'
+        'OLDER_VERSION_RESTORE_REQUIRED'
+    )) {
+    if ($mainVrrScriptText -notmatch [regex]::Escape($marker)) {
+        throw "Atomic experimental install transaction is missing: $marker"
+    }
+}
+
+$trialScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'Experimental-Overclock-VRR-Trial.ps1') -Raw
+foreach ($marker in @(
+        "`$fixVersion = '$Version'",
+        'ObservationSeconds = 15',
+        'Stability = [string]$profile.Stability',
+        'TimeoutSeconds 15',
+        "-ToolAction 'SetSafe120ForTrial'",
+        'UserConfirmed = $false',
+        'Confirm-AdministratorOrRelaunch',
+        '-RunLevel Limited',
+        'ClawLab-VRR-Privileged\2.2.0',
+        'Initialize-ProtectedRuntimeDirectory',
+        'DirectorySecurity',
+        'Write-ProtectedRuntimeManifest',
+        'Assert-ProtectedRuntimeIntegrity',
+        "-ToolAction 'ConfirmExperimentalTrial'",
+        "-ToolAction 'Restore'"
+    )) {
+    if ($trialScriptText -notmatch [regex]::Escape($marker)) {
+        throw "Guarded trial source is missing: $marker"
+    }
+}
+$trialLauncherText = Get-Content -LiteralPath (Join-Path $projectRoot 'ClawLab-Experimental-Trial-Startup.vbs') -Raw
+foreach ($marker in @('WScript.ScriptFullName', 'Experimental-Overclock-VRR-Trial.ps1')) {
+    if ($trialLauncherText -notmatch [regex]::Escape($marker)) {
+        throw "Protected guarded-trial launcher is missing: $marker"
+    }
+}
+if ($trialLauncherText -match [regex]::Escape('%LOCALAPPDATA%')) {
+    throw 'The guarded-trial launcher still executes a user-writable LocalAppData script.'
+}
+if ($trialScriptText -match [regex]::Escape('-RunLevel Highest')) {
+    throw 'Guarded trial source must never schedule its user-writable runtime at Highest privilege.'
+}
+if (([regex]::Matches($trialScriptText, 'Confirm-AdministratorOrRelaunch')).Count -ne 2) {
+    throw 'Guarded trial elevation must exist only as one function definition and one Schedule action call.'
+}
+foreach ($unsafeTimeout in @(
+        "-ToolAction 'ConfirmExperimentalTrial' -TimeoutSeconds",
+        "-ToolPath `$installedVrrToolPath -ToolAction 'Restore' -TimeoutSeconds",
+        '-ExecutionTimeLimit'
+    )) {
+    if ($trialScriptText -match [regex]::Escape($unsafeTimeout)) {
+        throw "Guarded trial can force-terminate an elevation-sensitive action: $unsafeTimeout"
     }
 }
 
@@ -368,8 +534,20 @@ try {
             'scripts/Export-ClawLab-Status.ps1',
             'scripts/Edid-Normalization.ps1',
             'scripts/Lfc-Backup-Identity.ps1',
+            'scripts/ArcSync-Range-Policy.ps1',
+            'scripts/Experimental-Overclock-VRR-Trial.ps1',
+            'scripts/ClawLab-Experimental-Trial-Startup.vbs',
             'scripts/ClawLab-Cursor-Refresh-Helper.exe'
             'SOURCE/Test-Lfc-Atomic-Replace.ps1'
+            'SOURCE/Test-ArcSync-Range-Policy.ps1'
+            'SOURCE/Test-Experimental-Overclock-Edids.ps1'
+            'SOURCE/Test-Public-Installer-Matrix.ps1'
+            'EXPERIMENTAL/INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'
         )) {
         if ($requiredEntry -notin $relativeEntries) {
             throw "Required structured ZIP entry is missing: $requiredEntry"

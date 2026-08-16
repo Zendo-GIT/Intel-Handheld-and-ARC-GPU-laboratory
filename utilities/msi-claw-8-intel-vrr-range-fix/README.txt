@@ -1,82 +1,87 @@
-MSI CLAW INTEL VRR RANGE FIX 2.1.2
-==================================
+MSI CLAW INTEL VRR RANGE FIX 2.2.0
+=================================
 
-EXACT PANEL CATALOG
+SUPPORTED EXACT PANELS
+----------------------
+- MSI Claw A1M / Claw 7 AI+: TMA2027 / TL070FVXS02-0, 1920x1080.
+- MSI Claw 8 AI+ / Claw 8 EX AI+: CSW0801 / PN8007QB1-2, 1920x1200.
 
-- Claw 8 AI+ / 8 EX AI+: CSW0801 / PN8007QB1-2, 1920x1200.
-- Claw A1M / Claw 7 AI+: TMA2027 / TL070FVXS02-0, 1920x1080.
+STABLE INSTALLERS
+-----------------
+- INSTALL_30_120_VRR.bat: ClawLab default 30-120 Hz profile.
+- INSTALL_48_120_VRR.bat: official Intel/MSI 48-120 Hz profile.
 
-PUBLIC PROFILES
+Both include the Intel LFC x2 correction and event-driven desktop cursor helper.
 
-- INSTALL_30_120_VRR.bat: default corrected ClawLab profile.
-- INSTALL_48_120_VRR.bat: official Intel/MSI profile.
+EXPERIMENTAL FOLDER
+-------------------
+- 48-144 Hz: Stable Experimental. Tested on one MSI Claw 8 AI+ Polar Tempest.
+- 48-165, 48-180, 30-144, 30-165 and 30-180 Hz: Unstable Experimental and untested.
 
-Both profiles include the shared Intel LFC x2 correction, exact range/EDID
-verification, original flag backup and windowless one-shot sign-in reapply.
-The A1M / Claw 7 AI+ path safely normalizes only the observed exact 128-byte
-physical EDID plus a completely zero-filled 128-byte Windows buffer.
+Every value above 120 Hz is a display overclock outside MSI specifications.
+Results depend on each panel's silicon lottery. The experimental installers
+force a 10-second warning, typed risk acceptance, and a one-time guarded test.
+After restart the selected maximum is tested for no more than 15 seconds, then
+Windows automatically returns to safe 120 Hz before asking for confirmation.
+The one-time test runs with normal-user rights. The initial installer UAC also
+registers that limited task as one transaction; scheduling failure rolls back
+the pending profile. Its scripts are copied to a SHA-256-verified, administrator-
+protected ProgramData directory. The final persistent change can show another
+normal UAC prompt after Yes. Accept it only when you started this process.
+If the screen flickers, shows artifacts or goes black, WAIT PATIENTLY. DO NOT
+POWER OFF OR REBOOT. No, no response within 30 seconds, any error, or failed
+verification restores the original VRR/LFC state and restarts Windows.
 
-Both profiles also install the event-driven Cursor Refresh Helper. While the
-mouse moves on the Windows desktop, it animates a nearly transparent 2x2 DWM
-surface in the extreme lower-right corner so the panel rises from its idle
-floor to 120 Hz. It stays active for 1.5 seconds after input. At idle it stops
-the animation, releases its 1 ms timer-resolution request, trims its own working
-set and waits for the next visible raw-mouse event.
+MANDATORY BEFORE INSTALLATION
+-----------------------------
+1. Extract the complete ZIP.
+2. If version 2.1.2 or any older ClawLab VRR release is installed, run its
+   RECOVERY\RESTORE_ORIGINAL_VRR.bat and complete the restart first. Version
+   2.2.0 refuses to overwrite an older managed installation. Do not use Factory
+   Reset for a normal upgrade.
+3. If CRU was ever used, run reset-all.exe from the current official CRU
+   release and restart Windows.
+   If CRU was NEVER used on this Windows installation, no CRU reset is needed.
+4. Disable or remove every other tool that changes or reapplies VRR/EDID.
+5. The only supported exception is ClawTweaks 3.0 or later:
+   https://github.com/enterTheVoidCode/ClawTweaks
+   ClawTweaks is OPTIONAL and is NOT required for ClawLab VRR to work.
+6. Earlier ClawTweaks versions and all other VRR-writing tools must be disabled.
+7. Disconnect every external display during installation and guarded trials.
+   Only the validated internal panel may be active while refresh rate changes.
 
-This tool-independent idle state also covers controller/game profiles selected
-through ClawTweaks, MSI Center M or any other utility. No profile-manager or
-game process is monitored. Hidden cursors suppress animation; Xbox Full Screen
-Experience remains supported.
+PROFILE SWITCHING
+-----------------
+Before applying any different stable or experimental profile, successfully run
+RECOVERY\RESTORE_ORIGINAL_VRR.bat and complete the restart. The installer
+refuses every cross-profile change. Only an exact same-profile repair is
+idempotent within version 2.2.0. Any managed 2.1.2-or-older state requires the
+upgrade restoration described above.
 
-The 48-144 and 30-144 profiles have been removed. Version 2.1.2 cannot install
-or persist them. Their exact signatures remain only so older installations can
-be detected and restored safely to 120 Hz.
+A1M / CLAW 7 AI+ NOTE
+---------------------
+Intel Control Library can expose a 24-120 monitor-capability value on the exact
+TMA2027 panel. ClawLab treats this only as known telemetry and validates the
+selected active profile separately. It never creates or installs a 24 Hz mode.
 
-INSTALL
+STATUS
+------
+After installation and after every Intel driver update, run CHECK_STATUS.bat.
+Expected core results include ProfileSwitchGuard CONSISTENT,
+CLAWLAB_LFC_FIX_ACTIVE, both Intel solution flags False and LfcFixActive True.
 
-1. Extract the ZIP completely.
-2. If CRU was ever used on this Windows installation, regardless of when or
-   whether it now appears inactive, download the current official CRU release,
-   run the included reset-all.exe, and restart Windows before continuing:
-   https://www.monitortests.com/forum/Thread-Custom-Resolution-Utility-CRU
-3. Remove other third-party EDID overrides with their original tool and restart.
-4. Restore any different ClawLab profile before switching.
-5. Run exactly one of the two supported installers.
-6. Restart and run CHECK_STATUS.bat. HEALTHY is the final expected state.
+RECOVERY
+--------
+- RECOVERY\RESTORE_ORIGINAL_VRR.bat: complete verified original-state restore.
+- RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat: Intel LFC flags only.
+- DIAGNOSTICS\EXPORT_STATUS_REPORT.bat: support report.
+- EMERGENCY: use only for the explicitly named failure case.
 
-Never manually delete %%LOCALAPPDATA%%\ClawLab. It contains original restore
-backups. Use RECOVERY first. Use DIAGNOSTICS\EXPORT_STATUS_REPORT.bat to create
-a read-only support report when a state remains unclear.
-
-CHECK_STATUS can temporarily report INITIALIZING while the sign-in tasks are
-still running. Wait up to two minutes and check again before repairing anything.
-It also identifies Intel driver changes and verifies whether the fix survived.
-
-ClawTweaks is optional. If it is not installed, the one-shot startup skips its
-coordination check and the complete fix remains available.
-
-RESTORE
-
-Run RECOVERY\RESTORE_ORIGINAL_VRR.bat and restart. This restores the original Intel
-solution flags, Arc Sync profile, EDID, tasks and startup state.
-
-If a retired 144 Hz profile is present, run restore immediately. Factory and
-Safe Mode recovery retain exact legacy cleanup support.
-
-ZIP LAYOUT
-
-- Root: two installers, CHECK_STATUS, README, changelog and license.
-- RECOVERY: normal restore operations.
-- EMERGENCY: factory reset and exact ClawLab EDID emergency removal.
-- EMERGENCY also contains an explicit Intel LFC factory-default fallback used
-  only if status confirms the original LFC backup was already lost.
-- DIAGNOSTICS: one-click status export and display data collection.
-- scripts: internal runtime components.
-- SOURCE: rebuildable helper source and integrity test.
+Never delete %%LOCALAPPDATA%%\ClawLab manually. Unknown third-party EDID data is
+refused and never removed by ClawLab.
 
 SAFETY
-
-- Exact validated panel/EDID checks are mandatory.
-- Unknown CRU or third-party overrides are refused.
-- No game process, game file, anti-cheat, driver or panel firmware is modified.
-- No continuous polling loop or game-process monitor is installed.
+------
+This utility changes global Windows/Intel display state only. It does not patch,
+inject into, hook, open or monitor a game process. It bundles no Intel driver,
+CRU binary or proprietary EDID dump.

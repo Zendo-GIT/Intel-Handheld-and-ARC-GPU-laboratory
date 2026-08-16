@@ -6,7 +6,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.4'
+$toolVersion = '2.0.5'
 
 # Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
@@ -16,6 +16,7 @@ $toolVersion = '2.0.4'
 
 $panelCatalog = @(
     [pscustomobject]@{
+        Key = 'CLAW_8_AI_PLUS'
         Manufacturer = 'CSW'; ProductCode = '0801'; Name = 'PN8007QB1-2'
         EdidLength = 256
         PhysicalEdidHash = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
@@ -23,8 +24,15 @@ $panelCatalog = @(
         Legacy48_144EdidHash = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
         Legacy30_144EdidHash = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
         SupportsLegacy144Recovery = $true
+        Overclock48_144EdidHash = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
+        Overclock48_165EdidHash = 'FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677'
+        Overclock48_180EdidHash = '279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62'
+        Overclock30_144EdidHash = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
+        Overclock30_165EdidHash = '8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7'
+        Overclock30_180EdidHash = '0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B'
     },
     [pscustomobject]@{
+        Key = 'CLAW_A1M_CLAW_7_AI_PLUS'
         Manufacturer = 'TMA'; ProductCode = '2027'; Name = 'TL070FVXS02-0'
         EdidLength = 128
         PhysicalEdidHash = '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
@@ -32,6 +40,12 @@ $panelCatalog = @(
         Legacy48_144EdidHash = $null
         Legacy30_144EdidHash = $null
         SupportsLegacy144Recovery = $false
+        Overclock48_144EdidHash = 'AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB'
+        Overclock48_165EdidHash = '89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2'
+        Overclock48_180EdidHash = '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D'
+        Overclock30_144EdidHash = 'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E'
+        Overclock30_165EdidHash = 'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51'
+        Overclock30_180EdidHash = 'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679'
     }
 )
 $vrrStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
@@ -43,12 +57,14 @@ $installedToolPath = Join-Path $lfcStateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
 $installedDriverInterfacePath = Join-Path $lfcStateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'
 $backupIdentityModulePath = Join-Path $PSScriptRoot 'Lfc-Backup-Identity.ps1'
 $edidNormalizationModulePath = Join-Path $PSScriptRoot 'Edid-Normalization.ps1'
+$arcSyncRangePolicyModulePath = Join-Path $PSScriptRoot 'ArcSync-Range-Policy.ps1'
 $installedBackupIdentityModulePath = Join-Path $lfcStateRoot 'Lfc-Backup-Identity.ps1'
 $installedEdidNormalizationModulePath = Join-Path $lfcStateRoot 'Edid-Normalization.ps1'
+$installedArcSyncRangePolicyModulePath = Join-Path $lfcStateRoot 'ArcSync-Range-Policy.ps1'
 $installedLauncherPath = Join-Path $lfcStateRoot 'ClawLab-LFC-Startup.vbs'
 $startupTaskName = 'ClawLab MSI Claw Intel LFC Fix'
 
-foreach ($modulePath in @($backupIdentityModulePath, $edidNormalizationModulePath)) {
+foreach ($modulePath in @($backupIdentityModulePath, $edidNormalizationModulePath, $arcSyncRangePolicyModulePath)) {
     if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
         throw "A required LFC safety module is missing: $modulePath"
     }
@@ -110,13 +126,17 @@ $panel = $panels[0]
 $panelDefinition = $panel.Definition
 $physicalEdidHash = [string]$panelDefinition.PhysicalEdidHash
 $experimental30EdidHash = [string]$panelDefinition.Experimental30EdidHash
-$experimental144EdidHash = [string]$panelDefinition.Legacy48_144EdidHash
-$experimental30_144EdidHash = [string]$panelDefinition.Legacy30_144EdidHash
 $validatedEdidHashes = @(
     $physicalEdidHash,
     $experimental30EdidHash,
-    $experimental144EdidHash,
-    $experimental30_144EdidHash
+    $panelDefinition.Legacy48_144EdidHash,
+    $panelDefinition.Legacy30_144EdidHash,
+    $panelDefinition.Overclock48_144EdidHash,
+    $panelDefinition.Overclock48_165EdidHash,
+    $panelDefinition.Overclock48_180EdidHash,
+    $panelDefinition.Overclock30_144EdidHash,
+    $panelDefinition.Overclock30_165EdidHash,
+    $panelDefinition.Overclock30_180EdidHash
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
 $panelInstanceId = $panel.InstanceName -replace '_\d+$', ''
 $panelDeviceParameters = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\$panelInstanceId\Device Parameters"
@@ -137,16 +157,24 @@ $managedProfiles = @{
     'OFFICIAL_48_120' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 120; EdidSha256 = $physicalEdidHash; UsesCustomEdid = $false }
     'CLAWLAB_30_120' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 120; EdidSha256 = $experimental30EdidHash; UsesCustomEdid = $true }
 }
-if ([bool]$panelDefinition.SupportsLegacy144Recovery) {
-    $managedProfiles['CLAWLAB_48_144'] = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; EdidSha256 = $experimental144EdidHash; UsesCustomEdid = $true }
-    $managedProfiles['CLAWLAB_30_144'] = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; EdidSha256 = $experimental30_144EdidHash; UsesCustomEdid = $true }
+foreach ($profile in @(
+        [pscustomobject]@{ Name = 'CLAWLAB_48_144'; MinimumHz = 48; MaximumHz = 144; Hash = $panelDefinition.Overclock48_144EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_48_165'; MinimumHz = 48; MaximumHz = 165; Hash = $panelDefinition.Overclock48_165EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_48_180'; MinimumHz = 48; MaximumHz = 180; Hash = $panelDefinition.Overclock48_180EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_30_144'; MinimumHz = 30; MaximumHz = 144; Hash = $panelDefinition.Overclock30_144EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_30_165'; MinimumHz = 30; MaximumHz = 165; Hash = $panelDefinition.Overclock30_165EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_30_180'; MinimumHz = 30; MaximumHz = 180; Hash = $panelDefinition.Overclock30_180EdidHash }
+    )) {
+    $managedProfiles[$profile.Name] = [pscustomobject]@{
+        MinimumHz = $profile.MinimumHz
+        MaximumHz = $profile.MaximumHz
+        EdidSha256 = [string]$profile.Hash
+        UsesCustomEdid = $true
+    }
 }
 $managedProfile = if ($managedProfiles.ContainsKey($managedModeName)) { $managedProfiles[$managedModeName] } else { $null }
 if ($Action -in @('Apply', 'ApplyStartup') -and $null -eq $managedProfile) {
-    throw "The LFC fix requires the managed 30-120 or 48-120 profile; current mode is $managedModeName."
-}
-if ($Action -in @('Apply', 'ApplyStartup') -and $managedModeName -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
-    throw 'The installed 144 Hz profile is retired and cannot receive persistence updates. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
+    throw "The LFC fix requires an exact ClawLab-managed VRR profile; current mode is $managedModeName."
 }
 $expectedMinimumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MinimumHz }
 $expectedMaximumHz = if ($null -eq $managedProfile) { 0 } else { [int]$managedProfile.MaximumHz }
@@ -210,6 +238,18 @@ function Invoke-DirectVrrDriverAction {
     return Convert-DirectVrrState -RawState $raw
 }
 
+function Test-ManagedDirectRangeReady {
+    param([Parameter(Mandatory)][object]$State)
+
+    if ($null -eq $managedProfile -or -not $State.Supported -or -not $State.VrrEnabled) {
+        return $false
+    }
+    return Test-ClawLabDirectRangeReady -PanelKey ([string]$panelDefinition.Key) `
+        -DirectMinimumHz ([int]$State.MinimumHz) -DirectMaximumHz ([int]$State.MaximumHz) `
+        -ExpectedMinimumHz $expectedMinimumHz -ExpectedMaximumHz $expectedMaximumHz `
+        -ReportedEdidSha256 $reportedEdidSha256 -ExpectedEdidSha256 $expectedEdidSha256
+}
+
 if ($Action -eq 'ApplyStartup') {
     $clawTweaksTask = Get-ScheduledTask -TaskPath '\ClawTweaks\' -TaskName 'ClawTweaksHelper' -ErrorAction SilentlyContinue
     if ($null -ne $clawTweaksTask) {
@@ -248,8 +288,7 @@ if ($Action -eq 'ApplyStartup') {
 $current = Invoke-DirectVrrDriverAction -DriverAction Status
 if ($Action -eq 'ApplyStartup') {
     for ($attempt = 1; $attempt -le 90; $attempt++) {
-        if ($current.Supported -and $current.VrrEnabled -and
-            $current.MinimumHz -eq $expectedMinimumHz -and $current.MaximumHz -eq $expectedMaximumHz) {
+        if (Test-ManagedDirectRangeReady -State $current) {
             break
         }
         Start-Sleep -Seconds 2
@@ -257,8 +296,7 @@ if ($Action -eq 'ApplyStartup') {
     }
 }
 if ($Action -eq 'ApplyStartup' -and
-    (-not $current.Supported -or -not $current.VrrEnabled -or
-        $current.MinimumHz -ne $expectedMinimumHz -or $current.MaximumHz -ne $expectedMaximumHz)) {
+    -not (Test-ManagedDirectRangeReady -State $current)) {
     throw "Unexpected active VRR state for ${managedModeName}: supported=$($current.Supported), enabled=$($current.VrrEnabled), range=$($current.MinimumHz)-$($current.MaximumHz)."
 }
 if ($Action -eq 'Apply' -and (-not $current.Supported -or $current.Result -ne 'Success')) {
@@ -425,6 +463,7 @@ function Get-StartupPersistenceState {
         -not (Test-Path -LiteralPath $installedDriverInterfacePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedBackupIdentityModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedArcSyncRangePolicyModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
         return 'INCOMPLETE'
     }
@@ -441,6 +480,7 @@ function Install-StartupPersistence {
     [IO.File]::Copy($driverInterfacePath, $installedDriverInterfacePath, $true)
     [IO.File]::Copy($backupIdentityModulePath, $installedBackupIdentityModulePath, $true)
     [IO.File]::Copy($edidNormalizationModulePath, $installedEdidNormalizationModulePath, $true)
+    [IO.File]::Copy($arcSyncRangePolicyModulePath, $installedArcSyncRangePolicyModulePath, $true)
     [IO.File]::Copy($sourceLauncherPath, $installedLauncherPath, $true)
 
     foreach ($pair in @(
@@ -448,6 +488,7 @@ function Install-StartupPersistence {
         @($driverInterfacePath, $installedDriverInterfacePath),
         @($backupIdentityModulePath, $installedBackupIdentityModulePath),
         @($edidNormalizationModulePath, $installedEdidNormalizationModulePath),
+        @($arcSyncRangePolicyModulePath, $installedArcSyncRangePolicyModulePath),
         @($sourceLauncherPath, $installedLauncherPath)
     )) {
         if ((Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash -ne
@@ -481,6 +522,7 @@ function Remove-StartupPersistence {
     Remove-FileIfPresent -LiteralPath $installedDriverInterfacePath
     Remove-FileIfPresent -LiteralPath $installedBackupIdentityModulePath
     Remove-FileIfPresent -LiteralPath $installedEdidNormalizationModulePath
+    Remove-FileIfPresent -LiteralPath $installedArcSyncRangePolicyModulePath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
         throw 'The one-shot startup persistence task was not fully removed.'
@@ -499,8 +541,7 @@ $state = switch ($Action) {
             elseif ($null -ne $managedProfile -and
                 (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
                 $statusBackupIdentity.Accepted -and
-                $now.MinimumHz -eq $expectedMinimumHz -and
-                $now.MaximumHz -eq $expectedMaximumHz -and
+                (Test-ManagedDirectRangeReady -State $now) -and
                 -not $now.LowFpsSolutionEnabled -and -not $now.HighFpsSolutionEnabled) {
                 'CLAWLAB_LFC_FIX_ACTIVE'
             }
@@ -524,11 +565,9 @@ $state = switch ($Action) {
     { $_ -in @('Apply', 'ApplyStartup') } {
         $startupApplication = $Action -eq 'ApplyStartup'
         $before = Get-CurrentIntelVrrState
-        $rangeReady = $before.Supported -and $before.VrrEnabled -and
-            $before.MinimumHz -eq $expectedMinimumHz -and
-            $before.MaximumHz -eq $expectedMaximumHz
+        $rangeReady = Test-ManagedDirectRangeReady -State $before
         $validCustomRestartPending = -not $startupApplication -and
-            $managedModeName -eq 'CLAWLAB_30_120' -and
+            [bool]$managedProfile.UsesCustomEdid -and
             $before.Supported -and $before.VrrEnabled -and
             $before.MinimumHz -eq 48 -and $before.MaximumHz -eq 120 -and
             $reportedEdidSha256 -eq $physicalEdidHash
@@ -540,6 +579,9 @@ $state = switch ($Action) {
         if ($null -eq $backup) {
             if ($startupApplication) {
                 throw 'Startup reapply refused to run without a saved original LFC state.'
+            }
+            if (-not $before.LowFpsSolutionEnabled -or -not $before.HighFpsSolutionEnabled) {
+                throw 'The original Intel LFC backup is missing while one or both solution flags are already disabled. Refusing to save an unknown modified state as the original. No backup, persistence task or LFC flag was changed. Use EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat only if Intel factory defaults are explicitly intended.'
             }
             [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
             $backup = [ordered]@{
@@ -699,8 +741,7 @@ $finalBackupIdentity = Get-LfcBackupIdentityStatus
         (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
         $finalBackupIdentity.Accepted -and
         (Get-StartupPersistenceState) -eq 'INSTALLED_ONE_SHOT_AT_LOGON' -and
-        [int]$state.Current.MinimumHz -eq $expectedMinimumHz -and
-        [int]$state.Current.MaximumHz -eq $expectedMaximumHz -and
+        (Test-ManagedDirectRangeReady -State $state.Current) -and
         (-not [bool]$state.Current.LowFpsSolutionEnabled) -and
         (-not [bool]$state.Current.HighFpsSolutionEnabled)
 }

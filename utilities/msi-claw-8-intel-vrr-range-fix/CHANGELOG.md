@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.2.0 — 2026-08-17
+
+- Adds exact MSI Claw A1M and Claw 7 AI+ handling for Intel ControlLib's
+  observed `24-120` monitor telemetry while continuing to expose only the
+  supported `30-120` and `48-120` profiles. No 24 Hz profile exists.
+- Keeps the exact `CSW0801 / PN8007QB1-2` path for MSI Claw 8 AI+ and Claw 8
+  EX AI+, and the exact `TMA2027 / TL070FVXS02-0` path for Claw A1M and Claw 7
+  AI+.
+- Adds guarded display-overclock profiles for every supported exact panel:
+  stable-experimental `48-144`, and unstable-experimental `48-165`, `48-180`,
+  `30-144`, `30-165` and `30-180`.
+- Labels overclock results as individual panel silicon lottery. Only `48-144`
+  has been tested successfully on one Claw 8 AI+ Polar Tempest Edition; every
+  other overclock profile remains untested and explicitly unstable.
+- Enforces a 10-second warning delay and typed risk acceptance before any
+  overclock is staged.
+- Runs the requested refresh for no more than 15 seconds after restart, always
+  returns to safe 120 Hz before asking for confirmation, and restores the
+  original VRR/LFC state on No, timeout or failure.
+- Runs the one-time trial task at limited user privilege from a protected,
+  non-reparse `%ProgramData%` runtime with read/execute-only standard-user ACLs
+  and a verified SHA-256 payload manifest; separately confirmed persistence
+  requests its own elevation from that protected runtime.
+- Selects and verifies the requested maximum refresh in Windows before a
+  confirmed overclock is persisted.
+- Refuses guarded Windows refresh-rate changes unless the validated internal
+  panel is the only active display.
+- Serializes duplicate sign-in reapply requests so the VRR and LFC tasks cannot
+  race or launch duplicate cursor helpers.
+- Extends the Intel LFC correction to all stable and experimental profiles.
+- Refuses to adopt already-disabled Intel solution flags as original values
+  when the original LFC backup is missing.
+- Refuses to overwrite a managed 2.1.2-or-older installation; users must run
+  that release's original-VRR restore and restart before installing 2.2.0.
+- Tests every same-profile and cross-profile transition: reapplying an exact
+  consistent 2.2.0 profile is idempotent, while every older or different
+  profile requires a successful original-VRR restore and restart first.
+- Requires exclusive ownership of VRR/EDID state. The only supported companion
+  is [ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks),
+  which includes the compatibility patch; ClawTweaks remains optional and is
+  not required for the standalone ClawLab fix.
+- Retains mandatory `reset-all.exe` cleanup and restart whenever CRU was ever
+  used on the Windows installation.
+- Updates the Cursor Refresh Helper and release package to version 2.2.0.
+
 ## 2.1.2 — 2026-08-16
 
 - Accepts the real A1M/Claw 7 AI+ Windows representation consisting of the

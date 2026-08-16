@@ -54,11 +54,18 @@ accessing a display device.
 
 The physical bytes, checksum, identity and deterministic 30-120 transformation
 are verified. Installation additionally fails closed unless the target A1M or
-Claw 7 AI+ returns the exact identity, EDID and Intel Arc Sync range. Real A1M
-and Claw 7 AI+ panel/LFC behavior was not available for development validation
-and remains explicitly full install/driver-validation pending for each model.
+Claw 7 AI+ returns the exact identity and EDID.
 
 Core Ultra 5 and Core Ultra 7 A1M diagnostics collected on Intel driver
 32.0.101.8974 expose this exact 128-byte block followed by 128 zero bytes in the
-Windows registry. Release 2.1.2 treats only that completely zero-filled tail as
+Windows registry. Release 2.2.0 treats only that completely zero-filled tail as
 non-semantic padding; the canonical block must still match the SHA-256 above.
+
+The same A1M diagnostics show a driver-interface split which must not be
+mistaken for an installable 24 Hz mode: Intel ControlLib monitor telemetry can
+report `24-120`, while the physical EDID and direct Intel driver interface stay
+at `48-120` and the active Intel Arc Sync profile separately reports `30-120`
+or `48-120`. Release 2.2.0 accepts this half-physical telemetry only for the
+exact pinned `TMA2027` panel. It never generates, stores or installs a 24 Hz
+profile. Claw 7 AI+ uses the same exact panel path; full per-model community
+installation confirmation remains separate from this immutable EDID evidence.
