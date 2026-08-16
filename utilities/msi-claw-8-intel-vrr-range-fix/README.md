@@ -1,10 +1,10 @@
 # MSI Claw Intel VRR Range Fix
 
-![Version](https://img.shields.io/badge/release-2.1.1-blue)
+![Version](https://img.shields.io/badge/release-2.1.2-blue)
 ![Profiles](https://img.shields.io/badge/profiles-30--120_%2F_48--120_Hz-green)
 ![144 Hz](https://img.shields.io/badge/144_Hz-removed-red)
 
-Version 2.1.1 provides two deliberately separate profiles for two exact,
+Version 2.1.2 provides two deliberately separate profiles for two exact,
 pinned MSI Claw internal-panel definitions:
 
 - Claw 8 AI+ / 8 EX AI+: `CSW0801 / PN8007QB1-2`, 1920x1200;
@@ -16,7 +16,7 @@ pinned MSI Claw internal-panel definitions:
 Both include the shared Intel LFC x2 correction. The 48-144 and 30-144 profiles
 were removed and cannot be installed or persisted by this release.
 
-See [release notes](docs/RELEASE_NOTES_2.1.1.md),
+See [release notes](docs/RELEASE_NOTES_2.1.2.md),
 [compatibility](docs/COMPATIBILITY.md) and [safety](docs/SAFETY.md).
 
 ## What the correction addresses
@@ -69,7 +69,7 @@ This keeps the native panel EDID and selects Intel Control Library's
 Cross-profile installation is refused. Reinstalling the same supported mode is
 allowed for repair or package updates.
 
-Version 2.0.3 supports systems where Intel Graphics Software itself and its
+Version 2.1.2 supports systems where Intel Graphics Software itself and its
 machine Run entry are both absent. That original absence is saved and restored
 without inventing a command or requiring the application. Elevated failures
 are also copied into a persistent `last-error.txt` report.
@@ -94,8 +94,10 @@ LfcFixActive            = True
 ```
 
 Intel Graphics Software may display cached range text. `CHECK_STATUS.bat`
-queries the Intel driver directly and is authoritative. Version 2.1.1 first
-prints one overall state: `HEALTHY`, `INITIALIZING`, or `ATTENTION_REQUIRED`.
+queries the Intel driver directly and is authoritative. Version 2.1.2 reports
+the game-facing VRR/LFC core separately from the optional desktop helper. A
+`CORE_HEALTHY_HELPER_ATTENTION` result means the game correction is operational
+and only the desktop cursor helper needs attention.
 Do not repair or restore while startup is still `INITIALIZING`; wait up to two
 minutes and check again. The report also detects an Intel driver version change
 and distinguishes a changed-but-verified configuration from one that needs the
@@ -103,7 +105,7 @@ same profile installed again.
 
 ## Cursor Refresh Helper
 
-Version 2.1.1 also installs a small event-driven desktop helper. Windows can
+Version 2.1.2 also installs a small event-driven desktop helper. Windows can
 leave the complete desktop at the selected VRR floor while only the hardware
 cursor moves; a scroll or window animation immediately raises it to 120 Hz.
 Real-hardware testing confirmed that a genuine WPF/DWM animation wakes the
@@ -138,7 +140,7 @@ profile, ClawLab EDID, tasks, scripts and original Intel startup state.
 `RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat` restores only the Intel low/high-FPS flags and
 leaves the selected 30-120 or 48-120 range intact.
 
-If an older release installed 48-144 or 30-144, version 2.1.1 recognizes those
+If an older release installed 48-144 or 30-144, version 2.1.2 recognizes those
 exact hashes only for recovery. Run `RECOVERY\RESTORE_ORIGINAL_VRR.bat`; do not
 attempt to keep or reapply the retired mode. The scripts under `EMERGENCY` also
 retain exact legacy recovery support.
@@ -147,6 +149,17 @@ Unknown CRU or third-party EDID overrides are never removed by this package.
 ClawLab does not bundle CRU or `reset-all.exe` and cannot prove that CRU was
 never used historically; completing the mandatory pre-install reset is the
 user's responsibility.
+
+Never manually delete `%LOCALAPPDATA%\ClawLab`. It contains the original Arc
+Sync, EDID, startup and Intel low/high-FPS flag backups needed for a verified
+restore. Use `RECOVERY` first; use `EMERGENCY` only for its named failure case.
+For support, run `DIAGNOSTICS\EXPORT_STATUS_REPORT.bat` and share the generated
+JSON file instead of deleting state or repeatedly running Factory Reset.
+If that backup was already lost and status explicitly reports
+`ORIGINAL_LFC_BACKUP_MISSING_CANNOT_RESTORE`, the separate
+`EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat` can set both Intel solution
+flags to their factory-on state. It refuses to run while an original backup is
+still available.
 
 ## Compatibility and anti-cheat boundary
 
@@ -158,7 +171,7 @@ game process and installs no game DLL, overlay, service or driver.
 ## Build
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 2.1.1
+.\tools\Build-Release.ps1 -Version 2.1.2
 ```
 
 The release contains readable scripts, the rebuildable Cursor Refresh Helper
@@ -169,7 +182,8 @@ and a SHA-256 manifest. It bundles no Intel DLL, driver, EDID dump or CRU binary
 
 - Root: both installers, `CHECK_STATUS.bat`, README, changelog and license.
 - `RECOVERY`: normal original-profile and Intel-flag restoration.
-- `EMERGENCY`: factory reset and exact ClawLab EDID emergency removal only.
-- `DIAGNOSTICS`: unsupported-display data collection.
+- `EMERGENCY`: factory reset, exact EDID removal and explicit lost-backup Intel
+  LFC factory defaults.
+- `DIAGNOSTICS`: one-click status export and unsupported-display data collection.
 - `scripts`: internal runtime components used by the launchers.
 - `SOURCE`: rebuildable helper source and offline integrity test.

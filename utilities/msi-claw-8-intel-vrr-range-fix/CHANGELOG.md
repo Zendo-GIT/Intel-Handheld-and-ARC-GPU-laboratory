@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.1.2 — 2026-08-16
+
+- Accepts the real A1M/Claw 7 AI+ Windows representation consisting of the
+  exact pinned 128-byte EDID followed by 128 zero bytes; any non-zero tail or
+  unknown canonical hash is still rejected.
+- Records the same zero-padded representation on independently collected Core
+  Ultra 5 and Core Ultra 7 Claw A1M diagnostics.
+- Updates the Intel LFC component to 2.0.4 with atomic schema-4 stable panel
+  identity, allowing a verified Windows monitor-instance rename after an Intel
+  driver update without a restore/reinstall loop.
+- Keeps unverifiable schema-1/2 backups fail-closed and rejects every physical
+  panel or EDID mismatch.
+- Separates game-facing VRR/LFC health from optional desktop-helper health.
+- Adds one-click read-only JSON status export under `DIAGNOSTICS`.
+- Warns users never to delete `%LOCALAPPDATA%\ClawLab`, which contains the
+  original state required for safe restoration.
+- Detects a missing original backup with disabled Intel flags instead of
+  claiming they are already restored, and adds a separate fail-closed emergency
+  factory-default action that refuses to overwrite an existing backup.
+
 ## 2.1.1 — 2026-08-16
 
 - Starts the Cursor Refresh Helper near the beginning of sign-in reapply instead

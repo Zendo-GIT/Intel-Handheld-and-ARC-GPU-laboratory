@@ -6,6 +6,12 @@ $ErrorActionPreference = 'Stop'
 
 $physicalSha256 = '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
 $custom30Sha256 = '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
+$observedZeroPaddedSha256 = 'E0CE06B0510173DDCA88CE8FEA65B3E7B29183C8E3E67425A7CA6249C6C5B224'
+$normalizationModule = Join-Path $PSScriptRoot '..\Edid-Normalization.ps1'
+if (-not (Test-Path -LiteralPath $normalizationModule -PathType Leaf)) {
+    $normalizationModule = Join-Path $PSScriptRoot '..\scripts\Edid-Normalization.ps1'
+}
+. $normalizationModule
 $hex = @'
 00 ff ff ff ff ff ff 00 51 a1 27 20 00 00 00 00
 1e 21 01 04 a5 10 08 78 07 6e a1 a4 52 4c 9a 25
@@ -50,6 +56,26 @@ Assert-EdidChecksum -Bytes $physical
 if ((Get-ByteArraySha256 -Bytes $physical) -ne $physicalSha256) {
     throw 'The pinned A1M physical EDID hash does not match its catalog identity.'
 }
+
+$zeroPadded = [byte[]]::new(256)
+[Array]::Copy($physical, 0, $zeroPadded, 0, 128)
+if ((Get-ByteArraySha256 -Bytes $zeroPadded) -ne $observedZeroPaddedSha256) {
+    throw 'The reconstructed Windows zero-padded A1M buffer no longer matches both collected units.'
+}
+$normalized = Get-ClawLabCanonicalEdid -Bytes $zeroPadded -ExpectedLength 128
+if ($normalized.State -ne 'ZERO_PADDED_128_NORMALIZED' -or
+    $normalized.SourceLength -ne 256 -or
+    (Get-ByteArraySha256 -Bytes ([byte[]]$normalized.Bytes)) -ne $physicalSha256) {
+    throw 'The observed A1M 128-byte EDID plus 128-byte zero padding was not normalized safely.'
+}
+$invalidPadding = [byte[]]$zeroPadded.Clone()
+$invalidPadding[200] = 1
+$invalidPaddingRejected = $false
+try { Get-ClawLabCanonicalEdid -Bytes $invalidPadding -ExpectedLength 128 | Out-Null }
+catch { $invalidPaddingRejected = $true }
+if (-not $invalidPaddingRejected) {
+    throw 'A non-zero fake EDID extension was incorrectly accepted as padding.'
+}
 if ($physical[95] -ne 48 -or $physical[96] -ne 120 -or $physical[126] -ne 0) {
     throw 'The pinned A1M EDID no longer describes one 48-120 Hz base block.'
 }
@@ -77,4 +103,7 @@ if ((Get-ByteArraySha256 -Bytes $custom) -ne $custom30Sha256) {
     PhysicalSha256 = $physicalSha256
     Custom30Sha256 = $custom30Sha256
     CustomChecksumByte = '0x95'
+    ObservedWindowsPadding = '256_BYTES_WITH_ZERO_PADDED_TAIL_ACCEPTED'
+    ObservedWindowsBufferSha256 = $observedZeroPaddedSha256
+    NonZeroExtensionRejection = 'PASS'
 }

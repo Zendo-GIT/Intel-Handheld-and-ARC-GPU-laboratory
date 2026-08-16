@@ -1,4 +1,4 @@
-MSI CLAW INTEL VRR RANGE FIX 2.1.1
+MSI CLAW INTEL VRR RANGE FIX 2.1.2
 ==================================
 
 EXACT PANEL CATALOG
@@ -13,6 +13,8 @@ PUBLIC PROFILES
 
 Both profiles include the shared Intel LFC x2 correction, exact range/EDID
 verification, original flag backup and windowless one-shot sign-in reapply.
+The A1M / Claw 7 AI+ path safely normalizes only the observed exact 128-byte
+physical EDID plus a completely zero-filled 128-byte Windows buffer.
 
 Both profiles also install the event-driven Cursor Refresh Helper. While the
 mouse moves on the Windows desktop, it animates a nearly transparent 2x2 DWM
@@ -26,7 +28,7 @@ through ClawTweaks, MSI Center M or any other utility. No profile-manager or
 game process is monitored. Hidden cursors suppress animation; Xbox Full Screen
 Experience remains supported.
 
-The 48-144 and 30-144 profiles have been removed. Version 2.1.1 cannot install
+The 48-144 and 30-144 profiles have been removed. Version 2.1.2 cannot install
 or persist them. Their exact signatures remain only so older installations can
 be detected and restored safely to 120 Hz.
 
@@ -41,6 +43,10 @@ INSTALL
 4. Restore any different ClawLab profile before switching.
 5. Run exactly one of the two supported installers.
 6. Restart and run CHECK_STATUS.bat. HEALTHY is the final expected state.
+
+Never manually delete %%LOCALAPPDATA%%\ClawLab. It contains original restore
+backups. Use RECOVERY first. Use DIAGNOSTICS\EXPORT_STATUS_REPORT.bat to create
+a read-only support report when a state remains unclear.
 
 CHECK_STATUS can temporarily report INITIALIZING while the sign-in tasks are
 still running. Wait up to two minutes and check again before repairing anything.
@@ -62,7 +68,9 @@ ZIP LAYOUT
 - Root: two installers, CHECK_STATUS, README, changelog and license.
 - RECOVERY: normal restore operations.
 - EMERGENCY: factory reset and exact ClawLab EDID emergency removal.
-- DIAGNOSTICS: display data collection.
+- EMERGENCY also contains an explicit Intel LFC factory-default fallback used
+  only if status confirms the original LFC backup was already lost.
+- DIAGNOSTICS: one-click status export and display data collection.
 - scripts: internal runtime components.
 - SOURCE: rebuildable helper source and integrity test.
 

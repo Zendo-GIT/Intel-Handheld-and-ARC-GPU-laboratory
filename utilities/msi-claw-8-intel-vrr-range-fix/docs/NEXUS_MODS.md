@@ -1,7 +1,7 @@
 # Optional Nexus Mods publication draft
 
 - Title: **MSI Claw Intel VRR Range Fix**
-- Version: **2.1.1**
+- Version: **2.1.2**
 - Category: **Utilities** or **Bug Fixes**
 - Installation: **Manual only**
 
@@ -21,7 +21,7 @@ refused. The shared A1M / Claw 7 AI+ EDID generation is verified, but real
 driver/LFC and panel testing remains community-validation pending for both
 models.
 
-The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.1
+The former 48-144 and 30-144 installers were removed in 2.0.2. Version 2.1.2
 also supports driver installations where Intel Graphics Software is absent.
 The retired signatures remain only to restore an older ClawLab installation
 safely to 120 Hz. Do not advertise 144 Hz as an available feature.
@@ -51,3 +51,9 @@ ClawTweaks, MSI Center M, another utility or any game process.
 The archive contains no driver, Intel DLL, CRU binary, EDID dump, game file,
 injector or anti-cheat component. Its only executable is the 13 KB rebuildable
 .NET Framework Cursor Refresh Helper described above.
+
+Version 2.1.2 additionally handles the exact zero-padded EDID representation
+observed on Core Ultra 5 and Core Ultra 7 A1M units, migrates a verified LFC
+backup across Intel-driver monitor-instance renames, separates core/helper
+health, and includes a one-click JSON support export. Tell users never to
+manually delete `%LOCALAPPDATA%\ClawLab`.

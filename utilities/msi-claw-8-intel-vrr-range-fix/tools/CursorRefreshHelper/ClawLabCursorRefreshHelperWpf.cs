@@ -13,8 +13,8 @@ using System.Windows.Threading;
 [assembly: AssemblyDescription("Event-driven MSI Claw desktop cursor refresh helper")]
 [assembly: AssemblyCompany("ClawLab")]
 [assembly: AssemblyProduct("MSI Claw Intel VRR Range Fix")]
-[assembly: AssemblyVersion("2.1.1.0")]
-[assembly: AssemblyFileVersion("2.1.1.0")]
+[assembly: AssemblyVersion("2.1.2.0")]
+[assembly: AssemblyFileVersion("2.1.2.0")]
 
 namespace ClawLab.CursorRefresh
 {

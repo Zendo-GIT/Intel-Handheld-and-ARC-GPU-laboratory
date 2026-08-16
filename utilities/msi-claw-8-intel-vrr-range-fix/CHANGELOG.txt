@@ -1,6 +1,19 @@
 MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 ========================================
 
+2.1.2 - 2026-08-16
+------------------
+- Supports the exact A1M / Claw 7 AI+ 128-byte physical EDID when Windows adds
+  one entirely zero-filled 128-byte buffer. Unknown/non-zero tails stay refused.
+- Confirms this representation in Core Ultra 5 and Core Ultra 7 A1M diagnostics.
+- Adds atomic schema-4 stable panel identity to LFC component 2.0.4 so a safe
+  Intel-driver monitor-instance rename no longer creates a recovery loop.
+- Splits core VRR/LFC health from optional desktop-helper health.
+- Adds DIAGNOSTICS\EXPORT_STATUS_REPORT.bat.
+- Never manually delete %%LOCALAPPDATA%%\ClawLab; use RECOVERY instead.
+- Detects lost LFC backups with disabled flags and provides a separate guarded
+  EMERGENCY factory-default action only for that unrecoverable-original case.
+
 2.1.1 - 2026-08-16
 ------------------
 - Starts the Cursor Refresh Helper before the slow Intel stabilization stage.

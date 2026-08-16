@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.1.1'
+    [string]$Version = '2.1.2'
 )
 
 Set-StrictMode -Version Latest
@@ -52,13 +52,18 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'RESTORE_INTEL_LFC_DEFAULTS.bat'; Destination = 'RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat' },
     [pscustomobject]@{ Source = 'FACTORY_RESET_CLAWLAB_VRR.bat'; Destination = 'EMERGENCY\FACTORY_RESET_CLAWLAB_VRR.bat' },
     [pscustomobject]@{ Source = 'EMERGENCY_REMOVE_CLAWLAB_EDID.bat'; Destination = 'EMERGENCY\EMERGENCY_REMOVE_CLAWLAB_EDID.bat' },
+    [pscustomobject]@{ Source = 'SET_INTEL_LFC_FACTORY_DEFAULTS.bat'; Destination = 'EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat' },
     [pscustomobject]@{ Source = 'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat'; Destination = 'DIAGNOSTICS\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat' },
+    [pscustomobject]@{ Source = 'EXPORT_STATUS_REPORT.bat'; Destination = 'DIAGNOSTICS\EXPORT_STATUS_REPORT.bat' },
 
     [pscustomobject]@{ Source = 'MSI-Claw-VRR-Fix.ps1'; Destination = 'scripts\MSI-Claw-VRR-Fix.ps1' },
     [pscustomobject]@{ Source = 'MSI-Claw-Intel-LFC-Fix.ps1'; Destination = 'scripts\MSI-Claw-Intel-LFC-Fix.ps1' },
     [pscustomobject]@{ Source = 'Intel-VRR-LFC-Driver-Interface.ps1'; Destination = 'scripts\Intel-VRR-LFC-Driver-Interface.ps1' },
     [pscustomobject]@{ Source = 'ClawLab-Health-Check.ps1'; Destination = 'scripts\ClawLab-Health-Check.ps1' },
+    [pscustomobject]@{ Source = 'Export-ClawLab-Status.ps1'; Destination = 'scripts\Export-ClawLab-Status.ps1' },
     [pscustomobject]@{ Source = 'Collect-Claw-Display-Diagnostics.ps1'; Destination = 'scripts\Collect-Claw-Display-Diagnostics.ps1' },
+    [pscustomobject]@{ Source = 'Edid-Normalization.ps1'; Destination = 'scripts\Edid-Normalization.ps1' },
+    [pscustomobject]@{ Source = 'Lfc-Backup-Identity.ps1'; Destination = 'scripts\Lfc-Backup-Identity.ps1' },
     [pscustomobject]@{ Source = 'ClawLab-Cursor-Refresh-Helper.exe'; Destination = 'scripts\ClawLab-Cursor-Refresh-Helper.exe' },
     [pscustomobject]@{ Source = 'ClawLab-VRR-Startup.vbs'; Destination = 'scripts\ClawLab-VRR-Startup.vbs' },
     [pscustomobject]@{ Source = 'ClawLab-LFC-Startup.vbs'; Destination = 'scripts\ClawLab-LFC-Startup.vbs' },
@@ -68,9 +73,10 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'docs\TECHNICAL_DETAILS.md'; Destination = 'docs\TECHNICAL_DETAILS.md' },
     [pscustomobject]@{ Source = 'docs\NEXUS_MODS.md'; Destination = 'docs\NEXUS_MODS.md' },
     [pscustomobject]@{ Source = 'docs\A1M_EDID_REFERENCE.md'; Destination = 'docs\A1M_EDID_REFERENCE.md' },
-    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.1.1.md'; Destination = 'docs\RELEASE_NOTES_2.1.1.md' },
+    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.1.2.md'; Destination = 'docs\RELEASE_NOTES_2.1.2.md' },
 
     [pscustomobject]@{ Source = 'tools\Test-A1M-Edid.ps1'; Destination = 'SOURCE\Test-A1M-Edid.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Lfc-Backup-Identity.ps1'; Destination = 'SOURCE\Test-Lfc-Backup-Identity.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'; Destination = 'SOURCE\CursorRefreshHelper\Build-CursorRefreshHelper.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\README.md'; Destination = 'SOURCE\CursorRefreshHelper\README.md' }
@@ -139,6 +145,7 @@ $requiredIntegrityValues = @(
     'Remove-CursorRefreshHelper',
     'RUNNING_EVENT_DRIVEN',
     'VERSION_MISMATCH'
+    'CLAW_A1M_CLAW_7_AI_PLUS'
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
@@ -151,10 +158,23 @@ foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function S
     }
 }
 
+$edidNormalizationText = Get-Content -LiteralPath (Join-Path $projectRoot 'Edid-Normalization.ps1') -Raw
+foreach ($value in @('ZERO_PADDED_128_NORMALIZED', '$baseBlock[126] -eq 0', '$Bytes[$index] -ne 0')) {
+    if ($edidNormalizationText -notmatch [regex]::Escape($value)) {
+        throw "EDID normalization safety module is missing: $value"
+    }
+}
+
 $a1mCatalogTest = Join-Path $projectRoot 'tools\Test-A1M-Edid.ps1'
 $a1mResult = & $a1mCatalogTest
 if ($null -eq $a1mResult -or [string]$a1mResult.Result -ne 'PASS') {
     throw 'The pinned Claw A1M EDID generator test failed.'
+}
+
+$lfcIdentityTest = Join-Path $projectRoot 'tools\Test-Lfc-Backup-Identity.ps1'
+$lfcIdentityResult = & $lfcIdentityTest
+if ($null -eq $lfcIdentityResult -or [string]$lfcIdentityResult.Result -ne 'PASS') {
+    throw 'The Intel LFC stable backup identity test failed.'
 }
 
 $launcherPath = Join-Path $projectRoot 'ClawLab-VRR-Startup.vbs'
@@ -171,7 +191,7 @@ foreach ($value in @(
 
 $lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.3'",
+    "`$toolVersion = '2.0.4'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -186,6 +206,9 @@ foreach ($value in @(
     'TL070FVXS02-0'
     '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
     '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
+    'Resolve-ClawLabLfcBackupIdentity'
+    'SchemaVersion = 4'
+    'InstanceMigrationCount'
 )) {
     if ($lfcScriptText -notmatch [regex]::Escape($value)) {
         throw "Required LFC safety value is missing from the release source: $value"
@@ -290,10 +313,15 @@ try {
             'RECOVERY/RESTORE_INTEL_LFC_DEFAULTS.bat',
             'EMERGENCY/FACTORY_RESET_CLAWLAB_VRR.bat',
             'EMERGENCY/EMERGENCY_REMOVE_CLAWLAB_EDID.bat',
+            'EMERGENCY/SET_INTEL_LFC_FACTORY_DEFAULTS.bat',
             'DIAGNOSTICS/COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
+            'DIAGNOSTICS/EXPORT_STATUS_REPORT.bat',
             'scripts/MSI-Claw-VRR-Fix.ps1',
             'scripts/MSI-Claw-Intel-LFC-Fix.ps1',
             'scripts/ClawLab-Health-Check.ps1',
+            'scripts/Export-ClawLab-Status.ps1',
+            'scripts/Edid-Normalization.ps1',
+            'scripts/Lfc-Backup-Identity.ps1',
             'scripts/ClawLab-Cursor-Refresh-Helper.exe'
         )) {
         if ($requiredEntry -notin $relativeEntries) {

@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.1.1'
+$fixVersion = '2.1.2'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
@@ -20,6 +20,9 @@ $backupPath = Join-Path $stateRoot 'original-profile.json'
 $experimentalStatePath = Join-Path $stateRoot 'experimental-edid.json'
 $managedModeStatePath = Join-Path $stateRoot 'managed-mode.json'
 $installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
+$edidNormalizationModuleName = 'Edid-Normalization.ps1'
+$edidNormalizationModulePath = Join-Path $PSScriptRoot $edidNormalizationModuleName
+$installedEdidNormalizationModulePath = Join-Path $stateRoot $edidNormalizationModuleName
 $startupLauncherName = 'ClawLab-VRR-Startup.vbs'
 $installedLauncherPath = Join-Path $stateRoot $startupLauncherName
 $startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
@@ -38,6 +41,13 @@ $intelStartupRegistryPath = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\M
 $intelStartupValueName = 'Intel' + [char]0x00AE + ' Graphics Software'
 $script:intelStartupIdentityRenewed = $false
 $script:activePanelDefinition = $null
+$script:activeEdidNormalization = 'NOT_READ'
+$script:activeEdidSourceLength = 0
+if (-not (Test-Path -LiteralPath $edidNormalizationModulePath -PathType Leaf)) {
+    throw "The EDID normalization safety module is missing: $edidNormalizationModuleName"
+}
+. $edidNormalizationModulePath
+
 $panelCatalog = @(
     [pscustomobject]@{
         Key = 'CLAW_8_AI_PLUS'
@@ -66,8 +76,8 @@ $panelCatalog = @(
         SupportsLegacy144Recovery = $true
     },
     [pscustomobject]@{
-        Key = 'CLAW_A1M'
-        Models = 'MSI Claw A1M'
+        Key = 'CLAW_A1M_CLAW_7_AI_PLUS'
+        Models = 'MSI Claw A1M / Claw 7 AI+'
         Manufacturer = 'TMA'
         ProductCode = '2027'
         Name = 'TL070FVXS02-0'
@@ -232,10 +242,11 @@ function Get-PanelRegistryContext {
         throw 'The validated panel registry key is missing.'
     }
 
-    $reportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $deviceParameters -Name 'EDID' -ErrorAction Stop)
-    if ($reportedEdid.Length -ne [int]$definition.EdidLength) {
-        throw "Unexpected panel EDID length: $($reportedEdid.Length) bytes."
-    }
+    $rawReportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $deviceParameters -Name 'EDID' -ErrorAction Stop)
+    $canonicalEdid = Get-ClawLabCanonicalEdid -Bytes $rawReportedEdid -ExpectedLength ([int]$definition.EdidLength)
+    $reportedEdid = [byte[]]$canonicalEdid.Bytes
+    $script:activeEdidNormalization = [string]$canonicalEdid.State
+    $script:activeEdidSourceLength = [int]$canonicalEdid.SourceLength
 
     # After the Intel display device reloads an override, Windows can expose the
     # exact overridden EDID through the EDID value itself. Reconstruct the
@@ -300,6 +311,8 @@ function Get-PanelRegistryContext {
         PhysicalEdid = $physicalEdid
         PhysicalEdidSha256 = [string]$definition.PhysicalEdidSha256
         ReportedEdidSha256 = $reportedHash
+        ReportedEdidSourceLength = [int]$canonicalEdid.SourceLength
+        ReportedEdidNormalization = [string]$canonicalEdid.State
         Definition = $definition
     }
 }
@@ -532,6 +545,7 @@ function Get-ManagedArtifactSnapshot {
         OriginalProfile = Test-Path -LiteralPath $backupPath -PathType Leaf
         ExperimentalState = Test-Path -LiteralPath $experimentalStatePath -PathType Leaf
         InstalledScript = Test-Path -LiteralPath $installedScriptPath -PathType Leaf
+        InstalledEdidNormalizationModule = Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf
         InstalledLauncher = Test-Path -LiteralPath $installedLauncherPath -PathType Leaf
         StartupStatus = Test-Path -LiteralPath $startupStatusPath -PathType Leaf
         IntelStartupBackup = Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf
@@ -543,6 +557,7 @@ function Get-ManagedArtifactSnapshot {
         $snapshot.OriginalProfile -or
         $snapshot.ExperimentalState -or
         $snapshot.InstalledScript -or
+        $snapshot.InstalledEdidNormalizationModule -or
         $snapshot.InstalledLauncher -or
         $snapshot.StartupStatus -or
         $snapshot.IntelStartupBackup -or
@@ -696,6 +711,7 @@ function Get-StartupReapplyState {
         return 'NOT_INSTALLED'
     }
     if (-not (Test-Path -LiteralPath $installedScriptPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
         return 'TASK_WITHOUT_FILES'
     }
@@ -840,13 +856,18 @@ function Install-StartupReapply {
         throw "The windowless startup launcher is missing: $startupLauncherName"
     }
     [IO.File]::Copy($PSCommandPath, $installedScriptPath, $true)
+    [IO.File]::Copy($edidNormalizationModulePath, $installedEdidNormalizationModulePath, $true)
     [IO.File]::Copy($sourceLauncherPath, $installedLauncherPath, $true)
 
     $sourceHash = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     $installedHash = (Get-FileHash -LiteralPath $installedScriptPath -Algorithm SHA256).Hash
+    $sourceEdidModuleHash = (Get-FileHash -LiteralPath $edidNormalizationModulePath -Algorithm SHA256).Hash
+    $installedEdidModuleHash = (Get-FileHash -LiteralPath $installedEdidNormalizationModulePath -Algorithm SHA256).Hash
     $sourceLauncherHash = (Get-FileHash -LiteralPath $sourceLauncherPath -Algorithm SHA256).Hash
     $installedLauncherHash = (Get-FileHash -LiteralPath $installedLauncherPath -Algorithm SHA256).Hash
-    if ($sourceHash -ne $installedHash -or $sourceLauncherHash -ne $installedLauncherHash) {
+    if ($sourceHash -ne $installedHash -or
+        $sourceEdidModuleHash -ne $installedEdidModuleHash -or
+        $sourceLauncherHash -ne $installedLauncherHash) {
         throw 'The installed startup files failed their integrity check.'
     }
 
@@ -883,6 +904,7 @@ function Remove-StartupReapply {
     Remove-Experimental144Trial
     Remove-CursorRefreshHelper
     Remove-FileIfPresent -LiteralPath $installedScriptPath
+    Remove-FileIfPresent -LiteralPath $installedEdidNormalizationModulePath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     Remove-FileIfPresent -LiteralPath $startupStatusPath
     if ((Get-StartupReapplyState) -ne 'NOT_INSTALLED') {
@@ -2101,6 +2123,8 @@ function Get-StatusObject {
         CursorRefreshHelper = Get-CursorRefreshHelperState
         IntelGraphicsStartup = $intelStartupState
         EdidOverride = $OverrideState.State
+        PhysicalEdidRead = $script:activeEdidNormalization
+        PhysicalEdidSourceLength = $script:activeEdidSourceLength
         RecoveryRequired = $false
         RestartRequired = $knownExperimentalOverride -and -not $experimentalRangeActive
         RegistryModified = (

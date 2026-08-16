@@ -26,24 +26,30 @@ $requiredFiles = @(
     'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Edid-Normalization.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Lfc-Backup-Identity.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Intel-VRR-LFC-Driver-Interface.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Health-Check.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Export-ClawLab-Status.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Backup-Identity.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-LFC-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_30_120_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\FACTORY_RESET_CLAWLAB_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\EXPORT_STATUS_REPORT.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.1.1.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.1.2.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\docs\A1M_EDID_REFERENCE.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
+    'utilities\msi-claw-8-intel-vrr-range-fix\SET_INTEL_LFC_FACTORY_DEFAULTS.bat'
 )
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath) -PathType Leaf)) {
@@ -144,7 +150,7 @@ foreach ($relativePath in $retiredVrrPublicFiles) {
     }
 }
 $requiredVrrValues = @(
-    "`$fixVersion = '2.1.1'",
+    "`$fixVersion = '2.1.2'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -184,6 +190,7 @@ $requiredVrrValues = @(
     'RUNNING_EVENT_DRIVEN'
     'DEEP_IDLE_NO_TIMER_RESOLUTION'
     'VERSION_MISMATCH'
+    'CLAW_A1M_CLAW_7_AI_PLUS'
 )
 foreach ($value in $requiredVrrValues) {
     if ($vrrScript -notmatch [regex]::Escape($value)) {
@@ -196,6 +203,13 @@ foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function S
     }
 }
 
+$edidNormalizationScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\Edid-Normalization.ps1') -Raw
+foreach ($value in @('ZERO_PADDED_128_NORMALIZED', '$baseBlock[126] -eq 0', '$Bytes[$index] -ne 0')) {
+    if ($edidNormalizationScript -notmatch [regex]::Escape($value)) {
+        throw "EDID normalization safety module is missing: $value"
+    }
+}
+
 $a1mCatalogTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1'
 $a1mCatalogResult = & $a1mCatalogTestPath
 if ($null -eq $a1mCatalogResult -or [string]$a1mCatalogResult.Result -ne 'PASS') {
@@ -204,7 +218,7 @@ if ($null -eq $a1mCatalogResult -or [string]$a1mCatalogResult.Result -ne 'PASS')
 
 $cursorHelperPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe'
 $cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
-if ($cursorHelperAssembly.Version.ToString() -ne '2.1.1.0') {
+if ($cursorHelperAssembly.Version.ToString() -ne '2.1.2.0') {
     throw "Cursor Refresh Helper has unexpected assembly version $($cursorHelperAssembly.Version)."
 }
 $cursorHelperSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs') -Raw
@@ -247,7 +261,7 @@ foreach ($value in @(
 
 $lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.3'",
+    "`$toolVersion = '2.0.4'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -262,6 +276,9 @@ foreach ($value in @(
     'TL070FVXS02-0'
     '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
     '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
+    'Resolve-ClawLabLfcBackupIdentity'
+    'SchemaVersion = 4'
+    'InstanceMigrationCount'
 )) {
     if ($lfcScript -notmatch [regex]::Escape($value)) {
         throw "Intel LFC source no longer contains required safety value: $value"
@@ -269,6 +286,12 @@ foreach ($value in @(
 }
 if ($lfcScript -match [regex]::Escape('-WindowStyle Hidden -Wait -PassThru')) {
     throw 'The LFC startup path must not wait for the resident helper process tree.'
+}
+
+$lfcIdentityTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Backup-Identity.ps1'
+$lfcIdentityResult = & $lfcIdentityTestPath
+if ($null -eq $lfcIdentityResult -or [string]$lfcIdentityResult.Result -ne 'PASS') {
+    throw 'The Intel LFC stable backup identity test failed.'
 }
 
 $lfcInstallers = @(

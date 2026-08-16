@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Apply', 'Restore', 'ApplyStartup')]
+    [ValidateSet('Status', 'Apply', 'Restore', 'ApplyStartup', 'FactoryDefaults')]
     [string]$Action = 'Status'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.3'
+$toolVersion = '2.0.4'
 
 # Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
@@ -17,6 +17,7 @@ $toolVersion = '2.0.3'
 $panelCatalog = @(
     [pscustomobject]@{
         Manufacturer = 'CSW'; ProductCode = '0801'; Name = 'PN8007QB1-2'
+        EdidLength = 256
         PhysicalEdidHash = 'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0'
         Experimental30EdidHash = '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918'
         Legacy48_144EdidHash = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
@@ -25,6 +26,7 @@ $panelCatalog = @(
     },
     [pscustomobject]@{
         Manufacturer = 'TMA'; ProductCode = '2027'; Name = 'TL070FVXS02-0'
+        EdidLength = 128
         PhysicalEdidHash = '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
         Experimental30EdidHash = '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
         Legacy48_144EdidHash = $null
@@ -39,8 +41,19 @@ $lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-LFC-Fix'
 $lfcBackupPath = Join-Path $lfcStateRoot 'original-intel-vrr-solutions.json'
 $installedToolPath = Join-Path $lfcStateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
 $installedDriverInterfacePath = Join-Path $lfcStateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'
+$backupIdentityModulePath = Join-Path $PSScriptRoot 'Lfc-Backup-Identity.ps1'
+$edidNormalizationModulePath = Join-Path $PSScriptRoot 'Edid-Normalization.ps1'
+$installedBackupIdentityModulePath = Join-Path $lfcStateRoot 'Lfc-Backup-Identity.ps1'
+$installedEdidNormalizationModulePath = Join-Path $lfcStateRoot 'Edid-Normalization.ps1'
 $installedLauncherPath = Join-Path $lfcStateRoot 'ClawLab-LFC-Startup.vbs'
 $startupTaskName = 'ClawLab MSI Claw Intel LFC Fix'
+
+foreach ($modulePath in @($backupIdentityModulePath, $edidNormalizationModulePath)) {
+    if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+        throw "A required LFC safety module is missing: $modulePath"
+    }
+    . $modulePath
+}
 
 function Convert-WmiText {
     param([AllowNull()][object]$Values)
@@ -107,7 +120,9 @@ $validatedEdidHashes = @(
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
 $panelInstanceId = $panel.InstanceName -replace '_\d+$', ''
 $panelDeviceParameters = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\$panelInstanceId\Device Parameters"
-$reportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $panelDeviceParameters -Name 'EDID')
+$rawReportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $panelDeviceParameters -Name 'EDID')
+$canonicalEdid = Get-ClawLabCanonicalEdid -Bytes $rawReportedEdid -ExpectedLength ([int]$panelDefinition.EdidLength)
+$reportedEdid = [byte[]]$canonicalEdid.Bytes
 $reportedEdidSha256 = Get-ByteArraySha256 -Bytes $reportedEdid
 if ($reportedEdidSha256 -notin $validatedEdidHashes) {
     throw "The active panel EDID is not an approved ClawLab state: $reportedEdidSha256"
@@ -249,7 +264,7 @@ if ($Action -eq 'ApplyStartup' -and
 if ($Action -eq 'Apply' -and (-not $current.Supported -or $current.Result -ne 'Success')) {
     throw 'The Intel VRR driver interface is unavailable, so the LFC state cannot be backed up safely.'
 }
-if ($Action -eq 'Restore' -and (-not $current.Supported -or $current.Result -ne 'Success')) {
+if ($Action -in @('Restore', 'FactoryDefaults') -and (-not $current.Supported -or $current.Result -ne 'Success')) {
     throw 'The signed Intel driver escape is unavailable, so the saved LFC state cannot be restored safely.'
 }
 
@@ -282,32 +297,117 @@ function Get-LfcBackup {
         return $null
     }
     $backup = [IO.File]::ReadAllText($lfcBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    foreach ($property in @('SchemaVersion', 'PanelInstanceName', 'OriginalLowFpsSolutionEnabled')) {
-        if ($property -notin $backup.PSObject.Properties.Name) {
-            throw "The LFC backup is invalid: missing $property."
-        }
-    }
-    if ([int]$backup.SchemaVersion -notin @(1, 2, 3) -or
-        [string]$backup.PanelInstanceName -ne [string]$panel.InstanceName) {
-        throw 'The LFC backup does not match the current validated panel.'
+    $identityAction = if ($Action -eq 'Status') { 'Restore' } else { $Action }
+    $resolution = Resolve-ClawLabLfcBackupIdentity -Backup $backup `
+        -PanelManufacturer ([string]$panel.Manufacturer) `
+        -PanelProductCode ([string]$panel.ProductCode) `
+        -PanelName ([string]$panel.Name) `
+        -PhysicalEdidSha256 $physicalEdidHash `
+        -ValidatedEdidHashes $validatedEdidHashes `
+        -CurrentPanelInstanceName ([string]$panel.InstanceName) `
+        -CurrentManagedMode $managedModeName `
+        -Action $identityAction
+    if (-not $resolution.Accepted) {
+        throw "The LFC backup identity was refused ($($resolution.State)): $($resolution.Reason)"
     }
     if ([int]$backup.SchemaVersion -eq 1 -and $Action -ne 'Restore') {
         throw 'A legacy low-FPS-only experiment is still active. Restore it before applying this release.'
     }
-    if ([int]$backup.SchemaVersion -in @(2, 3) -and
+    if ([int]$backup.SchemaVersion -in @(2, 3, 4) -and
         'OriginalHighFpsSolutionEnabled' -notin $backup.PSObject.Properties.Name) {
         throw 'The Intel VRR solution backup is invalid.'
     }
-    if ([int]$backup.SchemaVersion -eq 3 -and
-        'ManagedVrrMode' -notin $backup.PSObject.Properties.Name) {
-        throw 'The Intel VRR solution backup has no managed-profile identity.'
-    }
-    if ($Action -in @('Apply', 'ApplyStartup') -and
-        [int]$backup.SchemaVersion -eq 3 -and
-        [string]$backup.ManagedVrrMode -ne $managedModeName) {
-        throw "The saved LFC state belongs to $($backup.ManagedVrrMode), not $managedModeName. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before switching profiles."
+
+    if ($resolution.NeedsSchema4Migration) {
+        $schema = [int]$backup.SchemaVersion
+        $savedAt = if ('SavedAt' -in $backup.PSObject.Properties.Name) { [string]$backup.SavedAt } else { (Get-Date).ToString('o') }
+        $instanceAtSave = if ($schema -eq 3) { [string]$backup.PanelInstanceName } else { [string]$backup.PanelInstanceNameAtSave }
+        $edidAtSave = if ($schema -eq 3) { [string]$backup.PanelEdidSha256 } else { [string]$backup.PanelEdidSha256AtSave }
+        $migrationCount = if ($schema -eq 4) { [int]$backup.InstanceMigrationCount } else { 0 }
+        if ($resolution.InstanceChanged) { $migrationCount++ }
+        $previousMigrationAt = if ('LastInstanceMigrationAt' -in $backup.PSObject.Properties.Name) { [string]$backup.LastInstanceMigrationAt } else { $null }
+        $migrated = [ordered]@{
+            SchemaVersion = 4
+            SavedAt = $savedAt
+            PanelManufacturer = [string]$panel.Manufacturer
+            PanelProductCode = [string]$panel.ProductCode
+            PanelName = [string]$panel.Name
+            PhysicalEdidSha256 = $physicalEdidHash
+            PanelInstanceNameAtSave = $instanceAtSave
+            LastValidatedPanelInstanceName = [string]$panel.InstanceName
+            PanelEdidSha256AtSave = $edidAtSave
+            InstanceMigrationCount = $migrationCount
+            LastInstanceMigrationAt = if ($resolution.InstanceChanged) { (Get-Date).ToString('o') } else { $previousMigrationAt }
+            PanelInstanceName = [string]$panel.InstanceName
+            PanelEdidSha256 = $edidAtSave
+            ManagedVrrMode = [string]$backup.ManagedVrrMode
+            IntelDriverVersion = if ('IntelDriverVersion' -in $backup.PSObject.Properties.Name) { [string]$backup.IntelDriverVersion } else { 'NOT_RECORDED' }
+            DriverInterface = if ('DriverInterface' -in $backup.PSObject.Properties.Name) { [string]$backup.DriverInterface } else { 'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE' }
+            OriginalLowFpsSolutionEnabled = [bool]$backup.OriginalLowFpsSolutionEnabled
+            OriginalHighFpsSolutionEnabled = [bool]$backup.OriginalHighFpsSolutionEnabled
+        }
+        Write-LfcBackupAtomically -Backup $migrated
+        $backup = [IO.File]::ReadAllText($lfcBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $postMigration = Resolve-ClawLabLfcBackupIdentity -Backup $backup `
+            -PanelManufacturer ([string]$panel.Manufacturer) `
+            -PanelProductCode ([string]$panel.ProductCode) `
+            -PanelName ([string]$panel.Name) `
+            -PhysicalEdidSha256 $physicalEdidHash `
+            -ValidatedEdidHashes $validatedEdidHashes `
+            -CurrentPanelInstanceName ([string]$panel.InstanceName) `
+            -CurrentManagedMode $managedModeName `
+            -Action $identityAction
+        if (-not $postMigration.Accepted -or $postMigration.NeedsSchema4Migration) {
+            throw "The migrated schema-4 LFC backup failed readback verification: $($postMigration.State)"
+        }
     }
     return $backup
+}
+
+function Write-LfcBackupAtomically {
+    param([Parameter(Mandatory)][object]$Backup)
+
+    [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
+    $temporaryPath = Join-Path $lfcStateRoot ('.lfc-backup-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    try {
+        [IO.File]::WriteAllText($temporaryPath, ($Backup | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+        if (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) {
+            [IO.File]::Replace($temporaryPath, $lfcBackupPath, $null)
+        }
+        else {
+            [IO.File]::Move($temporaryPath, $lfcBackupPath)
+        }
+    }
+    finally {
+        Remove-FileIfPresent -LiteralPath $temporaryPath
+    }
+}
+
+function Get-LfcBackupIdentityStatus {
+    if (-not (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf)) {
+        return [pscustomobject]@{ SchemaVersion = 0; State = 'NO_BACKUP'; Accepted = $true; InstanceChanged = $false }
+    }
+    try {
+        $backup = [IO.File]::ReadAllText($lfcBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $resolution = Resolve-ClawLabLfcBackupIdentity -Backup $backup `
+            -PanelManufacturer ([string]$panel.Manufacturer) `
+            -PanelProductCode ([string]$panel.ProductCode) `
+            -PanelName ([string]$panel.Name) `
+            -PhysicalEdidSha256 $physicalEdidHash `
+            -ValidatedEdidHashes $validatedEdidHashes `
+            -CurrentPanelInstanceName ([string]$panel.InstanceName) `
+            -CurrentManagedMode $managedModeName `
+            -Action Restore
+        return [pscustomobject]@{
+            SchemaVersion = [int]$backup.SchemaVersion
+            State = [string]$resolution.State
+            Accepted = [bool]$resolution.Accepted
+            InstanceChanged = [bool]$resolution.InstanceChanged
+        }
+    }
+    catch {
+        return [pscustomobject]@{ SchemaVersion = -1; State = 'INVALID_BACKUP'; Accepted = $false; InstanceChanged = $false }
+    }
 }
 
 function Get-StartupPersistenceState {
@@ -317,6 +417,8 @@ function Get-StartupPersistenceState {
     }
     if (-not (Test-Path -LiteralPath $installedToolPath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedDriverInterfacePath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedBackupIdentityModulePath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
         return 'INCOMPLETE'
     }
@@ -331,11 +433,15 @@ function Install-StartupPersistence {
     [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
     [IO.File]::Copy($PSCommandPath, $installedToolPath, $true)
     [IO.File]::Copy($driverInterfacePath, $installedDriverInterfacePath, $true)
+    [IO.File]::Copy($backupIdentityModulePath, $installedBackupIdentityModulePath, $true)
+    [IO.File]::Copy($edidNormalizationModulePath, $installedEdidNormalizationModulePath, $true)
     [IO.File]::Copy($sourceLauncherPath, $installedLauncherPath, $true)
 
     foreach ($pair in @(
         @($PSCommandPath, $installedToolPath),
         @($driverInterfacePath, $installedDriverInterfacePath),
+        @($backupIdentityModulePath, $installedBackupIdentityModulePath),
+        @($edidNormalizationModulePath, $installedEdidNormalizationModulePath),
         @($sourceLauncherPath, $installedLauncherPath)
     )) {
         if ((Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash -ne
@@ -367,6 +473,8 @@ function Remove-StartupPersistence {
     }
     Remove-FileIfPresent -LiteralPath $installedToolPath
     Remove-FileIfPresent -LiteralPath $installedDriverInterfacePath
+    Remove-FileIfPresent -LiteralPath $installedBackupIdentityModulePath
+    Remove-FileIfPresent -LiteralPath $installedEdidNormalizationModulePath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
         throw 'The one-shot startup persistence task was not fully removed.'
@@ -376,9 +484,15 @@ function Remove-StartupPersistence {
 $state = switch ($Action) {
     'Status' {
         $now = Get-CurrentIntelVrrState
+        $statusBackupIdentity = Get-LfcBackupIdentityStatus
         [pscustomobject]@{
-            State = if ($null -ne $managedProfile -and
+            State = if (-not (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
+                ($now.LowFpsSolutionEnabled -eq $false -or $now.HighFpsSolutionEnabled -eq $false)) {
+                'ORIGINAL_LFC_BACKUP_MISSING_CANNOT_RESTORE'
+            }
+            elseif ($null -ne $managedProfile -and
                 (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
+                $statusBackupIdentity.Accepted -and
                 $now.MinimumHz -eq $expectedMinimumHz -and
                 $now.MaximumHz -eq $expectedMaximumHz -and
                 -not $now.LowFpsSolutionEnabled -and -not $now.HighFpsSolutionEnabled) {
@@ -389,6 +503,7 @@ $state = switch ($Action) {
             }
             elseif ($null -ne $managedProfile -and
                 (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
+                $statusBackupIdentity.Accepted -and
                 (Get-StartupPersistenceState) -eq 'INSTALLED_ONE_SHOT_AT_LOGON') {
                 'CLAWLAB_LFC_FIX_PENDING_RESTART'
             }
@@ -410,8 +525,17 @@ $state = switch ($Action) {
             }
             [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
             $backup = [ordered]@{
-                SchemaVersion = 3
+                SchemaVersion = 4
                 SavedAt = (Get-Date).ToString('o')
+                PanelManufacturer = [string]$panel.Manufacturer
+                PanelProductCode = [string]$panel.ProductCode
+                PanelName = [string]$panel.Name
+                PhysicalEdidSha256 = $physicalEdidHash
+                PanelInstanceNameAtSave = [string]$panel.InstanceName
+                LastValidatedPanelInstanceName = [string]$panel.InstanceName
+                PanelEdidSha256AtSave = $reportedEdidSha256
+                InstanceMigrationCount = 0
+                LastInstanceMigrationAt = $null
                 PanelInstanceName = [string]$panel.InstanceName
                 PanelEdidSha256 = $reportedEdidSha256
                 ManagedVrrMode = $managedModeName
@@ -420,11 +544,7 @@ $state = switch ($Action) {
                 OriginalLowFpsSolutionEnabled = [bool]$before.LowFpsSolutionEnabled
                 OriginalHighFpsSolutionEnabled = [bool]$before.HighFpsSolutionEnabled
             }
-            [IO.File]::WriteAllText(
-                $lfcBackupPath,
-                ($backup | ConvertTo-Json),
-                [Text.UTF8Encoding]::new($false)
-            )
+            Write-LfcBackupAtomically -Backup $backup
             $backup = Get-LfcBackup
         }
 
@@ -492,6 +612,9 @@ $state = switch ($Action) {
         if ($null -eq $backup) {
             Remove-StartupPersistence
             $after = Get-CurrentIntelVrrState
+            if (-not $after.LowFpsSolutionEnabled -or -not $after.HighFpsSolutionEnabled) {
+                throw 'The original Intel LFC backup is missing while one or both solution flags are disabled. Original values cannot be inferred. Do not delete ClawLab AppData; use EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat only if factory defaults are explicitly intended.'
+            }
             [pscustomobject]@{
                 State = 'ALREADY_RESTORED'
                 Current = $after
@@ -501,14 +624,14 @@ $state = switch ($Action) {
         }
         Remove-StartupPersistence
         Set-LowFpsSolution -Enabled ([bool]$backup.OriginalLowFpsSolutionEnabled)
-        if ([int]$backup.SchemaVersion -in @(2, 3)) {
+        if ([int]$backup.SchemaVersion -in @(2, 3, 4)) {
             Set-HighFpsSolution -Enabled ([bool]$backup.OriginalHighFpsSolutionEnabled)
         }
         Start-Sleep -Milliseconds 750
         $after = Get-CurrentIntelVrrState
         if ($after.Result -ne 'Success' -or
             $after.LowFpsSolutionEnabled -ne [bool]$backup.OriginalLowFpsSolutionEnabled -or
-            ([int]$backup.SchemaVersion -in @(2, 3) -and
+            ([int]$backup.SchemaVersion -in @(2, 3, 4) -and
                 $after.HighFpsSolutionEnabled -ne [bool]$backup.OriginalHighFpsSolutionEnabled)) {
             throw "The restored Intel state did not verify: $($after | ConvertTo-Json -Compress)"
         }
@@ -519,8 +642,30 @@ $state = switch ($Action) {
             BackupPresent = $false
         }
     }
+
+    'FactoryDefaults' {
+        if (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) {
+            throw 'A valid original LFC backup is still present. Use RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat so the exact saved values are restored.'
+        }
+        Remove-StartupPersistence
+        Set-LowFpsSolution -Enabled $true
+        Set-HighFpsSolution -Enabled $true
+        Start-Sleep -Milliseconds 750
+        $after = Get-CurrentIntelVrrState
+        if ($after.Result -ne 'Success' -or
+            -not $after.LowFpsSolutionEnabled -or
+            -not $after.HighFpsSolutionEnabled) {
+            throw "Intel LFC factory-default verification failed: $($after | ConvertTo-Json -Compress)"
+        }
+        [pscustomobject]@{
+            State = 'INTEL_VRR_SOLUTIONS_FACTORY_DEFAULTS_APPLIED'
+            Current = $after
+            BackupPresent = $false
+        }
+    }
 }
 
+$finalBackupIdentity = Get-LfcBackupIdentityStatus
 [pscustomobject]@{
     ToolVersion = $toolVersion
     DriverInterface = 'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE'
@@ -530,10 +675,14 @@ $state = switch ($Action) {
     ManagedVrrMode = $managedModeName
     ExpectedRange = if ($null -eq $managedProfile) { 'UNMANAGED' } else { "$expectedMinimumHz-$expectedMaximumHz Hz" }
     PanelEdidSha256 = $reportedEdidSha256
+    PanelEdidSourceLength = [int]$canonicalEdid.SourceLength
+    PanelEdidNormalization = [string]$canonicalEdid.State
+    LfcBackupIdentity = $finalBackupIdentity
     LfcTransition = $state
     StartupPersistence = Get-StartupPersistenceState
     LfcFixActive = $null -ne $managedProfile -and
         (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
+        $finalBackupIdentity.Accepted -and
         (Get-StartupPersistenceState) -eq 'INSTALLED_ONE_SHOT_AT_LOGON' -and
         [int]$state.Current.MinimumHz -eq $expectedMinimumHz -and
         [int]$state.Current.MaximumHz -eq $expectedMaximumHz -and

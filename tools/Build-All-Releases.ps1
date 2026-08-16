@@ -5,7 +5,7 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$IevrVersion = '1.0.1',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$VrrVersion = '2.1.1',
+    [string]$VrrVersion = '2.1.2',
     [switch]$SkipValidation
 )
 

@@ -2,7 +2,7 @@
 
 ## Supported public profiles
 
-Version 2.1.1 installs only corrected 30-120 and official Intel/MSI 48-120.
+Version 2.1.2 installs only corrected 30-120 and official Intel/MSI 48-120.
 Both require one exact catalogued panel identity, pinned EDID state, one active Intel output
 and exact driver range readback before the shared LFC flags can change.
 
@@ -19,7 +19,7 @@ monitor firmware. The 48-120 profile does not modify EDID.
 
 No 144 Hz installer, confirmation task or installation action is included.
 Exact hashes from older releases remain only for detection and recovery.
-Version 2.1.1 refuses to reapply or persist a retired 144 Hz state and directs
+Version 2.1.2 refuses to reapply or persist a retired 144 Hz state and directs
 the user to `RECOVERY\RESTORE_ORIGINAL_VRR.bat`.
 
 Normal restore first selects a safe 120 Hz Windows mode when a legacy 144 Hz
@@ -33,6 +33,18 @@ The readable `MSI-Claw-Intel-LFC-Fix.ps1` uses a global Windows D3DKMT Intel
 display request. Before changing anything it saves the original low/high-FPS
 solution flags and binds that backup to the managed profile. Failed readback
 restores the saved values.
+
+LFC backup schema 4 binds the original flags to exact stable panel identity and
+a pinned EDID while treating the Windows monitor instance name as volatile.
+Schema 3 migrates atomically only after those exact checks. Unknown EDIDs,
+different panels and unverifiable legacy instance changes remain fail-closed.
+Never delete `%LOCALAPPDATA%\ClawLab` manually because doing so destroys the
+original values required for verified restoration.
+
+When the backup is already missing and either Intel solution flag is off,
+normal restore stops with `ORIGINAL_LFC_BACKUP_MISSING_CANNOT_RESTORE` rather
+than guessing. The separately labelled emergency factory action sets both
+solutions on only when no backup exists and refuses to overwrite saved values.
 
 The task runs once at sign-in and exits. It is not a resident watcher. The tool
 does not access a game process, game file, anti-cheat, overlay or network stack.

@@ -56,4 +56,9 @@ The physical bytes, checksum, identity and deterministic 30-120 transformation
 are verified. Installation additionally fails closed unless the target A1M or
 Claw 7 AI+ returns the exact identity, EDID and Intel Arc Sync range. Real A1M
 and Claw 7 AI+ panel/LFC behavior was not available for development validation
-and remains explicitly community-validation pending for each model.
+and remains explicitly full install/driver-validation pending for each model.
+
+Core Ultra 5 and Core Ultra 7 A1M diagnostics collected on Intel driver
+32.0.101.8974 expose this exact 128-byte block followed by 128 zero bytes in the
+Windows registry. Release 2.1.2 treats only that completely zero-filled tail as
+non-semantic padding; the canonical block must still match the SHA-256 above.

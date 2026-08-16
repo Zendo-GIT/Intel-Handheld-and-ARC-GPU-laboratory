@@ -67,6 +67,9 @@ foreach ($monitor in $monitorIds) {
 
     $edidFile = $null
     $edidHash = $null
+    $canonicalEdidLength = $null
+    $canonicalEdidHash = $null
+    $edidBufferShape = 'UNAVAILABLE'
     $checksums = @()
     if ($null -ne $edid -and $edid.Length -gt 0) {
         $safeId = ($instanceId -replace '[^A-Za-z0-9._-]', '_')
@@ -74,6 +77,21 @@ foreach ($monitor in $monitorIds) {
         [IO.File]::WriteAllBytes((Join-Path $outputDirectory $edidFile), $edid)
         $edidHash = Get-ByteArraySha256 -Bytes $edid
         $checksums = @(Get-EdidChecksumState -Edid $edid)
+        $canonicalEdidLength = $edid.Length
+        $canonicalEdidHash = $edidHash
+        $edidBufferShape = 'EXACT_REPORTED_BUFFER'
+        if ($edid.Length -eq 256 -and $edid[126] -eq 0) {
+            $tailAllZero = $true
+            for ($index = 128; $index -lt 256; $index++) {
+                if ($edid[$index] -ne 0) { $tailAllZero = $false; break }
+            }
+            if ($tailAllZero) {
+                $baseBlock = [byte[]]$edid[0..127]
+                $canonicalEdidLength = 128
+                $canonicalEdidHash = Get-ByteArraySha256 -Bytes $baseBlock
+                $edidBufferShape = '128_BYTE_BASE_PLUS_128_ZERO_PADDING'
+            }
+        }
     }
 
     $overrideBlocks = @()
@@ -114,6 +132,9 @@ foreach ($monitor in $monitorIds) {
         SerialNumber = Convert-WmiText $monitor.SerialNumberID
         EdidLength = if ($null -ne $edid) { $edid.Length } else { 0 }
         EdidSha256 = $edidHash
+        EdidBufferShape = $edidBufferShape
+        CanonicalEdidLength = $canonicalEdidLength
+        CanonicalEdidSha256 = $canonicalEdidHash
         EdidFile = $edidFile
         EdidChecksums = $checksums
         OverrideBlocks = $overrideBlocks
@@ -140,6 +161,12 @@ $report = [ordered]@{
 $reportPath = Join-Path $outputDirectory 'display-diagnostics.json'
 [IO.File]::WriteAllText($reportPath, ($report | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
 
+$archivePath = "$outputDirectory.zip"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+if (Test-Path -LiteralPath $archivePath -PathType Leaf) { [IO.File]::Delete($archivePath) }
+[IO.Compression.ZipFile]::CreateFromDirectory($outputDirectory, $archivePath, [IO.Compression.CompressionLevel]::Optimal, $false)
+
 Write-Host 'Display diagnostics collected without changing the display configuration.' -ForegroundColor Green
 Write-Host "Output: $outputDirectory"
-Write-Host 'Review the JSON before sharing it publicly. The folder contains monitor identity and EDID data.' -ForegroundColor Yellow
+Write-Host "Shareable ZIP: $archivePath" -ForegroundColor Cyan
+Write-Host 'Review the JSON before sharing it publicly. The archive contains monitor identity and EDID data.' -ForegroundColor Yellow
