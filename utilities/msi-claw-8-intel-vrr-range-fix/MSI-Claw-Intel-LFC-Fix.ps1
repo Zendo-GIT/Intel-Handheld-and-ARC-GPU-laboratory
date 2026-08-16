@@ -143,7 +143,7 @@ if ([bool]$panelDefinition.SupportsLegacy144Recovery) {
 }
 $managedProfile = if ($managedProfiles.ContainsKey($managedModeName)) { $managedProfiles[$managedModeName] } else { $null }
 if ($Action -in @('Apply', 'ApplyStartup') -and $null -eq $managedProfile) {
-    throw "The LFC fix requires one of the four ClawLab-managed profiles; current mode is $managedModeName."
+    throw "The LFC fix requires the managed 30-120 or 48-120 profile; current mode is $managedModeName."
 }
 if ($Action -in @('Apply', 'ApplyStartup') -and $managedModeName -in @('CLAWLAB_48_144', 'CLAWLAB_30_144')) {
     throw 'The installed 144 Hz profile is retired and cannot receive persistence updates. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
@@ -369,10 +369,15 @@ function Write-LfcBackupAtomically {
 
     [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
     $temporaryPath = Join-Path $lfcStateRoot ('.lfc-backup-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    $replacementBackupPath = Join-Path $lfcStateRoot ('.lfc-previous-{0}.bak' -f [Guid]::NewGuid().ToString('N'))
     try {
         [IO.File]::WriteAllText($temporaryPath, ($Backup | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
         if (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) {
-            [IO.File]::Replace($temporaryPath, $lfcBackupPath, $null)
+            # Windows PowerShell/.NET rejects a null destination-backup path.
+            # A real same-directory path preserves atomic replacement and is
+            # removed only after Replace returns successfully.
+            [IO.File]::Replace($temporaryPath, $lfcBackupPath, $replacementBackupPath)
+            Remove-FileIfPresent -LiteralPath $replacementBackupPath
         }
         else {
             [IO.File]::Move($temporaryPath, $lfcBackupPath)
@@ -380,6 +385,7 @@ function Write-LfcBackupAtomically {
     }
     finally {
         Remove-FileIfPresent -LiteralPath $temporaryPath
+        Remove-FileIfPresent -LiteralPath $replacementBackupPath
     }
 }
 
@@ -518,6 +524,18 @@ $state = switch ($Action) {
     { $_ -in @('Apply', 'ApplyStartup') } {
         $startupApplication = $Action -eq 'ApplyStartup'
         $before = Get-CurrentIntelVrrState
+        $rangeReady = $before.Supported -and $before.VrrEnabled -and
+            $before.MinimumHz -eq $expectedMinimumHz -and
+            $before.MaximumHz -eq $expectedMaximumHz
+        $validCustomRestartPending = -not $startupApplication -and
+            $managedModeName -eq 'CLAWLAB_30_120' -and
+            $before.Supported -and $before.VrrEnabled -and
+            $before.MinimumHz -eq 48 -and $before.MaximumHz -eq 120 -and
+            $reportedEdidSha256 -eq $physicalEdidHash
+        if (-not $rangeReady -and -not $validCustomRestartPending) {
+            throw "The Intel LFC fix requires the exact $expectedMinimumHz-$expectedMaximumHz Hz range; the Intel driver reports $($before.MinimumHz)-$($before.MaximumHz) Hz. No backup, persistence task or LFC flag was changed."
+        }
+
         $backup = Get-LfcBackup
         if ($null -eq $backup) {
             if ($startupApplication) {
@@ -548,10 +566,7 @@ $state = switch ($Action) {
             $backup = Get-LfcBackup
         }
 
-        $rangeReady = $before.Supported -and $before.VrrEnabled -and
-            $before.MinimumHz -eq $expectedMinimumHz -and
-            $before.MaximumHz -eq $expectedMaximumHz
-        if (-not $startupApplication -and -not $rangeReady) {
+        if (-not $rangeReady) {
             Install-StartupPersistence
             [pscustomobject]@{
                 State = 'CLAWLAB_LFC_FIX_PENDING_RESTART'

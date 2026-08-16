@@ -10,10 +10,17 @@
 - Updates the Intel LFC component to 2.0.4 with atomic schema-4 stable panel
   identity, allowing a verified Windows monitor-instance rename after an Intel
   driver update without a restore/reinstall loop.
+- Fixes schema-3 restoration on Windows PowerShell by using a real
+  same-directory rollback path for atomic file replacement instead of an
+  invalid null path.
+- Restricts LFC application and startup reapply to exact 30-120 or 48-120
+  driver readback; all other ranges fail before backup, persistence or flag
+  changes.
 - Keeps unverifiable schema-1/2 backups fail-closed and rejects every physical
   panel or EDID mismatch.
 - Separates game-facing VRR/LFC health from optional desktop-helper health.
 - Adds one-click read-only JSON status export under `DIAGNOSTICS`.
+- Makes health and JSON diagnostics report failed status queries explicitly.
 - Warns users never to delete `%LOCALAPPDATA%\ClawLab`, which contains the
   original state required for safe restoration.
 - Detects a missing original backup with disabled Intel flags instead of

@@ -32,13 +32,24 @@ pinned EDID state verify. Older schema 1/2 backups without a pinned EDID remain
 instance-bound and fail closed. A driver update therefore no longer creates a
 restore/reinstall loop merely because Windows renamed the same monitor.
 
+The final 2.1.2 package also corrects the Windows PowerShell atomic-replacement
+call used by that migration. It supplies a real same-directory rollback file,
+verifies the migrated backup, and removes the temporary rollback only after a
+successful replacement. This fixes restoration of an existing schema 3 backup
+without weakening its identity checks.
+
+Only exact `30-120 Hz` and `48-120 Hz` states can receive the Intel LFC
+correction. Any other driver range, including an erroneous `24-120 Hz`
+readback, is refused before a backup, persistence task or Intel flag is changed.
+
 ## Clearer diagnosis
 
 `CHECK_STATUS.bat` now reports game-facing VRR/LFC health separately from the
 optional Windows desktop Cursor Refresh Helper. A healthy core correction is
 no longer hidden behind a generic helper warning. `DIAGNOSTICS` also includes
 `EXPORT_STATUS_REPORT.bat`, which writes one read-only JSON report to the
-Desktop for support.
+Desktop for support. Failed component queries are now recorded as failures in
+that JSON instead of causing a misleading secondary property error.
 
 Never manually delete `%LOCALAPPDATA%\ClawLab`. That directory contains the
 original profile and Intel-flag backups required for a verified restore. Use

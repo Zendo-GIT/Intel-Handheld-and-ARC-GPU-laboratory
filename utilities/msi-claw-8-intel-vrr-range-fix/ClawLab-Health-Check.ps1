@@ -18,9 +18,23 @@ $startupInitializing = (
     ($null -ne $lfcTask -and [string]$lfcTask.State -eq 'Running')
 )
 
+function Invoke-RequiredStatusQuery {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Operation
+    )
+
+    $result = @(& $Operation)
+    $operationSucceeded = $?
+    if (-not $operationSucceeded -or $result.Count -ne 1 -or $null -eq $result[0]) {
+        throw "$Name status did not return exactly one valid state object."
+    }
+    return $result[0]
+}
+
 try {
-    $vrr = & $vrrTool -Action Status
-    $lfc = & $lfcTool -Action Status
+    $vrr = Invoke-RequiredStatusQuery -Name 'VRR' -Operation { & $vrrTool -Action Status }
+    $lfc = Invoke-RequiredStatusQuery -Name 'Intel LFC' -Operation { & $lfcTool -Action Status }
 }
 catch {
     if ($startupInitializing) {
@@ -42,7 +56,24 @@ catch {
         }
         exit 0
     }
-    throw
+    [pscustomobject]@{
+        OverallHealth = 'ATTENTION_REQUIRED'
+        StartupInitialization = 'COMPLETE_OR_IDLE'
+        DriverVerification = 'STATUS_QUERY_FAILED'
+        CurrentIntelDriver = 'UNKNOWN'
+        DriverRecordedAtFirstInstall = 'UNKNOWN'
+        ManagedProfileHealthy = $false
+        CursorRefreshHelperHealthy = $false
+        IntelLfcCorrectionHealthy = $false
+        CoreVrrAndLfcHealth = 'ATTENTION_REQUIRED'
+        DesktopHelperHealth = 'UNKNOWN'
+        CoreFixOperational = $false
+        DesktopHelperOperational = $false
+        AttentionReason = 'STATUS_QUERY_FAILED'
+        StatusQueryError = $_.Exception.Message
+        RecommendedAction = 'Run CHECK_STATUS.bat and read the detailed VRR/LFC error. Do not Factory Reset or delete ClawLab AppData.'
+    }
+    exit 0
 }
 
 $managedProfileHealthy = (

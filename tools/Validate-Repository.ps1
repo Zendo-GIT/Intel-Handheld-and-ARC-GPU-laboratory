@@ -36,6 +36,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Backup-Identity.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Atomic-Replace.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-LFC-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\INSTALL_48_120_VRR.bat',
@@ -202,6 +203,29 @@ foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function S
         throw "Retired 144 Hz installation capability remains in the VRR source: $forbiddenMarker"
     }
 }
+$installActions = @(
+    [regex]::Matches($vrrScript, "'Install\d+(?:_\d+)?'") |
+        ForEach-Object { $_.Value } |
+        Sort-Object -Unique
+)
+if (($installActions -join ',') -ne "'Install30','Install48'") {
+    throw "Unexpected VRR installation actions: $($installActions -join ', ')"
+}
+foreach ($requiredRangeMarker in @(
+        '$targetMinimumHz = 48.0',
+        '$experimentalMinimumHz = 30.0',
+        '$targetMaximumHz = 120.0',
+        "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]"
+    )) {
+    if ($vrrScript -notmatch [regex]::Escape($requiredRangeMarker)) {
+        throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
+    }
+}
+foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'Install24', 'MinimumHz = 24', 'MinimumHz=24')) {
+    if ($vrrScript -match [regex]::Escape($forbiddenRangeMarker)) {
+        throw "Forbidden 24 Hz profile marker found in the VRR source: $forbiddenRangeMarker"
+    }
+}
 
 $edidNormalizationScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\Edid-Normalization.ps1') -Raw
 foreach ($value in @('ZERO_PADDED_128_NORMALIZED', '$baseBlock[126] -eq 0', '$Bytes[$index] -ne 0')) {
@@ -292,6 +316,34 @@ $lfcIdentityTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr
 $lfcIdentityResult = & $lfcIdentityTestPath
 if ($null -eq $lfcIdentityResult -or [string]$lfcIdentityResult.Result -ne 'PASS') {
     throw 'The Intel LFC stable backup identity test failed.'
+}
+
+$lfcAtomicTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Atomic-Replace.ps1'
+$lfcAtomicResult = & $lfcAtomicTestPath
+if ($null -eq $lfcAtomicResult -or [string]$lfcAtomicResult.Result -ne 'PASS') {
+    throw 'The Windows PowerShell atomic LFC backup replacement test failed.'
+}
+
+foreach ($value in @(
+        '[IO.File]::Replace($temporaryPath, $lfcBackupPath, $replacementBackupPath)',
+        'No backup, persistence task or LFC flag was changed.'
+    )) {
+    if ($lfcScript -notmatch [regex]::Escape($value)) {
+        throw "Intel LFC source is missing a required restore/range safety value: $value"
+    }
+}
+if ($lfcScript -match [regex]::Escape('[IO.File]::Replace($temporaryPath, $lfcBackupPath, $null)')) {
+    throw 'The invalid null destination-backup path was reintroduced into LFC atomic replacement.'
+}
+$rangeRefusalIndex = $lfcScript.IndexOf('if (-not $rangeReady -and -not $validCustomRestartPending)', [StringComparison]::Ordinal)
+$backupReadIndex = $lfcScript.IndexOf('$backup = Get-LfcBackup', [StringComparison]::Ordinal)
+if ($rangeRefusalIndex -lt 0 -or $backupReadIndex -lt 0 -or $rangeRefusalIndex -gt $backupReadIndex) {
+    throw 'The exact LFC range refusal must execute before any backup migration or creation.'
+}
+foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'MinimumHz -eq 24', 'MinimumHz = 24')) {
+    if ($lfcScript -match [regex]::Escape($forbiddenRangeMarker)) {
+        throw "Forbidden 24 Hz profile marker found in the LFC source: $forbiddenRangeMarker"
+    }
 }
 
 $lfcInstallers = @(

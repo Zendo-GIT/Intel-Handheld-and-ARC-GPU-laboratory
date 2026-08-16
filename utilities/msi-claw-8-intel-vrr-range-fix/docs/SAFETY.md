@@ -5,6 +5,9 @@
 Version 2.1.2 installs only corrected 30-120 and official Intel/MSI 48-120.
 Both require one exact catalogued panel identity, pinned EDID state, one active Intel output
 and exact driver range readback before the shared LFC flags can change.
+An erroneous or unsupported driver range such as 24-120 is never normalized or
+accepted. The operation stops before creating a backup, persistence task or
+changing either Intel solution flag.
 
 The Claw A1M / Claw 7 AI+ definition uses a different one-block EDID path from
 the Claw 8 family. The installer refuses cross-panel hashes and never invents

@@ -8,8 +8,12 @@ MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 - Confirms this representation in Core Ultra 5 and Core Ultra 7 A1M diagnostics.
 - Adds atomic schema-4 stable panel identity to LFC component 2.0.4 so a safe
   Intel-driver monitor-instance rename no longer creates a recovery loop.
+- Fixes Windows PowerShell schema-3 restore by replacing the invalid null
+  atomic-backup argument with a verified same-directory rollback path.
+- Applies LFC only when exact 30-120 or 48-120 driver readback is present;
+  every other range is refused before backup, task or flag changes.
 - Splits core VRR/LFC health from optional desktop-helper health.
-- Adds DIAGNOSTICS\EXPORT_STATUS_REPORT.bat.
+- Adds DIAGNOSTICS\EXPORT_STATUS_REPORT.bat and explicit failed-query reporting.
 - Never manually delete %%LOCALAPPDATA%%\ClawLab; use RECOVERY instead.
 - Detects lost LFC backups with disabled flags and provides a separate guarded
   EMERGENCY factory-default action only for that unrecoverable-original case.

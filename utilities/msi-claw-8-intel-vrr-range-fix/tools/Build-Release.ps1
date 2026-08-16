@@ -77,6 +77,7 @@ $releaseFiles = @(
 
     [pscustomobject]@{ Source = 'tools\Test-A1M-Edid.ps1'; Destination = 'SOURCE\Test-A1M-Edid.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Lfc-Backup-Identity.ps1'; Destination = 'SOURCE\Test-Lfc-Backup-Identity.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Lfc-Atomic-Replace.ps1'; Destination = 'SOURCE\Test-Lfc-Atomic-Replace.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'; Destination = 'SOURCE\CursorRefreshHelper\Build-CursorRefreshHelper.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\README.md'; Destination = 'SOURCE\CursorRefreshHelper\README.md' }
@@ -157,6 +158,29 @@ foreach ($forbiddenMarker in @("'Install48_144'", "'Install30_144'", 'function S
         throw "Retired 144 Hz installation capability remains in the release source: $forbiddenMarker"
     }
 }
+$installActions = @(
+    [regex]::Matches($scriptText, "'Install\d+(?:_\d+)?'") |
+        ForEach-Object { $_.Value } |
+        Sort-Object -Unique
+)
+if (($installActions -join ',') -ne "'Install30','Install48'") {
+    throw "Unexpected VRR installation actions: $($installActions -join ', ')"
+}
+foreach ($requiredRangeMarker in @(
+        '$targetMinimumHz = 48.0',
+        '$experimentalMinimumHz = 30.0',
+        '$targetMaximumHz = 120.0',
+        "[ValidateSet('Status', 'Install48', 'Install30', 'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup')]"
+    )) {
+    if ($scriptText -notmatch [regex]::Escape($requiredRangeMarker)) {
+        throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
+    }
+}
+foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'Install24', 'MinimumHz = 24', 'MinimumHz=24')) {
+    if ($scriptText -match [regex]::Escape($forbiddenRangeMarker)) {
+        throw "Forbidden 24 Hz profile marker found in the VRR source: $forbiddenRangeMarker"
+    }
+}
 
 $edidNormalizationText = Get-Content -LiteralPath (Join-Path $projectRoot 'Edid-Normalization.ps1') -Raw
 foreach ($value in @('ZERO_PADDED_128_NORMALIZED', '$baseBlock[126] -eq 0', '$Bytes[$index] -ne 0')) {
@@ -175,6 +199,12 @@ $lfcIdentityTest = Join-Path $projectRoot 'tools\Test-Lfc-Backup-Identity.ps1'
 $lfcIdentityResult = & $lfcIdentityTest
 if ($null -eq $lfcIdentityResult -or [string]$lfcIdentityResult.Result -ne 'PASS') {
     throw 'The Intel LFC stable backup identity test failed.'
+}
+
+$lfcAtomicTest = Join-Path $projectRoot 'tools\Test-Lfc-Atomic-Replace.ps1'
+$lfcAtomicResult = & $lfcAtomicTest
+if ($null -eq $lfcAtomicResult -or [string]$lfcAtomicResult.Result -ne 'PASS') {
+    throw 'The Windows PowerShell atomic LFC backup replacement test failed.'
 }
 
 $launcherPath = Join-Path $projectRoot 'ClawLab-VRR-Startup.vbs'
@@ -209,9 +239,24 @@ foreach ($value in @(
     'Resolve-ClawLabLfcBackupIdentity'
     'SchemaVersion = 4'
     'InstanceMigrationCount'
+    '[IO.File]::Replace($temporaryPath, $lfcBackupPath, $replacementBackupPath)'
+    'No backup, persistence task or LFC flag was changed.'
 )) {
     if ($lfcScriptText -notmatch [regex]::Escape($value)) {
         throw "Required LFC safety value is missing from the release source: $value"
+    }
+}
+if ($lfcScriptText -match [regex]::Escape('[IO.File]::Replace($temporaryPath, $lfcBackupPath, $null)')) {
+    throw 'The invalid null destination-backup path was reintroduced into LFC atomic replacement.'
+}
+$rangeRefusalIndex = $lfcScriptText.IndexOf('if (-not $rangeReady -and -not $validCustomRestartPending)', [StringComparison]::Ordinal)
+$backupReadIndex = $lfcScriptText.IndexOf('$backup = Get-LfcBackup', [StringComparison]::Ordinal)
+if ($rangeRefusalIndex -lt 0 -or $backupReadIndex -lt 0 -or $rangeRefusalIndex -gt $backupReadIndex) {
+    throw 'The exact LFC range refusal must execute before any backup migration or creation.'
+}
+foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'MinimumHz -eq 24', 'MinimumHz = 24')) {
+    if ($lfcScriptText -match [regex]::Escape($forbiddenRangeMarker)) {
+        throw "Forbidden 24 Hz profile marker found in the LFC source: $forbiddenRangeMarker"
     }
 }
 if ($lfcScriptText -match [regex]::Escape('-WindowStyle Hidden -Wait -PassThru')) {
@@ -288,10 +333,11 @@ try {
 
     $packagePrefix = "$packageName/"
     $relativeEntries = @($entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object {
-            if (-not $_.FullName.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            $normalizedEntryName = $_.FullName.Replace('\', '/')
+            if (-not $normalizedEntryName.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
                 throw "Release ZIP entry escaped the package root: $($_.FullName)"
             }
-            $_.FullName.Substring($packagePrefix.Length)
+            $normalizedEntryName.Substring($packagePrefix.Length)
         })
     $expectedRootFiles = @(
         'INSTALL_30_120_VRR.bat',
@@ -323,6 +369,7 @@ try {
             'scripts/Edid-Normalization.ps1',
             'scripts/Lfc-Backup-Identity.ps1',
             'scripts/ClawLab-Cursor-Refresh-Helper.exe'
+            'SOURCE/Test-Lfc-Atomic-Replace.ps1'
         )) {
         if ($requiredEntry -notin $relativeEntries) {
             throw "Required structured ZIP entry is missing: $requiredEntry"

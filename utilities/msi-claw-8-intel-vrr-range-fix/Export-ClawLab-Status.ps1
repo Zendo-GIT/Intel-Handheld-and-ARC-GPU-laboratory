@@ -12,9 +12,22 @@ $vrrStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-LFC-Fix'
 
 function Invoke-ReadOnlyReport {
-    param([Parameter(Mandatory)][scriptblock]$Operation)
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Operation,
+        [switch]$AllowEmpty
+    )
     try {
-        return [pscustomobject]@{ Success = $true; Data = & $Operation; Error = $null }
+        $data = @(& $Operation)
+        $operationSucceeded = $?
+        if (-not $operationSucceeded) {
+            throw "$Name query returned a failure exit code."
+        }
+        if (-not $AllowEmpty -and ($data.Count -ne 1 -or $null -eq $data[0])) {
+            throw "$Name query did not return exactly one valid object."
+        }
+        $value = if ($data.Count -eq 1) { $data[0] } else { $data }
+        return [pscustomobject]@{ Success = $true; Data = $value; Error = $null }
     }
     catch {
         return [pscustomobject]@{ Success = $false; Data = $null; Error = $_.Exception.Message }
@@ -65,9 +78,9 @@ function Get-LfcBackupMetadata {
     }
 }
 
-$health = Invoke-ReadOnlyReport { & $healthTool }
-$vrr = Invoke-ReadOnlyReport { & $vrrTool -Action Status }
-$lfc = Invoke-ReadOnlyReport { & $lfcTool -Action Status }
+$health = Invoke-ReadOnlyReport -Name 'Health' -Operation { & $healthTool }
+$vrr = Invoke-ReadOnlyReport -Name 'VRR' -Operation { & $vrrTool -Action Status }
+$lfc = Invoke-ReadOnlyReport -Name 'Intel LFC' -Operation { & $lfcTool -Action Status }
 $report = [ordered]@{
     SchemaVersion = 1
     CollectedAt = (Get-Date).ToString('o')
@@ -80,14 +93,14 @@ $report = [ordered]@{
         IntelLfc = Get-TaskReport -Name 'ClawLab MSI Claw Intel LFC Fix'
     }
     LfcBackupMetadata = Get-LfcBackupMetadata
-    StartupLastRun = Invoke-ReadOnlyReport {
+    StartupLastRun = Invoke-ReadOnlyReport -Name 'Startup last run' -AllowEmpty -Operation {
         $path = Join-Path $vrrStateRoot 'startup-last-run.json'
         if (Test-Path -LiteralPath $path -PathType Leaf) {
             [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json
         }
         else { $null }
     }
-    LastVrrError = Invoke-ReadOnlyReport {
+    LastVrrError = Invoke-ReadOnlyReport -Name 'Last VRR error' -AllowEmpty -Operation {
         $path = Join-Path $vrrStateRoot 'last-error.txt'
         if (Test-Path -LiteralPath $path -PathType Leaf) { [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) } else { $null }
     }
