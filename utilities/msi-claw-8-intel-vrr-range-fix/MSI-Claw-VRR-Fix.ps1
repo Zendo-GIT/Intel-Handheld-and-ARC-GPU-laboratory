@@ -2375,14 +2375,33 @@ function Resolve-FirstInstallProfileBaseline {
     Confirm-AdministratorOrRelaunch
     Write-Host 'A clean first installation found an unmanaged Intel Arc Sync CUSTOM profile.' -ForegroundColor Yellow
     Write-Host 'Intel Graphics Software cannot select the internal RECOMMENDED/EXCELLENT profiles manually.' -ForegroundColor Yellow
-    Write-Host 'ClawLab is normalizing this unowned state to Intel RECOMMENDED before creating its original-profile backup.' -ForegroundColor Yellow
-    Invoke-SetProfile -Target $Snapshot -ProfileId $profileRecommended
-    Start-Sleep -Milliseconds 750
-    $normalized = Get-TargetSnapshot -Attempts 10
-    if ([int]$normalized.ProfileId -ne $profileRecommended) {
-        throw "Could not verify the automatic Intel RECOMMENDED baseline; current profile is $($normalized.ProfileName). No ClawLab original-profile backup was created."
+    Write-Host 'ClawLab will establish and verify an Intel standard profile before creating its original-profile backup.' -ForegroundColor Yellow
+    $normalized = $Snapshot
+    $normalizationVerified = $false
+    $normalizationResults = [Collections.Generic.List[string]]::new()
+    foreach ($candidate in @(
+            [pscustomobject]@{ ProfileId = $profileRecommended; Name = 'RECOMMENDED' },
+            [pscustomobject]@{ ProfileId = $profileExcellent; Name = 'EXCELLENT' }
+        )) {
+        try {
+            Invoke-SetProfile -Target $normalized -ProfileId ([int]$candidate.ProfileId)
+            Start-Sleep -Milliseconds 750
+            $normalized = Get-TargetSnapshot -Attempts 10
+            if ([int]$normalized.ProfileId -eq [int]$candidate.ProfileId) {
+                $normalizationVerified = $true
+                Write-Host "The Intel $($candidate.Name) first-install baseline is active and verified." -ForegroundColor Green
+                break
+            }
+            $normalizationResults.Add("$($candidate.Name) returned success but read back as $($normalized.ProfileName)")
+        }
+        catch {
+            $normalizationResults.Add("$($candidate.Name) failed: $($_.Exception.Message)")
+            try { $normalized = Get-TargetSnapshot -Attempts 10 } catch { $normalized = $Snapshot }
+        }
     }
-    Write-Host 'The Intel RECOMMENDED first-install baseline is active and verified.' -ForegroundColor Green
+    if (-not $normalizationVerified) {
+        throw "Could not verify an automatic Intel RECOMMENDED or EXCELLENT baseline. Attempts: $($normalizationResults -join ' | '). No ClawLab original-profile backup was created."
+    }
     return $normalized
 }
 

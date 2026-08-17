@@ -72,9 +72,10 @@ installed.
   VRR/EDID tools are disabled before any profile action.
 - A first installation never records an unmanaged Intel `CUSTOM` profile as the
   original. Because Intel Graphics Software cannot select the internal standard
-  profiles manually, ClawLab now forces Intel `RECOMMENDED`, verifies fresh
-  driver readback and only then saves the official restoration baseline.
-  Normalization failure stops before a backup or managed mode is created.
+  profiles manually, ClawLab tries `RECOMMENDED`, verifies fresh readback, and
+  falls back to `EXCELLENT` when an affected driver silently retains `CUSTOM`.
+  Only a confirmed standard profile is saved; failure stops before a backup or
+  managed mode is created.
 - A collected A1M recovery case showed an already-active saved CUSTOM 30–120
   profile receiving Intel KMD error `0x40000017` when redundantly rewritten.
   Restore now skips that write only after exact ID/range/timing comparison,
@@ -84,7 +85,7 @@ installed.
 - `CHECK_STATUS` now reports a completely restored machine as
   `CLEAN_NOT_INSTALLED` instead of incorrectly requesting another Restore. If
   that clean state still uses unmanaged Intel CUSTOM, it explains the automatic
-  RECOMMENDED normalization performed by the next installer.
+  verified standard-profile normalization performed by the next installer.
 - Experimental installers then require a separate timed overclock warning and
   typed risk acceptance.
 

@@ -47,9 +47,9 @@ for ClawLab VRR to work.
 A clean first installation accepts Intel Arc Sync `RECOMMENDED` or `EXCELLENT`
 directly. If it finds an unmanaged `CUSTOM` profile, ClawLab does not save those
 unknown values. Current Intel Graphics Software cannot select the internal
-standard profiles manually, so the installer automatically forces Intel
-`RECOMMENDED`, verifies fresh driver readback and only then saves that official
-restoration baseline.
+standard profiles manually, so the installer tries Intel `RECOMMENDED`, verifies
+fresh readback, and falls back to `EXCELLENT` if the driver silently retains
+`CUSTOM`. Only a standard profile confirmed by the driver is saved.
 
 Changing to any different ClawLab profile always requires a successful
 `RESTORE_ORIGINAL_VRR.bat` and restart first. The package refuses mixed states.

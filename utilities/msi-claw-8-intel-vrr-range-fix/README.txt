@@ -52,8 +52,9 @@ MANDATORY BEFORE INSTALLATION
 8. A clean first installation accepts Intel Arc Sync RECOMMENDED or EXCELLENT.
    If it finds an unmanaged CUSTOM profile, ClawLab does not save those unknown
    values. Intel Graphics Software cannot select the internal standard profiles
-   manually, so the installer forces Intel RECOMMENDED, verifies fresh driver
-   readback, and only then saves that official restoration baseline.
+   manually. The installer tries RECOMMENDED, verifies fresh readback, and falls
+   back to EXCELLENT if the driver silently retains CUSTOM. It saves only the
+   first standard profile actually confirmed by the driver.
 
 PROFILE SWITCHING
 -----------------

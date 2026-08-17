@@ -157,9 +157,9 @@ function Test-ClawLabFirstInstallProfileSafe {
 
     # A first installation must not adopt an unmanaged CUSTOM profile as its
     # restorable baseline. The main installer uses this false result to
-    # normalize the clean, unowned state to Intel RECOMMENDED and verifies it
-    # before saving anything. Existing, consistent ClawLab profiles are handled
-    # by the normal idempotent path.
+    # try Intel RECOMMENDED, fall back to EXCELLENT if the driver silently
+    # retains CUSTOM, and verify the chosen standard profile before saving
+    # anything. Existing, consistent ClawLab profiles use the idempotent path.
     if ($CurrentMode -eq 'NONE' -and $CurrentState -eq 'CLEAN') {
         return $ProfileId -in @(1, 2)
     }

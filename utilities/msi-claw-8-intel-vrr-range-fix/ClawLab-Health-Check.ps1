@@ -174,7 +174,7 @@ else {
 $recommendedAction = switch ($overallHealth) {
     'CLEAN_NOT_INSTALLED' {
         if ([string]$vrr.DriverProfile -eq 'CUSTOM') {
-            'Clean uninstall verified. Run the desired installer when ready; it will automatically normalize this unmanaged CUSTOM state to Intel RECOMMENDED, verify it, and only then save the safe original-profile baseline. No Restore or Factory Reset is required.'
+            'Clean uninstall verified. Run the desired installer when ready; it will automatically try Intel RECOMMENDED, fall back to EXCELLENT when the driver silently retains CUSTOM, and save only the first standard profile verified by fresh readback. No Restore or Factory Reset is required.'
         }
         else {
             'Clean uninstall verified. Install one desired 30-120 or 48-120 profile when ready; no Restore or Factory Reset is required.'

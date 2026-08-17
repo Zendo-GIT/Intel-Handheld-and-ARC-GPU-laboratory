@@ -174,10 +174,10 @@ anything else                    -> RESTORE_ORIGINAL_VRR required
 `Test-ClawLabFirstInstallProfileSafe` adds a separate baseline rule: a genuine
 `CLEAN/NONE` first installation accepts Intel `RECOMMENDED` or `EXCELLENT`
 directly. A clean unmanaged `CUSTOM` result enters a normalization transaction:
-the main script forces Intel `RECOMMENDED`, obtains fresh ControlLib readback and
-requires profile ID 1 before saving the restoration baseline. Unknown CUSTOM
-values are never adopted, and normalization failure leaves no original-profile
-backup.
+the main script tries Intel `RECOMMENDED`, obtains fresh ControlLib readback and,
+if the driver silently retains `CUSTOM`, tries `EXCELLENT` and reads back again.
+Only verified profile ID 1 or 2 can become the restoration baseline. Unknown
+CUSTOM values are never adopted, and failure leaves no backup.
 
 No exception exists for stable-to-stable, stable-to-experimental, or one
 experimental range to another. The pure test covers every pair for both panel
@@ -262,8 +262,8 @@ are no longer reported as Intel `CTL_RESULT_ERROR_KMD_CALL`.
 The health policy distinguishes an exact clean uninstall (no managed record,
 backup, EDID, task, helper or LFC modification) from a broken installation and
 reports `CLEAN_NOT_INSTALLED`. A clean unmanaged CUSTOM Arc Sync profile remains
-visible but receives the automatic RECOMMENDED-normalization instruction, not
-another Restore.
+visible but receives the automatic standard-profile normalization instruction,
+not another Restore.
 
 Unknown third-party EDID blocks are never removed. Emergency EDID removal also
 requires an exact known hash and exact validated registry path.

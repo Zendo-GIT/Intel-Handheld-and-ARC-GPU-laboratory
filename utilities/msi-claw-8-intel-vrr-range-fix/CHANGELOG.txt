@@ -21,8 +21,9 @@ MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 - Refuses to adopt already-disabled Intel flags when their original backup is
   missing.
 - Never adopts unmanaged Intel CUSTOM as a first-install original state. The
-  installer forces Intel RECOMMENDED, verifies fresh driver readback and only
-  then saves the official restoration baseline.
+  installer tries RECOMMENDED, verifies fresh readback and falls back to
+  EXCELLENT when the driver silently retains CUSTOM. Only a confirmed standard
+  profile is saved.
 - Skips a redundant restore write when exact saved profile ID/range/timings are
   already active, fixing the collected A1M Intel KMD 0x40000017 recovery case.
 - Retries transient Intel driver calls and reports internal target drift with

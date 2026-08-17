@@ -110,9 +110,10 @@ LFC patch is applied, and normal one-shot sign-in persistence is installed.
    or `EXCELLENT`. If the driver instead exposes an unmanaged `CUSTOM` profile,
    ClawLab does not adopt its unknown values. Because current Intel Graphics
    Software builds cannot select these internal profiles manually, the installer
-   automatically forces Intel `RECOMMENDED`, verifies fresh driver readback and
-   only then saves that official state as the restoration baseline. A failed
-   normalization stops before any original-profile backup is created.
+   tries Intel `RECOMMENDED`, verifies fresh readback, and falls back to
+   `EXCELLENT` if that driver silently retains `CUSTOM`. Only the first standard
+   profile actually confirmed by the driver is saved as the restoration
+   baseline. A failed normalization stops before any backup is created.
 
 Every installer asks for CRU-cleanup and exclusive VRR-ownership confirmation
 before doing anything. Experimental installers then add the separate mandatory

@@ -413,7 +413,9 @@ foreach ($marker in @(
         'OLDER_VERSION_RESTORE_REQUIRED'
         'Test-ClawLabFirstInstallProfileSafe'
         'Resolve-FirstInstallProfileBaseline'
-        'Invoke-SetProfile -Target $Snapshot -ProfileId $profileRecommended'
+        "ProfileId = `$profileRecommended; Name = 'RECOMMENDED'"
+        "ProfileId = `$profileExcellent; Name = 'EXCELLENT'"
+        'Invoke-SetProfile -Target $normalized -ProfileId ([int]$candidate.ProfileId)'
         'No ClawLab original-profile backup was created.'
         'Test-SnapshotMatchesSavedProfile'
         'CTL_RESULT_ERROR_KMD_CALL'
@@ -429,8 +431,16 @@ $baselineResolverCount = [regex]::Matches(
 if ($baselineResolverCount -ne 3) {
     throw "Every stable/custom first-install path must use the shared baseline resolver; found $baselineResolverCount definition/call markers."
 }
+$recommendedCandidateIndex = $mainVrrScriptText.IndexOf(
+    "ProfileId = `$profileRecommended; Name = 'RECOMMENDED'",
+    [StringComparison]::Ordinal
+)
+$excellentCandidateIndex = $mainVrrScriptText.IndexOf(
+    "ProfileId = `$profileExcellent; Name = 'EXCELLENT'",
+    [StringComparison]::Ordinal
+)
 $normalizationWriteIndex = $mainVrrScriptText.IndexOf(
-    'Invoke-SetProfile -Target $Snapshot -ProfileId $profileRecommended',
+    'Invoke-SetProfile -Target $normalized -ProfileId ([int]$candidate.ProfileId)',
     [StringComparison]::Ordinal
 )
 $normalizationReadbackIndex = $mainVrrScriptText.IndexOf(
@@ -438,13 +448,15 @@ $normalizationReadbackIndex = $mainVrrScriptText.IndexOf(
     [StringComparison]::Ordinal
 )
 $normalizationVerificationIndex = $mainVrrScriptText.IndexOf(
-    'if ([int]$normalized.ProfileId -ne $profileRecommended)',
+    'if ([int]$normalized.ProfileId -eq [int]$candidate.ProfileId)',
     [StringComparison]::Ordinal
 )
-if ($normalizationWriteIndex -lt 0 -or
+if ($recommendedCandidateIndex -lt 0 -or
+    $excellentCandidateIndex -le $recommendedCandidateIndex -or
+    $normalizationWriteIndex -le $excellentCandidateIndex -or
     $normalizationReadbackIndex -le $normalizationWriteIndex -or
     $normalizationVerificationIndex -le $normalizationReadbackIndex) {
-    throw 'Unmanaged CUSTOM normalization must write Intel RECOMMENDED, obtain fresh readback and verify it in that order.'
+    throw 'Unmanaged CUSTOM normalization must try RECOMMENDED then EXCELLENT, with fresh readback and exact verification.'
 }
 $customResolverIndex = $mainVrrScriptText.IndexOf(
     '$Before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $Before',

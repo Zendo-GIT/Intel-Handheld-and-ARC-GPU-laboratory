@@ -40,9 +40,9 @@
   when the original LFC backup is missing.
 - Never adopts an unmanaged Intel Arc Sync `CUSTOM` profile as a clean
   first-install baseline. Because Intel Graphics Software cannot select the
-  internal standard profiles manually, the installer forces Intel
-  `RECOMMENDED`, verifies fresh readback and only then saves the official
-  restoration baseline.
+  internal standard profiles manually, the installer tries `RECOMMENDED`,
+  verifies fresh readback and falls back to `EXCELLENT` when the driver silently
+  retains `CUSTOM`. Only a confirmed standard profile is saved.
 - Makes original-profile restoration fully idempotent. Exact already-active
   CUSTOM ID/range/timing or standard-profile ID is verified without a redundant
   Intel setter call, fixing the collected A1M `0x40000017` recovery failure.

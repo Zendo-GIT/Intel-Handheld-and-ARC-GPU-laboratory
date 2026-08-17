@@ -83,10 +83,10 @@ A clean first installation accepts Intel Arc Sync `RECOMMENDED` or `EXCELLENT`
 directly. An unmanaged `CUSTOM` profile is never adopted as the original state:
 it may belong to another VRR writer or a previous manually deleted installation.
 Current Intel Graphics Software builds do not expose a control for selecting
-the internal standard profiles, so ClawLab forces Intel `RECOMMENDED` through
-the driver API, performs fresh readback and saves the official profile only
-after exact profile-ID verification. Failure stops before an original-profile
-backup or managed mode is created.
+the internal standard profiles. ClawLab first tries Intel `RECOMMENDED`, obtains
+fresh readback, and tries `EXCELLENT` if the driver returned success but retained
+`CUSTOM`. It saves only the first standard profile confirmed by exact profile-ID
+verification. Failure stops before a backup or managed mode is created.
 
 The release includes an offline test of all eight managed modes against all
 eight desired modes for both panel families. Its expected matrix contains 16
