@@ -269,12 +269,20 @@ $launcherPath = Join-Path $projectRoot 'ClawLab-VRR-Startup.vbs'
 $launcherText = Get-Content -LiteralPath $launcherPath -Raw
 foreach ($value in @(
     '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe',
+    '%LOCALAPPDATA%\ClawLab\Intel-Arc-Sync-Full-Range\ClawLab-Cursor-Refresh-Helper.exe',
+    'fileSystem.FileExists(helperPath)',
+    'shell.Run helperCommand, 0, False',
     'shell.Run(command, 0, True)',
     '-Action ApplyStartup'
 )) {
     if ($launcherText -notmatch [regex]::Escape($value)) {
         throw "Windowless launcher no longer contains required value: $value"
     }
+}
+$helperLaunchIndex = $launcherText.IndexOf('shell.Run helperCommand, 0, False', [StringComparison]::Ordinal)
+$startupApplyIndex = $launcherText.IndexOf('-Action ApplyStartup', [StringComparison]::Ordinal)
+if ($helperLaunchIndex -lt 0 -or $startupApplyIndex -lt 0 -or $helperLaunchIndex -gt $startupApplyIndex) {
+    throw 'The cursor helper must launch before the slower PowerShell startup reapply path.'
 }
 
 $lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw

@@ -172,6 +172,11 @@ surface in the extreme lower-right corner while a visible mouse moves. It stops
 1.5 seconds after input, releases its timer-resolution request, trims only its
 own working set and enters deep idle. Controller use naturally leaves it idle.
 
+At sign-in, the windowless launcher starts this helper immediately before the
+slower PowerShell, WMI and Intel profile-verification path. The later verified
+startup pass remains an idempotent fallback if that first launch could not stay
+active. This keeps desktop cursor refresh from waiting on Intel driver startup.
+
 It does not inject into games, inspect launchers, or alter VRR/LFC settings.
 Elevated always-on-top windows can cover its non-elevated surface; this does not
 affect game VRR or the Intel LFC correction.

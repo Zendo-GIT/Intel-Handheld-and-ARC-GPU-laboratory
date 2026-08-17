@@ -106,6 +106,10 @@ required for the standalone fix.
   only active display; disconnect every external display before the trial.
 - Concurrent VRR/LFC sign-in requests are serialized to prevent duplicate
   profile or Cursor Refresh Helper startup work.
+- The windowless sign-in launcher now starts the Cursor Refresh Helper before
+  PowerShell/WMI/Intel initialization. The fully verified startup path still
+  performs an idempotent fallback check, avoiding the observed tens-of-seconds
+  desktop-helper delay without weakening profile verification.
 - Unknown third-party EDID data remains untouched.
 
 ## Safety boundary

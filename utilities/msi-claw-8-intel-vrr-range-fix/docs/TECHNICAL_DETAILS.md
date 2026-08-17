@@ -203,6 +203,13 @@ removes the original Run entry while managed, runs its own one-shot task, then
 starts the trusted Intel application. Signed application updates are accepted
 only after fresh Authenticode and SHA-256 verification.
 
+The windowless task launcher starts the already installed non-elevated cursor
+helper as its first best-effort action. It does not wait for PowerShell, WMI or
+Intel Control Library initialization. The main verified startup path later
+checks the helper hash/state and idempotently starts it again if necessary. This
+separates desktop responsiveness from the slower driver-stabilization phase
+without creating a resident VRR watcher.
+
 Every other VRR/EDID writer must be disabled. The only supported exception is
 [ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks), whose
 compatibility patch prevents it from overwriting ClawLab state. ClawTweaks is
