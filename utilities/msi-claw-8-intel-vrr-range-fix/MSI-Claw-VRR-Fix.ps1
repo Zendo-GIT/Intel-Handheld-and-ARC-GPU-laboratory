@@ -430,6 +430,33 @@ function Get-KnownOverrideHashes {
     throw "Unknown ClawLab custom EDID hash: $EdidSha256"
 }
 
+function Get-ThirdPartyEdidOverrideValueNames {
+    param([Parameter(Mandatory)][string]$OverridePath)
+
+    if (-not (Test-Path -LiteralPath $OverridePath -PathType Container)) {
+        return @()
+    }
+
+    $overrideKey = Get-Item -LiteralPath $OverridePath -ErrorAction Stop
+    return @(
+        $overrideKey.GetValueNames() |
+            Where-Object { [string]$_ -notin @('0', '1') } |
+            Sort-Object -Unique
+    )
+}
+
+function Assert-NoThirdPartyEdidOverrideValues {
+    param([Parameter(Mandatory)][object]$RegistryContext)
+
+    $valueNames = @($RegistryContext.ThirdPartyOverrideValueNames)
+    if ($valueNames.Count -eq 0) {
+        return
+    }
+
+    $listedNames = $valueNames -join ', '
+    throw "Third-party EDID override metadata is still installed: $listedNames. If CRU was ever used, run reset-all.exe from the current official CRU release and restart Windows before retrying. ClawLab will not modify, adopt or overwrite this third-party state."
+}
+
 function Get-PanelRegistryContext {
     param([Parameter(Mandatory)][object]$Panel)
 
@@ -445,6 +472,8 @@ function Get-PanelRegistryContext {
         throw 'The validated panel registry key is missing.'
     }
 
+    $overridePath = Join-Path $deviceParameters 'EDID_OVERRIDE'
+    $thirdPartyOverrideValueNames = @(Get-ThirdPartyEdidOverrideValueNames -OverridePath $overridePath)
     $rawReportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $deviceParameters -Name 'EDID' -ErrorAction Stop)
     $canonicalEdid = Get-ClawLabCanonicalEdid -Bytes $rawReportedEdid -ExpectedLength ([int]$definition.EdidLength)
     $reportedEdid = [byte[]]$canonicalEdid.Bytes
@@ -505,6 +534,10 @@ function Get-PanelRegistryContext {
             }
         }
         if (-not $knownCompleteOverride -and -not $recoverableClawLabBlocks) {
+            if ($thirdPartyOverrideValueNames.Count -gt 0) {
+                $listedNames = $thirdPartyOverrideValueNames -join ', '
+                throw "Unsupported active EDID $reportedHash with third-party override metadata: $listedNames. If CRU was ever used, run reset-all.exe from the current official CRU release and restart Windows. ClawLab refused to trust or overwrite this state."
+            }
             throw "Unsupported panel EDID: $reportedHash. Custom modes are restricted to the validated EDID."
         }
 
@@ -531,7 +564,8 @@ function Get-PanelRegistryContext {
     [pscustomobject]@{
         InstanceId = $instanceId
         DeviceParametersPath = $deviceParameters
-        OverridePath = Join-Path $deviceParameters 'EDID_OVERRIDE'
+        OverridePath = $overridePath
+        ThirdPartyOverrideValueNames = @($thirdPartyOverrideValueNames)
         PhysicalEdid = $physicalEdid
         PhysicalEdidSha256 = [string]$definition.PhysicalEdidSha256
         ReportedEdidSha256 = $reportedHash
@@ -2813,6 +2847,14 @@ try {
         Start-CursorRefreshHelper
     }
     $registryContext = Get-PanelRegistryContext -Panel $panel
+    if ($Action -in @(
+            'Install48', 'Install30',
+            'Install48_144', 'Install48_165', 'Install48_180',
+            'Install30_144', 'Install30_165', 'Install30_180',
+            'ApplyExperimentalTrial', 'ConfirmExperimentalTrial', 'ApplyStartup'
+        )) {
+        Assert-NoThirdPartyEdidOverrideValues -RegistryContext $registryContext
+    }
     $experimentalEdids = @(Get-ExperimentalEdidCatalog -PhysicalEdid $registryContext.PhysicalEdid -Definition $registryContext.Definition)
     $overrideState = Get-EdidOverrideState -RegistryContext $registryContext -ExperimentalEdids $experimentalEdids
     Add-ArcSyncControlType

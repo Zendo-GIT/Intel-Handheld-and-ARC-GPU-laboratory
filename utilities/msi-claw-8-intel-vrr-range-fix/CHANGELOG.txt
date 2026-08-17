@@ -3,6 +3,8 @@ MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 
 2.2.0 - 2026-08-17
 ------------------
+- Refuses residual CRU_* or other third-party EDID_OVERRIDE metadata before
+  VRR install, experimental confirmation, startup reapply or LFC application.
 - Supports the exact Claw A1M / Claw 7 AI+ Intel ControlLib 24-120 telemetry
   state without ever creating or installing a 24 Hz profile.
 - Keeps only 30-120 and official 48-120 as stable profiles.

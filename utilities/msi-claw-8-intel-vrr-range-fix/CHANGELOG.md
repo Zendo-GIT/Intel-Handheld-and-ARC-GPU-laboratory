@@ -2,6 +2,10 @@
 
 ## 2.2.0 — 2026-08-17
 
+- Adds a fail-closed registry preflight for residual `CRU_*` and other
+  third-party `EDID_OVERRIDE` metadata. VRR install, experimental confirmation,
+  startup reapply and LFC apply paths refuse the state before trusting or
+  overwriting it.
 - Adds exact MSI Claw A1M and Claw 7 AI+ handling for Intel ControlLib's
   observed `24-120` monitor telemetry while continuing to expose only the
   supported `30-120` and `48-120` profiles. No 24 Hz profile exists.

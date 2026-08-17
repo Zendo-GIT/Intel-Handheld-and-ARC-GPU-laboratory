@@ -94,6 +94,10 @@ LFC patch is applied, and normal one-shot sign-in persistence is installed.
    run `reset-all.exe`, and restart Windows before using ClawLab.
    **If CRU has never been used on this Windows installation, no CRU reset is
    needed.**
+   ClawLab also inspects the active `EDID_OVERRIDE` registry values. Remaining
+   `CRU_*` or other third-party metadata stops installation before ClawLab
+   changes the Intel profile or EDID. Do not answer the preflight with `Y`
+   until `reset-all.exe` and the required Windows restart are complete.
 5. Disable or uninstall every other application that writes, restores,
    synchronizes or reapplies VRR/EDID settings.
 6. The only supported coexistence exception is

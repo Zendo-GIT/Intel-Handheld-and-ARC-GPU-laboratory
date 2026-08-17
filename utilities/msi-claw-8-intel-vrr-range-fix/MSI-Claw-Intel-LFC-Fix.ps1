@@ -100,6 +100,21 @@ function Get-ByteArraySha256 {
     }
 }
 
+function Get-ThirdPartyEdidOverrideValueNames {
+    param([Parameter(Mandatory)][string]$OverridePath)
+
+    if (-not (Test-Path -LiteralPath $OverridePath -PathType Container)) {
+        return @()
+    }
+
+    $overrideKey = Get-Item -LiteralPath $OverridePath -ErrorAction Stop
+    return @(
+        $overrideKey.GetValueNames() |
+            Where-Object { [string]$_ -notin @('0', '1') } |
+            Sort-Object -Unique
+    )
+}
+
 $panels = [Collections.Generic.List[object]]::new()
 foreach ($monitor in @(Get-CimInstance -Namespace 'root\wmi' -ClassName 'WmiMonitorID')) {
     $manufacturer = Convert-WmiText -Values $monitor.ManufacturerName
@@ -140,12 +155,22 @@ $validatedEdidHashes = @(
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
 $panelInstanceId = $panel.InstanceName -replace '_\d+$', ''
 $panelDeviceParameters = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\$panelInstanceId\Device Parameters"
+$panelOverridePath = Join-Path $panelDeviceParameters 'EDID_OVERRIDE'
+$thirdPartyOverrideValueNames = @(Get-ThirdPartyEdidOverrideValueNames -OverridePath $panelOverridePath)
 $rawReportedEdid = [byte[]](Get-ItemPropertyValue -LiteralPath $panelDeviceParameters -Name 'EDID')
 $canonicalEdid = Get-ClawLabCanonicalEdid -Bytes $rawReportedEdid -ExpectedLength ([int]$panelDefinition.EdidLength)
 $reportedEdid = [byte[]]$canonicalEdid.Bytes
 $reportedEdidSha256 = Get-ByteArraySha256 -Bytes $reportedEdid
 if ($reportedEdidSha256 -notin $validatedEdidHashes) {
+    if ($thirdPartyOverrideValueNames.Count -gt 0) {
+        $listedNames = $thirdPartyOverrideValueNames -join ', '
+        throw "The active panel EDID is not an approved ClawLab state and third-party override metadata is present: $listedNames. If CRU was ever used, run reset-all.exe from the current official CRU release and restart Windows before reinstalling ClawLab. Unknown EDID hash: $reportedEdidSha256"
+    }
     throw "The active panel EDID is not an approved ClawLab state: $reportedEdidSha256"
+}
+if ($thirdPartyOverrideValueNames.Count -gt 0 -and $Action -in @('Apply', 'ApplyStartup')) {
+    $listedNames = $thirdPartyOverrideValueNames -join ', '
+    throw "The Intel LFC patch refused to run while third-party EDID override metadata is installed: $listedNames. If CRU was ever used, run reset-all.exe from the current official CRU release and restart Windows first."
 }
 
 $managedMode = $null
@@ -734,6 +759,7 @@ $finalBackupIdentity = Get-LfcBackupIdentityStatus
     PanelEdidSha256 = $reportedEdidSha256
     PanelEdidSourceLength = [int]$canonicalEdid.SourceLength
     PanelEdidNormalization = [string]$canonicalEdid.State
+    ThirdPartyEdidOverrideValues = if ($thirdPartyOverrideValueNames.Count -eq 0) { 'NONE' } else { $thirdPartyOverrideValueNames -join ', ' }
     LfcBackupIdentity = $finalBackupIdentity
     LfcTransition = $state
     StartupPersistence = Get-StartupPersistenceState

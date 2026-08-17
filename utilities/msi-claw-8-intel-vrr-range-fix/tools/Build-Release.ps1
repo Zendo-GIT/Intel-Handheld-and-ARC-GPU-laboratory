@@ -419,9 +419,22 @@ foreach ($marker in @(
         'No ClawLab original-profile backup was created.'
         'Test-SnapshotMatchesSavedProfile'
         'CTL_RESULT_ERROR_KMD_CALL'
+        'Get-ThirdPartyEdidOverrideValueNames'
+        'Assert-NoThirdPartyEdidOverrideValues'
+        'ClawLab refused to trust or overwrite this state.'
     )) {
     if ($mainVrrScriptText -notmatch [regex]::Escape($marker)) {
         throw "Atomic experimental install transaction is missing: $marker"
+    }
+}
+$lfcThirdPartyMarkers = @(
+    'Get-ThirdPartyEdidOverrideValueNames',
+    'The Intel LFC patch refused to run while third-party EDID override metadata is installed:',
+    'ThirdPartyEdidOverrideValues'
+)
+foreach ($marker in $lfcThirdPartyMarkers) {
+    if ($lfcScriptText -notmatch [regex]::Escape($marker)) {
+        throw "The LFC source is missing third-party EDID fail-closed handling: $marker"
     }
 }
 $baselineResolverCount = [regex]::Matches(

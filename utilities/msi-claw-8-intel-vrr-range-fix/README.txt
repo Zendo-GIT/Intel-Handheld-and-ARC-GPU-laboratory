@@ -42,6 +42,9 @@ MANDATORY BEFORE INSTALLATION
 3. If CRU was ever used, run reset-all.exe from the current official CRU
    release and restart Windows.
    If CRU was NEVER used on this Windows installation, no CRU reset is needed.
+   ClawLab checks the real EDID_OVERRIDE registry values too. Any remaining
+   CRU_* or other third-party metadata stops installation before a profile or
+   EDID change is made.
 4. Disable or remove every other tool that changes or reapplies VRR/EDID.
 5. The only supported exception is ClawTweaks 3.0 or later:
    https://github.com/enterTheVoidCode/ClawTweaks

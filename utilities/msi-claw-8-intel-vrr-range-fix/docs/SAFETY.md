@@ -133,6 +133,11 @@ CRU release followed by a restart. Unknown third-party EDID data is refused and
 never deleted by ClawLab. If CRU has never been used on the Windows
 installation, no CRU reset is needed.
 
+Install and startup-apply paths inspect the actual `EDID_OVERRIDE` value names
+as well as the EDID block hashes. Remaining `CRU_*` or other non-ClawLab
+metadata causes a fail-closed refusal before a new profile is written. ClawLab
+does not silently delete, adopt, or whitelist that state.
+
 ## Cursor helper boundary
 
 The helper receives Windows Raw Input and presents a nearly transparent 2×2 WPF

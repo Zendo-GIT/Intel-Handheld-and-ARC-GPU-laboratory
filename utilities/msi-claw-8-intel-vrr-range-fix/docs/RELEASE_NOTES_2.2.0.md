@@ -105,6 +105,9 @@ required for the standalone fix.
 - Rollback selects safe 120 Hz before removing an overclock EDID.
 - If CRU was ever used, `reset-all.exe` plus restart remains mandatory. A
   machine on which CRU was never used needs no CRU reset.
+- Installers verify the real `EDID_OVERRIDE` registry value names after the
+  interactive preflight. Remaining `CRU_*` or other third-party metadata is
+  rejected before ClawLab changes the profile, even if the user answered `Y`.
 - Guarded refresh-rate changes require the validated internal panel to be the
   only active display; disconnect every external display before the trial.
 - Concurrent VRR/LFC sign-in requests are serialized to prevent duplicate
