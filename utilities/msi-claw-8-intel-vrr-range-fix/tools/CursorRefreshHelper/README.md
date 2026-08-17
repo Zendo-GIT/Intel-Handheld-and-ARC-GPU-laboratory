@@ -2,6 +2,8 @@
 
 This helper uses standard Windows Raw Input and DWM composition only. It does not hook or inject into applications, inspect game processes, modify game files, or change the Intel LFC configuration.
 
+At sign-in, the process may be launched before the Windows shell. It waits for an interactive shell window and active DWM composition before creating its surface. The verified VRR startup path recreates it once after Intel/display initialization, preventing both delayed activation and an early ineffective surface.
+
 While raw mouse input is arriving, the helper animates a nearly transparent 2x2 pixel WPF/DWM surface. It keeps the surface active for 1.5 seconds after the latest mouse packet so short pauses do not cause unnecessary refresh transitions.
 
 At idle, the animation stops, the 1 ms timer-resolution request is released, the helper trims its own working set, and the process waits in the normal Windows message loop. The first visible raw-mouse packet wakes it again. A controller/game profile naturally produces no usable mouse activity, so the same state machine enters deep idle regardless of whether the profile came from ClawTweaks, MSI Center M, another controller utility, or no profile manager at all. The helper does not inspect or control any of those applications.

@@ -135,6 +135,10 @@ An experimental install is a two-phase transaction.
   read/execute-only ACLs;
 - bind every protected payload file to a versioned SHA-256 manifest and verify
   that manifest before the trial or elevated main script proceeds;
+- construct and persist a fresh protected DACL separately for the parent and
+  versioned runtime directories; reusing one .NET `DirectorySecurity` instance
+  is forbidden because its modified-section flags are cleared after the first
+  persistence operation;
 - run the task itself with limited user privileges.
 
 ### Phase 2: post-restart trial
@@ -168,8 +172,12 @@ anything else                    -> RESTORE_ORIGINAL_VRR required
 ```
 
 `Test-ClawLabFirstInstallProfileSafe` adds a separate baseline rule: a genuine
-`CLEAN/NONE` first installation accepts only Intel `RECOMMENDED` or `EXCELLENT`.
-It refuses an unmanaged `CUSTOM` profile before saving any original-state file.
+`CLEAN/NONE` first installation accepts Intel `RECOMMENDED` or `EXCELLENT`
+directly. A clean unmanaged `CUSTOM` result enters a normalization transaction:
+the main script forces Intel `RECOMMENDED`, obtains fresh ControlLib readback and
+requires profile ID 1 before saving the restoration baseline. Unknown CUSTOM
+values are never adopted, and normalization failure leaves no original-profile
+backup.
 
 No exception exists for stable-to-stable, stable-to-experimental, or one
 experimental range to another. The pure test covers every pair for both panel
@@ -205,10 +213,12 @@ only after fresh Authenticode and SHA-256 verification.
 
 The windowless task launcher starts the already installed non-elevated cursor
 helper as its first best-effort action. It does not wait for PowerShell, WMI or
-Intel Control Library initialization. The main verified startup path later
-checks the helper hash/state and idempotently starts it again if necessary. This
-separates desktop responsiveness from the slower driver-stabilization phase
-without creating a resident VRR watcher.
+Intel Control Library initialization. The helper waits internally for the
+interactive shell and DWM composition before creating its surface. The main
+verified startup path later checks its hash/state and recreates that surface
+exactly once after Intel/display initialization settles. This separates desktop
+responsiveness from the slower driver-stabilization phase without accepting an
+early but ineffective DWM window or creating a resident VRR watcher.
 
 Every other VRR/EDID writer must be disabled. The only supported exception is
 [ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks), whose
@@ -252,7 +262,8 @@ are no longer reported as Intel `CTL_RESULT_ERROR_KMD_CALL`.
 The health policy distinguishes an exact clean uninstall (no managed record,
 backup, EDID, task, helper or LFC modification) from a broken installation and
 reports `CLEAN_NOT_INSTALLED`. A clean unmanaged CUSTOM Arc Sync profile remains
-visible but receives a standard-baseline instruction, not another Restore.
+visible but receives the automatic RECOMMENDED-normalization instruction, not
+another Restore.
 
 Unknown third-party EDID blocks are never removed. Emergency EDID removal also
 requires an exact known hash and exact validated registry path.

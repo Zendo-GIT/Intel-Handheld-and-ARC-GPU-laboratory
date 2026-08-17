@@ -106,10 +106,13 @@ LFC patch is applied, and normal one-shot sign-in persistence is installed.
    Windows refresh rate is changed.
 8. If any different ClawLab profile is installed, successfully run
    `RECOVERY\RESTORE_ORIGINAL_VRR.bat` and complete the restart first.
-9. A first installation must start from Intel Arc Sync `RECOMMENDED` or
-   `EXCELLENT`. An unmanaged `CUSTOM` profile is refused instead of being saved
-   as a potentially unrestorable original state. Select one of the two standard
-   profiles in Intel Graphics Software, restart Windows, then retry.
+9. A clean first installation normally starts from Intel Arc Sync `RECOMMENDED`
+   or `EXCELLENT`. If the driver instead exposes an unmanaged `CUSTOM` profile,
+   ClawLab does not adopt its unknown values. Because current Intel Graphics
+   Software builds cannot select these internal profiles manually, the installer
+   automatically forces Intel `RECOMMENDED`, verifies fresh driver readback and
+   only then saves that official state as the restoration baseline. A failed
+   normalization stops before any original-profile backup is created.
 
 Every installer asks for CRU-cleanup and exclusive VRR-ownership confirmation
 before doing anything. Experimental installers then add the separate mandatory
@@ -174,8 +177,10 @@ own working set and enters deep idle. Controller use naturally leaves it idle.
 
 At sign-in, the windowless launcher starts this helper immediately before the
 slower PowerShell, WMI and Intel profile-verification path. The later verified
-startup pass remains an idempotent fallback if that first launch could not stay
-active. This keeps desktop cursor refresh from waiting on Intel driver startup.
+startup pass recreates its DWM surface once after Intel/display initialization
+has settled. Internally, the early process waits for the interactive shell and
+DWM composition before creating that surface. This keeps desktop cursor refresh
+from waiting on Intel driver startup without racing the Windows desktop.
 
 It does not inject into games, inspect launchers, or alter VRR/LFC settings.
 Elevated always-on-top windows can cover its non-elevated surface; this does not

@@ -29,12 +29,20 @@
   panel is the only active display.
 - Serializes duplicate sign-in reapply requests so the VRR and LFC tasks cannot
   race or launch duplicate cursor helpers.
+- Starts the cursor helper before slow WMI/Intel initialization, waits internally
+  for the interactive shell/DWM, then recreates its surface once after verified
+  Intel startup so it is both prompt and effective.
+- Builds a fresh protected DACL for the parent and versioned experimental runtime
+  directories, fixing false missing-standard-user-read failures caused by reuse
+  of a persisted .NET `DirectorySecurity` object.
 - Extends the Intel LFC correction to all stable and experimental profiles.
 - Refuses to adopt already-disabled Intel solution flags as original values
   when the original LFC backup is missing.
-- Refuses to adopt an unmanaged Intel Arc Sync `CUSTOM` profile as a clean
-  first-install baseline; users must return to `RECOMMENDED` or `EXCELLENT` and
-  restart first.
+- Never adopts an unmanaged Intel Arc Sync `CUSTOM` profile as a clean
+  first-install baseline. Because Intel Graphics Software cannot select the
+  internal standard profiles manually, the installer forces Intel
+  `RECOMMENDED`, verifies fresh readback and only then saves the official
+  restoration baseline.
 - Makes original-profile restoration fully idempotent. Exact already-active
   CUSTOM ID/range/timing or standard-profile ID is verified without a redundant
   Intel setter call, fixing the collected A1M `0x40000017` recovery failure.

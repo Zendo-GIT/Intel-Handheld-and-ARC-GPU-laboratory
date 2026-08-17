@@ -20,8 +20,9 @@ MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 - Applies the Intel LFC correction to every stable and experimental profile.
 - Refuses to adopt already-disabled Intel flags when their original backup is
   missing.
-- Refuses an unmanaged Intel CUSTOM profile as a first-install original state;
-  users must select RECOMMENDED or EXCELLENT and restart first.
+- Never adopts unmanaged Intel CUSTOM as a first-install original state. The
+  installer forces Intel RECOMMENDED, verifies fresh driver readback and only
+  then saves the official restoration baseline.
 - Skips a redundant restore write when exact saved profile ID/range/timings are
   already active, fixing the collected A1M Intel KMD 0x40000017 recovery case.
 - Retries transient Intel driver calls and reports internal target drift with
@@ -36,6 +37,10 @@ MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
   is the only supported exception and remains entirely optional:
   https://github.com/enterTheVoidCode/ClawTweaks
 - Requires CRU reset-all.exe plus restart if CRU was ever used.
+- Starts the cursor helper before slow WMI/Intel initialization, waits for the
+  interactive shell/DWM and recreates its surface after verified Intel startup.
+- Creates a fresh explicit ACL for both protected experimental-runtime folders,
+  fixing false missing-standard-user-read failures on the versioned child.
 - Updates the Cursor Refresh Helper and package to 2.2.0.
 
 2.1.2 - 2026-08-16

@@ -174,7 +174,7 @@ else {
 $recommendedAction = switch ($overallHealth) {
     'CLEAN_NOT_INSTALLED' {
         if ([string]$vrr.DriverProfile -eq 'CUSTOM') {
-            'Clean uninstall verified. Before first installation, select Intel Arc Sync RECOMMENDED or EXCELLENT in Intel Graphics Software and restart Windows; unmanaged CUSTOM cannot be adopted as the original profile.'
+            'Clean uninstall verified. Run the desired installer when ready; it will automatically normalize this unmanaged CUSTOM state to Intel RECOMMENDED, verify it, and only then save the safe original-profile baseline. No Restore or Factory Reset is required.'
         }
         else {
             'Clean uninstall verified. Install one desired 30-120 or 48-120 profile when ready; no Restore or Factory Reset is required.'

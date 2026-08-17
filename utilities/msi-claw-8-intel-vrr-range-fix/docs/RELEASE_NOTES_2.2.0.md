@@ -70,9 +70,11 @@ installed.
   families.
 - Every installer asks users to confirm CRU cleanup and that conflicting
   VRR/EDID tools are disabled before any profile action.
-- A first installation now refuses an unmanaged Intel `CUSTOM` profile rather
-  than recording an unknown or previously modified state as the original.
-  Start from Intel `RECOMMENDED` or `EXCELLENT` and restart before retrying.
+- A first installation never records an unmanaged Intel `CUSTOM` profile as the
+  original. Because Intel Graphics Software cannot select the internal standard
+  profiles manually, ClawLab now forces Intel `RECOMMENDED`, verifies fresh
+  driver readback and only then saves the official restoration baseline.
+  Normalization failure stops before a backup or managed mode is created.
 - A collected A1M recovery case showed an already-active saved CUSTOM 30–120
   profile receiving Intel KMD error `0x40000017` when redundantly rewritten.
   Restore now skips that write only after exact ID/range/timing comparison,
@@ -81,8 +83,8 @@ installed.
   ClawLab target-selection failures now have distinct diagnostic messages.
 - `CHECK_STATUS` now reports a completely restored machine as
   `CLEAN_NOT_INSTALLED` instead of incorrectly requesting another Restore. If
-  that clean state still uses unmanaged Intel CUSTOM, it gives the required
-  RECOMMENDED/EXCELLENT baseline instruction.
+  that clean state still uses unmanaged Intel CUSTOM, it explains the automatic
+  RECOMMENDED normalization performed by the next installer.
 - Experimental installers then require a separate timed overclock warning and
   typed risk acceptance.
 
@@ -107,9 +109,14 @@ required for the standalone fix.
 - Concurrent VRR/LFC sign-in requests are serialized to prevent duplicate
   profile or Cursor Refresh Helper startup work.
 - The windowless sign-in launcher now starts the Cursor Refresh Helper before
-  PowerShell/WMI/Intel initialization. The fully verified startup path still
-  performs an idempotent fallback check, avoiding the observed tens-of-seconds
-  desktop-helper delay without weakening profile verification.
+  PowerShell/WMI/Intel initialization. The process waits for the interactive
+  shell/DWM before creating its surface, and the fully verified startup path
+  recreates that surface once after Intel/display initialization. This avoids
+  both the observed tens-of-seconds delay and an early ineffective DWM window.
+- Guarded trials now construct a fresh explicit protected ACL for both the
+  `%ProgramData%` parent and versioned runtime. This fixes systems where reuse of
+  one persisted .NET ACL object left only inherited child rules and caused the
+  safe `standard-user read access` refusal.
 - Unknown third-party EDID data remains untouched.
 
 ## Safety boundary

@@ -156,10 +156,10 @@ function Test-ClawLabFirstInstallProfileSafe {
     )
 
     # A first installation must not adopt an unmanaged CUSTOM profile as its
-    # restorable baseline. Such a profile can have been left by an older tool,
-    # a failed/manual cleanup or another VRR owner, and some Intel drivers
-    # refuse to recreate it through ctlSetIntelArcSyncProfile. Existing,
-    # consistent ClawLab profiles are handled by the normal idempotent path.
+    # restorable baseline. The main installer uses this false result to
+    # normalize the clean, unowned state to Intel RECOMMENDED and verifies it
+    # before saving anything. Existing, consistent ClawLab profiles are handled
+    # by the normal idempotent path.
     if ($CurrentMode -eq 'NONE' -and $CurrentState -eq 'CLEAN') {
         return $ProfileId -in @(1, 2)
     }

@@ -51,6 +51,7 @@ namespace ClawLab.CursorRefresh
                     }
                 }
 
+                WaitForInteractiveDesktop();
                 var application = new Application
                 {
                     ShutdownMode = ShutdownMode.OnMainWindowClose
@@ -61,6 +62,30 @@ namespace ClawLab.CursorRefresh
                 return 0;
             }
         }
+
+        private static void WaitForInteractiveDesktop()
+        {
+            // The sign-in launcher intentionally starts this process before
+            // PowerShell/WMI. Do not create the DWM surface until the user's
+            // shell and desktop composition are actually ready, otherwise an
+            // early but still-running window can remain ineffective.
+            var timeout = Stopwatch.StartNew();
+            while (timeout.Elapsed < TimeSpan.FromSeconds(30))
+            {
+                bool compositionEnabled;
+                int result = DwmIsCompositionEnabled(out compositionEnabled);
+                if (GetShellWindow() != IntPtr.Zero && result >= 0 && compositionEnabled)
+                    return;
+                Thread.Sleep(100);
+            }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetShellWindow();
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmIsCompositionEnabled(
+            [MarshalAs(UnmanagedType.Bool)] out bool enabled);
     }
 
     internal sealed class RefreshSurface : Window

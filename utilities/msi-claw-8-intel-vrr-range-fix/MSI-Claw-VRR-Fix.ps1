@@ -1209,6 +1209,15 @@ function Start-CursorRefreshHelper {
     }
 }
 
+function Restart-CursorRefreshHelper {
+    # Intel profile/display initialization can invalidate a DWM surface that
+    # was created very early at sign-in. Recreate the helper exactly once after
+    # final profile verification so a running process also means a fresh,
+    # effective desktop surface.
+    Stop-CursorRefreshHelper
+    Start-CursorRefreshHelper
+}
+
 function Remove-CursorRefreshHelper {
     Stop-CursorRefreshHelper
     Remove-FileIfPresent -LiteralPath $installedCursorRefreshHelperPath
@@ -2345,18 +2354,36 @@ function Test-SnapshotMatchesSavedProfile {
         -SavedMaxDecreaseUs ([uint32]$Profile.MaxFrameTimeDecreaseInUs)
 }
 
-function Assert-FirstInstallProfileSafe {
+function Resolve-FirstInstallProfileBaseline {
     param(
         [Parameter(Mandatory)][object]$Transition,
         [Parameter(Mandatory)][object]$Snapshot
     )
 
-    if (-not (Test-ClawLabFirstInstallProfileSafe `
+    if (Test-ClawLabFirstInstallProfileSafe `
             -CurrentMode ([string]$Transition.Mode) `
             -CurrentState ([string]$Transition.State) `
-            -ProfileId ([int]$Snapshot.ProfileId))) {
-        throw 'First installation found an unmanaged Intel Arc Sync CUSTOM profile. Select RECOMMENDED or EXCELLENT in Intel Graphics Software, ensure that no unsupported VRR-writing tool is active, restart Windows, then retry. ClawLab refused to save an unknown custom state as the original profile.'
+            -ProfileId ([int]$Snapshot.ProfileId)) {
+        return $Snapshot
     }
+
+    # RECOMMENDED and EXCELLENT are Intel driver API profiles; current Intel
+    # Graphics Software builds do not expose a UI control that can select them.
+    # A clean first install therefore normalizes an otherwise unowned CUSTOM
+    # profile itself, verifies the standard profile, and only then saves the
+    # restorable baseline. The unknown CUSTOM values are never adopted.
+    Confirm-AdministratorOrRelaunch
+    Write-Host 'A clean first installation found an unmanaged Intel Arc Sync CUSTOM profile.' -ForegroundColor Yellow
+    Write-Host 'Intel Graphics Software cannot select the internal RECOMMENDED/EXCELLENT profiles manually.' -ForegroundColor Yellow
+    Write-Host 'ClawLab is normalizing this unowned state to Intel RECOMMENDED before creating its original-profile backup.' -ForegroundColor Yellow
+    Invoke-SetProfile -Target $Snapshot -ProfileId $profileRecommended
+    Start-Sleep -Milliseconds 750
+    $normalized = Get-TargetSnapshot -Attempts 10
+    if ([int]$normalized.ProfileId -ne $profileRecommended) {
+        throw "Could not verify the automatic Intel RECOMMENDED baseline; current profile is $($normalized.ProfileName). No ClawLab original-profile backup was created."
+    }
+    Write-Host 'The Intel RECOMMENDED first-install baseline is active and verified.' -ForegroundColor Green
+    return $normalized
 }
 
 function Restore-SnapshotProfile {
@@ -2399,7 +2426,7 @@ function Install-CustomEdidMode {
     $variant = $desired[0]
     $isOverclock = Test-IsExperimentalOverclockMode -Mode $DesiredState
     $transition = Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState
-    Assert-FirstInstallProfileSafe -Transition $transition -Snapshot $Before
+    $Before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $Before
 
     if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
         throw 'An unknown EDID override is installed. Remove it with its original tool before using a ClawLab custom range.'
@@ -2762,7 +2789,8 @@ try {
     if ($Action -eq 'ApplyStartup') {
         # The helper only needs the validated panel, installed state and the
         # current interactive desktop. Start it before the slower Intel driver
-        # stabilization path; the later call remains an idempotent final check.
+        # stabilization path. The final verified path recreates its DWM surface
+        # once after Intel/display initialization has settled.
         Start-CursorRefreshHelper
     }
     $registryContext = Get-PanelRegistryContext -Panel $panel
@@ -2913,7 +2941,7 @@ try {
                 $displaySuffix = ", $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz"
             }
             $identitySuffix = if ($script:intelStartupIdentityRenewed) { ', signed Intel Graphics Software update trusted' } else { '' }
-            Start-CursorRefreshHelper
+            Restart-CursorRefreshHelper
             Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz, event-driven cursor refresh active" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix + $identitySuffix)
             Exit-StartupApplyMutex
             exit 0
@@ -2921,7 +2949,7 @@ try {
 
         'Install48' {
             $transition = Assert-ProfileTransitionAllowed -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120'
-            Assert-FirstInstallProfileSafe -Transition $transition -Snapshot $before
+            $before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $before
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }

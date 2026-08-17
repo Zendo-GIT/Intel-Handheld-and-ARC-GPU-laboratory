@@ -29,7 +29,11 @@ if ($cursorHelperAssembly.Version.ToString() -ne "$Version.0") {
 }
 $cursorHelperSourcePath = Join-Path $projectRoot 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'
 $cursorHelperSourceText = Get-Content -LiteralPath $cursorHelperSourcePath -Raw
-foreach ($value in @('1500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices', 'SetProcessWorkingSetSize', 'timeEndPeriod(1)')) {
+foreach ($value in @(
+        '1500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices',
+        'SetProcessWorkingSetSize', 'timeEndPeriod(1)',
+        'WaitForInteractiveDesktop();', 'GetShellWindow()', 'DwmIsCompositionEnabled'
+    )) {
     if ($cursorHelperSourceText -notmatch [regex]::Escape($value)) {
         throw "Cursor Refresh Helper source is missing the validated allocation-free marker: $value"
     }
@@ -90,6 +94,7 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'tools\Test-ArcSync-Range-Policy.ps1'; Destination = 'SOURCE\Test-ArcSync-Range-Policy.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Experimental-Overclock-Edids.ps1'; Destination = 'SOURCE\Test-Experimental-Overclock-Edids.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Public-Installer-Matrix.ps1'; Destination = 'SOURCE\Test-Public-Installer-Matrix.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Protected-Runtime-Acl.ps1'; Destination = 'SOURCE\Test-Protected-Runtime-Acl.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'; Destination = 'SOURCE\CursorRefreshHelper\Build-CursorRefreshHelper.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\README.md'; Destination = 'SOURCE\CursorRefreshHelper\README.md' }
@@ -173,6 +178,7 @@ $requiredIntegrityValues = @(
     "'Intel' + [char]0x00AE + ' Graphics Software'"
     'Install-CursorRefreshHelper',
     'Start-CursorRefreshHelper',
+    'Restart-CursorRefreshHelper',
     'Remove-CursorRefreshHelper',
     'RUNNING_EVENT_DRIVEN',
     'VERSION_MISMATCH'
@@ -251,6 +257,16 @@ if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -
     [string]$installerMatrixResult.GuardedTrialOrder -ne 'PASS' -or
     [int]$installerMatrixResult.Forbidden24HzProfiles -ne 0) {
     throw 'The public installer/action/LFC/guarded-trial matrix test failed.'
+}
+
+$protectedAclTest = Join-Path $projectRoot 'tools\Test-Protected-Runtime-Acl.ps1'
+$protectedAclResult = & $protectedAclTest
+if ($null -eq $protectedAclResult -or
+    [string]$protectedAclResult.Result -ne 'PASS' -or
+    -not [bool]$protectedAclResult.DistinctAclObjects -or
+    -not [bool]$protectedAclResult.StandardUserReadExecute -or
+    [bool]$protectedAclResult.StandardUserWrite) {
+    throw 'The protected-runtime fresh-ACL and standard-user access test failed.'
 }
 
 $lfcIdentityTest = Join-Path $projectRoot 'tools\Test-Lfc-Backup-Identity.ps1'
@@ -396,12 +412,59 @@ foreach ($marker in @(
         'LfcFixActive'
         'OLDER_VERSION_RESTORE_REQUIRED'
         'Test-ClawLabFirstInstallProfileSafe'
+        'Resolve-FirstInstallProfileBaseline'
+        'Invoke-SetProfile -Target $Snapshot -ProfileId $profileRecommended'
+        'No ClawLab original-profile backup was created.'
         'Test-SnapshotMatchesSavedProfile'
         'CTL_RESULT_ERROR_KMD_CALL'
     )) {
     if ($mainVrrScriptText -notmatch [regex]::Escape($marker)) {
         throw "Atomic experimental install transaction is missing: $marker"
     }
+}
+$baselineResolverCount = [regex]::Matches(
+    $mainVrrScriptText,
+    [regex]::Escape('Resolve-FirstInstallProfileBaseline')
+).Count
+if ($baselineResolverCount -ne 3) {
+    throw "Every stable/custom first-install path must use the shared baseline resolver; found $baselineResolverCount definition/call markers."
+}
+$normalizationWriteIndex = $mainVrrScriptText.IndexOf(
+    'Invoke-SetProfile -Target $Snapshot -ProfileId $profileRecommended',
+    [StringComparison]::Ordinal
+)
+$normalizationReadbackIndex = $mainVrrScriptText.IndexOf(
+    '$normalized = Get-TargetSnapshot -Attempts 10',
+    [StringComparison]::Ordinal
+)
+$normalizationVerificationIndex = $mainVrrScriptText.IndexOf(
+    'if ([int]$normalized.ProfileId -ne $profileRecommended)',
+    [StringComparison]::Ordinal
+)
+if ($normalizationWriteIndex -lt 0 -or
+    $normalizationReadbackIndex -le $normalizationWriteIndex -or
+    $normalizationVerificationIndex -le $normalizationReadbackIndex) {
+    throw 'Unmanaged CUSTOM normalization must write Intel RECOMMENDED, obtain fresh readback and verify it in that order.'
+}
+$customResolverIndex = $mainVrrScriptText.IndexOf(
+    '$Before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $Before',
+    [StringComparison]::Ordinal
+)
+$customBackupIndex = $mainVrrScriptText.IndexOf(
+    'Save-OriginalProfile -Snapshot $Before',
+    [StringComparison]::Ordinal
+)
+$officialResolverIndex = $mainVrrScriptText.IndexOf(
+    '$before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $before',
+    [StringComparison]::Ordinal
+)
+$officialBackupIndex = $mainVrrScriptText.IndexOf(
+    'Save-OriginalProfile -Snapshot $before',
+    [StringComparison]::Ordinal
+)
+if ($customResolverIndex -lt 0 -or $customBackupIndex -le $customResolverIndex -or
+    $officialResolverIndex -lt 0 -or $officialBackupIndex -le $officialResolverIndex) {
+    throw 'Every stable/custom installer must resolve and verify its first-install baseline before saving the original profile.'
 }
 
 $healthScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'ClawLab-Health-Check.ps1') -Raw
@@ -423,6 +486,7 @@ foreach ($marker in @(
         '-RunLevel Limited',
         'ClawLab-VRR-Privileged\2.2.0',
         'Initialize-ProtectedRuntimeDirectory',
+        'New-ProtectedRuntimeAcl',
         'DirectorySecurity',
         'Write-ProtectedRuntimeManifest',
         'Assert-ProtectedRuntimeIntegrity',
@@ -432,6 +496,14 @@ foreach ($marker in @(
     if ($trialScriptText -notmatch [regex]::Escape($marker)) {
         throw "Guarded trial source is missing: $marker"
     }
+}
+$protectedAclFactoryCount = [regex]::Matches(
+    $trialScriptText,
+    [regex]::Escape('New-ProtectedRuntimeAcl')
+).Count
+if ($protectedAclFactoryCount -ne 3 -or
+    $trialScriptText -match [regex]::Escape('SetAccessControl($acl)')) {
+    throw 'The protected parent and versioned runtime must each receive a fresh explicit ACL object.'
 }
 $trialLauncherText = Get-Content -LiteralPath (Join-Path $projectRoot 'ClawLab-Experimental-Trial-Startup.vbs') -Raw
 foreach ($marker in @('WScript.ScriptFullName', 'Experimental-Overclock-VRR-Trial.ps1')) {

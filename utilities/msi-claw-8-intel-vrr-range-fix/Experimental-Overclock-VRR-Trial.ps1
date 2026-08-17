@@ -89,6 +89,29 @@ function Copy-VerifiedFile {
     }
 }
 
+function New-ProtectedRuntimeAcl {
+    $inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    $propagation = [Security.AccessControl.PropagationFlags]::None
+    $allow = [Security.AccessControl.AccessControlType]::Allow
+    $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $administratorsSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+    $usersSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')
+    $acl = [Security.AccessControl.DirectorySecurity]::new()
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.SetOwner($administratorsSid)
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+            $systemSid, [Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance, $propagation, $allow))
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+            $administratorsSid, [Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance, $propagation, $allow))
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+            $usersSid, [Security.AccessControl.FileSystemRights]::ReadAndExecute,
+            $inheritance, $propagation, $allow))
+    return $acl
+}
+
 function Initialize-ProtectedRuntimeDirectory {
     if (-not (Test-Administrator)) {
         throw 'Administrator rights are required to create the protected trial runtime.'
@@ -112,27 +135,11 @@ function Initialize-ProtectedRuntimeDirectory {
     else {
         [IO.Directory]::CreateDirectory($parentRoot) | Out-Null
     }
-
-    $inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
-        [Security.AccessControl.InheritanceFlags]::ObjectInherit
-    $propagation = [Security.AccessControl.PropagationFlags]::None
-    $allow = [Security.AccessControl.AccessControlType]::Allow
-    $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
-    $administratorsSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
-    $usersSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')
-    $acl = [Security.AccessControl.DirectorySecurity]::new()
-    $acl.SetAccessRuleProtection($true, $false)
-    $acl.SetOwner($administratorsSid)
-    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-            $systemSid, [Security.AccessControl.FileSystemRights]::FullControl,
-            $inheritance, $propagation, $allow))
-    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-            $administratorsSid, [Security.AccessControl.FileSystemRights]::FullControl,
-            $inheritance, $propagation, $allow))
-    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-            $usersSid, [Security.AccessControl.FileSystemRights]::ReadAndExecute,
-            $inheritance, $propagation, $allow))
-    ([IO.DirectoryInfo]$parentRoot).SetAccessControl($acl)
+    # DirectorySecurity tracks which sections were modified and clears those
+    # flags after persistence. Never reuse one instance for two paths: a fresh
+    # child can otherwise retain inherited rules instead of receiving the
+    # intended protected explicit DACL.
+    ([IO.DirectoryInfo]$parentRoot).SetAccessControl((New-ProtectedRuntimeAcl))
 
     if (Test-Path -LiteralPath $runtimeRoot) {
         $runtimeItem = Get-Item -LiteralPath $runtimeRoot -Force
@@ -144,7 +151,7 @@ function Initialize-ProtectedRuntimeDirectory {
     else {
         [IO.Directory]::CreateDirectory($runtimeRoot) | Out-Null
     }
-    ([IO.DirectoryInfo]$runtimeRoot).SetAccessControl($acl)
+    ([IO.DirectoryInfo]$runtimeRoot).SetAccessControl((New-ProtectedRuntimeAcl))
 
     $writeRights =
         [Security.AccessControl.FileSystemRights]::WriteData -bor
@@ -155,24 +162,30 @@ function Initialize-ProtectedRuntimeDirectory {
         [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
         [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
         [Security.AccessControl.FileSystemRights]::TakeOwnership
+    $requiredReadRights = [Security.AccessControl.FileSystemRights]::ReadAndExecute
+    $allow = [Security.AccessControl.AccessControlType]::Allow
+    $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $administratorsSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+    $usersSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')
     $allowedSids = @($systemSid.Value, $administratorsSid.Value, $usersSid.Value)
     foreach ($securedPath in @($parentRoot, $runtimeRoot)) {
         $verifiedAcl = ([IO.DirectoryInfo]$securedPath).GetAccessControl([Security.AccessControl.AccessControlSections]::Access)
         $rules = @($verifiedAcl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))
-        $usersRuleFound = $false
+        $usersAllowRights = [Security.AccessControl.FileSystemRights]0
         foreach ($rule in $rules) {
-            if ($rule.IsInherited -or $rule.IdentityReference.Value -notin $allowedSids) {
+            if ($rule.IsInherited -or
+                $rule.IdentityReference.Value -notin $allowedSids -or
+                $rule.AccessControlType -ne $allow) {
                 throw "The protected runtime ACL contains an unexpected rule: $securedPath"
             }
-            if ($rule.IdentityReference.Value -eq $usersSid.Value -and
-                $rule.AccessControlType -eq $allow) {
-                $usersRuleFound = $true
+            if ($rule.IdentityReference.Value -eq $usersSid.Value) {
+                $usersAllowRights = $usersAllowRights -bor $rule.FileSystemRights
                 if (($rule.FileSystemRights -band $writeRights) -ne 0) {
                     throw 'The protected trial runtime unexpectedly grants write access to standard users.'
                 }
             }
         }
-        if (-not $usersRuleFound) {
+        if (($usersAllowRights -band $requiredReadRights) -ne $requiredReadRights) {
             throw "The protected runtime ACL does not grant standard-user read access: $securedPath"
         }
     }

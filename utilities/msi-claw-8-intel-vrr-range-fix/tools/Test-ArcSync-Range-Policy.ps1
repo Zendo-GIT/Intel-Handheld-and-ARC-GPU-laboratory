@@ -131,7 +131,7 @@ Assert-Equal `
     $true 'A clean EXCELLENT first-install baseline was rejected.'
 Assert-Equal `
     (Test-ClawLabFirstInstallProfileSafe -CurrentMode 'NONE' -CurrentState 'CLEAN' -ProfileId 7) `
-    $false 'An unmanaged CUSTOM profile was accepted as a first-install baseline.'
+    $false 'An unmanaged CUSTOM profile was incorrectly accepted without main-installer RECOMMENDED normalization.'
 Assert-Equal `
     (Test-ClawLabFirstInstallProfileSafe -CurrentMode 'CLAWLAB_30_120' -CurrentState 'CONSISTENT' -ProfileId 2) `
     $true 'An existing consistent ClawLab repair was rejected by the first-install guard.'
