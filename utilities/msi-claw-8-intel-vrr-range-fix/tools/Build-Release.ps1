@@ -387,9 +387,19 @@ foreach ($marker in @(
         '& $protectedLfcToolPath -Action Apply',
         'LfcFixActive'
         'OLDER_VERSION_RESTORE_REQUIRED'
+        'Test-ClawLabFirstInstallProfileSafe'
+        'Test-SnapshotMatchesSavedProfile'
+        'CTL_RESULT_ERROR_KMD_CALL'
     )) {
     if ($mainVrrScriptText -notmatch [regex]::Escape($marker)) {
         throw "Atomic experimental install transaction is missing: $marker"
+    }
+}
+
+$healthScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'ClawLab-Health-Check.ps1') -Raw
+foreach ($marker in @('Test-ClawLabCleanNotInstalledState', 'CLEAN_NOT_INSTALLED', 'InstallationState')) {
+    if ($healthScriptText -notmatch [regex]::Escape($marker)) {
+        throw "Health status is missing a clean-uninstalled marker: $marker"
     }
 }
 

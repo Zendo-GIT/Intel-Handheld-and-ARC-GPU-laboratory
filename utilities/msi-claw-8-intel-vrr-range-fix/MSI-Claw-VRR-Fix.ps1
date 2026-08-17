@@ -1948,7 +1948,7 @@ namespace ClawLab.VrrFix
                 if (result != 0)
                     return result;
                 if (targetAdapterIndex < 0 || targetAdapterIndex >= adapterCount)
-                    return unchecked((int)0x40000017);
+                    return -1001;
 
                 adapters = Marshal.AllocHGlobal(checked((int)adapterCount * IntPtr.Size));
                 result = ctlEnumerateDevices(api, ref adapterCount, adapters);
@@ -1961,7 +1961,7 @@ namespace ClawLab.VrrFix
                 if (result != 0)
                     return result;
                 if (targetDisplayIndex < 0 || targetDisplayIndex >= displayCount)
-                    return unchecked((int)0x40000017);
+                    return -1002;
 
                 IntPtr displays = Marshal.AllocHGlobal(checked((int)displayCount * IntPtr.Size));
                 try
@@ -1978,10 +1978,10 @@ namespace ClawLab.VrrFix
                     };
                     result = ctlGetIntelArcSyncInfoForMonitor(display, ref monitor);
                     if (result != 0 || !monitor.IsSupported)
-                        return result != 0 ? result : unchecked((int)0x40000017);
+                        return result != 0 ? result : -1003;
                     if (Math.Abs(monitor.MinimumRefreshRateInHz - expectedMonitorMinimumHz) > 0.1f ||
                         Math.Abs(monitor.MaximumRefreshRateInHz - expectedMonitorMaximumHz) > 0.1f)
-                        return unchecked((int)0x40000017);
+                        return -1004;
 
                     ArcSyncProfileParams profile = new ArcSyncProfileParams
                     {
@@ -2291,19 +2291,71 @@ function Invoke-SetProfile {
         [uint32]$MaxDecreaseUs = 0
     )
 
-    $result = [ClawLab.VrrFix.ArcSyncControl]::SetProfile(
-        [int]$Target.AdapterIndex,
-        [int]$Target.DisplayIndex,
-        [float]$Target.MonitorMinimumHz,
-        [float]$Target.MonitorMaximumHz,
-        $ProfileId,
-        $MinimumHz,
-        $MaximumHz,
-        $MaxIncreaseUs,
-        $MaxDecreaseUs
+    $result = 0
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $result = [ClawLab.VrrFix.ArcSyncControl]::SetProfile(
+            [int]$Target.AdapterIndex,
+            [int]$Target.DisplayIndex,
+            [float]$Target.MonitorMinimumHz,
+            [float]$Target.MonitorMaximumHz,
+            $ProfileId,
+            $MinimumHz,
+            $MaximumHz,
+            $MaxIncreaseUs,
+            $MaxDecreaseUs
+        )
+        if ($result -eq 0) {
+            return
+        }
+
+        # Intel documents these as transient device/KMD/retry conditions. A
+        # fresh ControlLib session is created by every SetProfile call.
+        if ($result -notin @(0x40000003, 0x40000017, 0x40000027, 0x40010000) -or $attempt -eq 3) {
+            break
+        }
+        Start-Sleep -Milliseconds 750
+    }
+
+    switch ([int]$result) {
+        -1001 { throw 'The previously selected Intel Arc Sync adapter disappeared before the profile write. No profile change was verified.' }
+        -1002 { throw 'The previously selected Intel Arc Sync display disappeared before the profile write. Disconnect external displays and retry.' }
+        -1003 { throw 'The selected display stopped reporting Intel Arc Sync support before the profile write.' }
+        -1004 { throw 'Intel Arc Sync monitor telemetry changed between validation and the profile write. No profile change was verified.' }
+        0x40000017 { throw 'Intel ctlSetIntelArcSyncProfile reached the driver, but the Intel kernel-mode driver rejected the request (CTL_RESULT_ERROR_KMD_CALL, 0x40000017).' }
+        default { throw ('Intel ctlSetIntelArcSyncProfile failed with code 0x{0:X8}.' -f ([uint32]$result)) }
+    }
+}
+
+function Test-SnapshotMatchesSavedProfile {
+    param(
+        [Parameter(Mandatory)][object]$Snapshot,
+        [Parameter(Mandatory)][object]$Profile
     )
-    if ($result -ne 0) {
-        throw ('Intel ctlSetIntelArcSyncProfile failed with code 0x{0:X8}.' -f ([int64]$result))
+
+    return Test-ClawLabSnapshotMatchesSavedProfile `
+        -CurrentProfileId ([int]$Snapshot.ProfileId) `
+        -CurrentMinimumHz ([float]$Snapshot.ActiveMinimumHz) `
+        -CurrentMaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+        -CurrentMaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+        -CurrentMaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs) `
+        -SavedProfileId ([int]$Profile.ProfileId) `
+        -SavedMinimumHz ([float]$Profile.MinRefreshRateInHz) `
+        -SavedMaximumHz ([float]$Profile.MaxRefreshRateInHz) `
+        -SavedMaxIncreaseUs ([uint32]$Profile.MaxFrameTimeIncreaseInUs) `
+        -SavedMaxDecreaseUs ([uint32]$Profile.MaxFrameTimeDecreaseInUs)
+}
+
+function Assert-FirstInstallProfileSafe {
+    param(
+        [Parameter(Mandatory)][object]$Transition,
+        [Parameter(Mandatory)][object]$Snapshot
+    )
+
+    if (-not (Test-ClawLabFirstInstallProfileSafe `
+            -CurrentMode ([string]$Transition.Mode) `
+            -CurrentState ([string]$Transition.State) `
+            -ProfileId ([int]$Snapshot.ProfileId))) {
+        throw 'First installation found an unmanaged Intel Arc Sync CUSTOM profile. Select RECOMMENDED or EXCELLENT in Intel Graphics Software, ensure that no unsupported VRR-writing tool is active, restart Windows, then retry. ClawLab refused to save an unknown custom state as the original profile.'
     }
 }
 
@@ -2346,7 +2398,8 @@ function Install-CustomEdidMode {
     }
     $variant = $desired[0]
     $isOverclock = Test-IsExperimentalOverclockMode -Mode $DesiredState
-    [void](Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState)
+    $transition = Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState
+    Assert-FirstInstallProfileSafe -Transition $transition -Snapshot $Before
 
     if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
         throw 'An unknown EDID override is installed. Remove it with its original tool before using a ClawLab custom range.'
@@ -2867,7 +2920,8 @@ try {
         }
 
         'Install48' {
-            [void](Assert-ProfileTransitionAllowed -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120')
+            $transition = Assert-ProfileTransitionAllowed -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120'
+            Assert-FirstInstallProfileSafe -Transition $transition -Snapshot $before
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }
@@ -3050,10 +3104,15 @@ try {
                 $before = Get-TargetSnapshot -Attempts 10
             }
 
-            Restore-SnapshotProfile -Target $before -Profile $original
+            if (Test-SnapshotMatchesSavedProfile -Snapshot $before -Profile $original) {
+                Write-Host 'The saved original Intel Arc Sync profile is already active; the redundant driver write was skipped.' -ForegroundColor Green
+            }
+            else {
+                Restore-SnapshotProfile -Target $before -Profile $original
+            }
             $after = Get-TargetSnapshot -Attempts 10
-            if ($after.ProfileId -ne [int]$original.ProfileId) {
-                throw "Original profile verification failed: expected ID $($original.ProfileId), got $($after.ProfileId)."
+            if (-not (Test-SnapshotMatchesSavedProfile -Snapshot $after -Profile $original)) {
+                throw "Original profile verification failed: expected $($original.ProfileName) ($($original.MinRefreshRateInHz)-$($original.MaxRefreshRateInHz) Hz), got $($after.ProfileName) ($($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz)."
             }
 
             if ($knownExperimentalOverride) {

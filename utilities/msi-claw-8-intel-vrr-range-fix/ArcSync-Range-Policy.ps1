@@ -147,3 +147,87 @@ function Test-ClawLabProfileTransitionAllowed {
     return $CurrentMode -eq $DesiredMode -and
         $CurrentState -in @('CONSISTENT', 'LEGACY_MATCHING_OVERRIDE')
 }
+
+function Test-ClawLabFirstInstallProfileSafe {
+    param(
+        [Parameter(Mandatory)][string]$CurrentMode,
+        [Parameter(Mandatory)][string]$CurrentState,
+        [Parameter(Mandatory)][int]$ProfileId
+    )
+
+    # A first installation must not adopt an unmanaged CUSTOM profile as its
+    # restorable baseline. Such a profile can have been left by an older tool,
+    # a failed/manual cleanup or another VRR owner, and some Intel drivers
+    # refuse to recreate it through ctlSetIntelArcSyncProfile. Existing,
+    # consistent ClawLab profiles are handled by the normal idempotent path.
+    if ($CurrentMode -eq 'NONE' -and $CurrentState -eq 'CLEAN') {
+        return $ProfileId -in @(1, 2)
+    }
+    return $true
+}
+
+function Test-ClawLabSnapshotMatchesSavedProfile {
+    param(
+        [Parameter(Mandatory)][int]$CurrentProfileId,
+        [Parameter(Mandatory)][float]$CurrentMinimumHz,
+        [Parameter(Mandatory)][float]$CurrentMaximumHz,
+        [Parameter(Mandatory)][uint32]$CurrentMaxIncreaseUs,
+        [Parameter(Mandatory)][uint32]$CurrentMaxDecreaseUs,
+        [Parameter(Mandatory)][int]$SavedProfileId,
+        [Parameter(Mandatory)][float]$SavedMinimumHz,
+        [Parameter(Mandatory)][float]$SavedMaximumHz,
+        [Parameter(Mandatory)][uint32]$SavedMaxIncreaseUs,
+        [Parameter(Mandatory)][uint32]$SavedMaxDecreaseUs,
+        [int]$CustomProfileId = 7
+    )
+
+    if ($CurrentProfileId -ne $SavedProfileId) {
+        return $false
+    }
+    if ($SavedProfileId -ne $CustomProfileId) {
+        return $true
+    }
+
+    return (
+        (Test-ClawLabFrequencyEqual -Left $CurrentMinimumHz -Right $SavedMinimumHz) -and
+        (Test-ClawLabFrequencyEqual -Left $CurrentMaximumHz -Right $SavedMaximumHz) -and
+        $CurrentMaxIncreaseUs -eq $SavedMaxIncreaseUs -and
+        $CurrentMaxDecreaseUs -eq $SavedMaxDecreaseUs
+    )
+}
+
+function Test-ClawLabCleanNotInstalledState {
+    param(
+        [Parameter(Mandatory)][string]$ManagedMode,
+        [Parameter(Mandatory)][string]$ProfileSwitchGuard,
+        [Parameter(Mandatory)][bool]$OriginalProfileSaved,
+        [Parameter(Mandatory)][string]$EdidOverride,
+        [Parameter(Mandatory)][string]$StartupReapply,
+        [Parameter(Mandatory)][string]$CursorRefreshHelper,
+        [Parameter(Mandatory)][bool]$VrrTaskInstalled,
+        [Parameter(Mandatory)][string]$LfcManagedMode,
+        [Parameter(Mandatory)][bool]$LfcBackupPresent,
+        [Parameter(Mandatory)][string]$LfcStartupPersistence,
+        [Parameter(Mandatory)][bool]$LfcFixActive,
+        [Parameter(Mandatory)][bool]$LowFpsSolutionEnabled,
+        [Parameter(Mandatory)][bool]$HighFpsSolutionEnabled,
+        [Parameter(Mandatory)][bool]$LfcTaskInstalled
+    )
+
+    return (
+        $ManagedMode -eq 'NONE' -and
+        $ProfileSwitchGuard -eq 'CLEAN' -and
+        -not $OriginalProfileSaved -and
+        $EdidOverride -eq 'NONE' -and
+        $StartupReapply -eq 'NOT_INSTALLED' -and
+        $CursorRefreshHelper -eq 'NOT_INSTALLED' -and
+        -not $VrrTaskInstalled -and
+        $LfcManagedMode -eq 'UNMANAGED' -and
+        -not $LfcBackupPresent -and
+        $LfcStartupPersistence -eq 'NOT_INSTALLED' -and
+        -not $LfcFixActive -and
+        $LowFpsSolutionEnabled -and
+        $HighFpsSolutionEnabled -and
+        -not $LfcTaskInstalled
+    )
+}

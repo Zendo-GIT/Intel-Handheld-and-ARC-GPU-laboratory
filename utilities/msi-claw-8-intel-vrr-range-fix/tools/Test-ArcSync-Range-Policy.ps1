@@ -123,6 +123,62 @@ foreach ($panelKey in @($claw8, $tmaPanel)) {
     }
 }
 
+Assert-Equal `
+    (Test-ClawLabFirstInstallProfileSafe -CurrentMode 'NONE' -CurrentState 'CLEAN' -ProfileId 1) `
+    $true 'A clean RECOMMENDED first-install baseline was rejected.'
+Assert-Equal `
+    (Test-ClawLabFirstInstallProfileSafe -CurrentMode 'NONE' -CurrentState 'CLEAN' -ProfileId 2) `
+    $true 'A clean EXCELLENT first-install baseline was rejected.'
+Assert-Equal `
+    (Test-ClawLabFirstInstallProfileSafe -CurrentMode 'NONE' -CurrentState 'CLEAN' -ProfileId 7) `
+    $false 'An unmanaged CUSTOM profile was accepted as a first-install baseline.'
+Assert-Equal `
+    (Test-ClawLabFirstInstallProfileSafe -CurrentMode 'CLAWLAB_30_120' -CurrentState 'CONSISTENT' -ProfileId 2) `
+    $true 'An existing consistent ClawLab repair was rejected by the first-install guard.'
+
+Assert-Equal `
+    (Test-ClawLabSnapshotMatchesSavedProfile `
+        -CurrentProfileId 7 -CurrentMinimumHz 30 -CurrentMaximumHz 120 `
+        -CurrentMaxIncreaseUs 8333 -CurrentMaxDecreaseUs 8333 `
+        -SavedProfileId 7 -SavedMinimumHz 30 -SavedMaximumHz 120 `
+        -SavedMaxIncreaseUs 8333 -SavedMaxDecreaseUs 8333) `
+    $true 'The collected A1M already-restored CUSTOM 30-120 profile was not recognized.'
+Assert-Equal `
+    (Test-ClawLabSnapshotMatchesSavedProfile `
+        -CurrentProfileId 7 -CurrentMinimumHz 30 -CurrentMaximumHz 120 `
+        -CurrentMaxIncreaseUs 8333 -CurrentMaxDecreaseUs 8333 `
+        -SavedProfileId 7 -SavedMinimumHz 30 -SavedMaximumHz 120 `
+        -SavedMaxIncreaseUs 10000 -SavedMaxDecreaseUs 8333) `
+    $false 'A CUSTOM profile with different transition timing was treated as restored.'
+Assert-Equal `
+    (Test-ClawLabSnapshotMatchesSavedProfile `
+        -CurrentProfileId 1 -CurrentMinimumHz 60 -CurrentMaximumHz 120 `
+        -CurrentMaxIncreaseUs 0 -CurrentMaxDecreaseUs 0 `
+        -SavedProfileId 1 -SavedMinimumHz 60 -SavedMaximumHz 120 `
+        -SavedMaxIncreaseUs 0 -SavedMaxDecreaseUs 0) `
+    $true 'An identical non-custom profile was not recognized.'
+
+Assert-Equal `
+    (Test-ClawLabCleanNotInstalledState `
+        -ManagedMode 'NONE' -ProfileSwitchGuard 'CLEAN' `
+        -OriginalProfileSaved $false -EdidOverride 'NONE' `
+        -StartupReapply 'NOT_INSTALLED' -CursorRefreshHelper 'NOT_INSTALLED' `
+        -VrrTaskInstalled $false -LfcManagedMode 'UNMANAGED' `
+        -LfcBackupPresent $false -LfcStartupPersistence 'NOT_INSTALLED' `
+        -LfcFixActive $false -LowFpsSolutionEnabled $true `
+        -HighFpsSolutionEnabled $true -LfcTaskInstalled $false) `
+    $true 'The collected A1M clean-uninstalled state was reported as unhealthy.'
+Assert-Equal `
+    (Test-ClawLabCleanNotInstalledState `
+        -ManagedMode 'NONE' -ProfileSwitchGuard 'CLEAN' `
+        -OriginalProfileSaved $false -EdidOverride 'NONE' `
+        -StartupReapply 'NOT_INSTALLED' -CursorRefreshHelper 'NOT_INSTALLED' `
+        -VrrTaskInstalled $false -LfcManagedMode 'UNMANAGED' `
+        -LfcBackupPresent $false -LfcStartupPersistence 'NOT_INSTALLED' `
+        -LfcFixActive $false -LowFpsSolutionEnabled $false `
+        -HighFpsSolutionEnabled $true -LfcTaskInstalled $false) `
+    $false 'A modified Intel LFC flag was accepted as a clean uninstall.'
+
 [pscustomobject]@{
     Result = 'PASS'
     StableProfiles = '30-120, 48-120'
@@ -132,4 +188,7 @@ foreach ($panelKey in @($claw8, $tmaPanel)) {
     Claw8RegressionGuard = 'PASS'
     PendingEdidGuard = 'PASS'
     ProfileSwitchMatrix = 'PASS'
+    FirstInstallCustomProfileGuard = 'PASS'
+    IdempotentOriginalRestore = 'PASS'
+    CleanUninstalledHealthState = 'PASS'
 }

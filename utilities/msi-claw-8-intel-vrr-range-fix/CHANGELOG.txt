@@ -20,6 +20,14 @@ MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 - Applies the Intel LFC correction to every stable and experimental profile.
 - Refuses to adopt already-disabled Intel flags when their original backup is
   missing.
+- Refuses an unmanaged Intel CUSTOM profile as a first-install original state;
+  users must select RECOMMENDED or EXCELLENT and restart first.
+- Skips a redundant restore write when exact saved profile ID/range/timings are
+  already active, fixing the collected A1M Intel KMD 0x40000017 recovery case.
+- Retries transient Intel driver calls and reports internal target drift with
+  distinct errors instead of an ambiguous Intel KMD code.
+- Reports a completely restored state as CLEAN_NOT_INSTALLED instead of asking
+  the user to run Restore again.
 - Refuses to overwrite a managed 2.1.2-or-older installation; restore it with
   its original package and restart before installing 2.2.0.
 - Requires a successful original-VRR restore and restart before switching to

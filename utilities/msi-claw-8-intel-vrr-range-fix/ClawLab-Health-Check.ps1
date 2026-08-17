@@ -7,6 +7,11 @@ $ErrorActionPreference = 'Stop'
 $packageRoot = Split-Path $PSCommandPath -Parent
 $vrrTool = Join-Path $packageRoot 'MSI-Claw-VRR-Fix.ps1'
 $lfcTool = Join-Path $packageRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
+$rangePolicyTool = Join-Path $packageRoot 'ArcSync-Range-Policy.ps1'
+if (-not (Test-Path -LiteralPath $rangePolicyTool -PathType Leaf)) {
+    throw "Required health policy is missing: $rangePolicyTool"
+}
+. $rangePolicyTool
 $vrrBackupPath = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range\original-profile.json'
 $vrrTaskName = 'ClawLab MSI Claw 8 VRR Range'
 $lfcTaskName = 'ClawLab MSI Claw Intel LFC Fix'
@@ -99,6 +104,21 @@ $lfcFlagsHealthy = (
 $lfcHealthy = [bool]$lfc.LfcFixActive -and $lfcFlagsHealthy
 $coreFixHealthy = $managedProfileHealthy -and $lfcHealthy
 $lfcBackupMissing = [string]$lfc.LfcTransition.State -eq 'ORIGINAL_LFC_BACKUP_MISSING_CANNOT_RESTORE'
+$cleanNotInstalled = Test-ClawLabCleanNotInstalledState `
+    -ManagedMode ([string]$vrr.ManagedMode) `
+    -ProfileSwitchGuard ([string]$vrr.ProfileSwitchGuard) `
+    -OriginalProfileSaved ([bool]$vrr.OriginalProfileSaved) `
+    -EdidOverride ([string]$vrr.EdidOverride) `
+    -StartupReapply ([string]$vrr.StartupReapply) `
+    -CursorRefreshHelper ([string]$vrr.CursorRefreshHelper) `
+    -VrrTaskInstalled ($null -ne $vrrTask) `
+    -LfcManagedMode ([string]$lfc.ManagedVrrMode) `
+    -LfcBackupPresent ([bool]$lfc.LfcTransition.BackupPresent) `
+    -LfcStartupPersistence ([string]$lfc.StartupPersistence) `
+    -LfcFixActive ([bool]$lfc.LfcFixActive) `
+    -LowFpsSolutionEnabled ($null -ne $lfc.CurrentState -and [bool]$lfc.CurrentState.LowFpsSolutionEnabled) `
+    -HighFpsSolutionEnabled ($null -ne $lfc.CurrentState -and [bool]$lfc.CurrentState.HighFpsSolutionEnabled) `
+    -LfcTaskInstalled ($null -ne $lfcTask)
 
 $savedDriver = $null
 if (Test-Path -LiteralPath $vrrBackupPath -PathType Leaf) {
@@ -122,10 +142,13 @@ $experimentalProfileActive = [string]$vrr.ManagedMode -in @(
     'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180'
 )
 
-$coreHealth = if ($coreFixHealthy) { 'HEALTHY' } elseif ($startupInitializing) { 'INITIALIZING' } else { 'ATTENTION_REQUIRED' }
-$helperHealth = if ($cursorHelperHealthy) { 'HEALTHY' } elseif ($startupInitializing) { 'INITIALIZING' } else { 'ATTENTION_REQUIRED' }
+$coreHealth = if ($cleanNotInstalled) { 'NOT_INSTALLED' } elseif ($coreFixHealthy) { 'HEALTHY' } elseif ($startupInitializing) { 'INITIALIZING' } else { 'ATTENTION_REQUIRED' }
+$helperHealth = if ($cleanNotInstalled) { 'NOT_INSTALLED' } elseif ($cursorHelperHealthy) { 'HEALTHY' } elseif ($startupInitializing) { 'INITIALIZING' } else { 'ATTENTION_REQUIRED' }
 
-$overallHealth = if ($coreFixHealthy -and $cursorHelperHealthy) {
+$overallHealth = if ($cleanNotInstalled) {
+    'CLEAN_NOT_INSTALLED'
+}
+elseif ($coreFixHealthy -and $cursorHelperHealthy) {
     'HEALTHY'
 }
 elseif ($startupInitializing) {
@@ -149,6 +172,14 @@ else {
 }
 
 $recommendedAction = switch ($overallHealth) {
+    'CLEAN_NOT_INSTALLED' {
+        if ([string]$vrr.DriverProfile -eq 'CUSTOM') {
+            'Clean uninstall verified. Before first installation, select Intel Arc Sync RECOMMENDED or EXCELLENT in Intel Graphics Software and restart Windows; unmanaged CUSTOM cannot be adopted as the original profile.'
+        }
+        else {
+            'Clean uninstall verified. Install one desired 30-120 or 48-120 profile when ready; no Restore or Factory Reset is required.'
+        }
+    }
     'HEALTHY' {
         if ($driverChanged) {
             'No repair is required: the new Intel driver is already verified. Keep this result for reference.'
@@ -189,7 +220,10 @@ $recommendedAction = switch ($overallHealth) {
     }
 }
 
-$attentionReason = if ($startupInitializing) {
+$attentionReason = if ($cleanNotInstalled) {
+    'NONE'
+}
+elseif ($startupInitializing) {
     'SIGN_IN_TASKS_RUNNING'
 }
 elseif (-not $managedProfileHealthy) {
@@ -210,6 +244,7 @@ else {
 
 [pscustomobject]@{
     OverallHealth = $overallHealth
+    InstallationState = if ($cleanNotInstalled) { 'NOT_INSTALLED' } elseif ($coreFixHealthy) { 'INSTALLED' } else { 'INCOMPLETE_OR_UNVERIFIED' }
     StartupInitialization = if ($startupInitializing) { 'IN_PROGRESS' } else { 'COMPLETE_OR_IDLE' }
     DriverVerification = $driverVerification
     CurrentIntelDriver = [string]$vrr.IntelDriver

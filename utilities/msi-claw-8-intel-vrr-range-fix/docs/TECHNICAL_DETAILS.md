@@ -167,6 +167,10 @@ older managed FixVersion -> OLDER_VERSION_RESTORE_REQUIRED
 anything else                    -> RESTORE_ORIGINAL_VRR required
 ```
 
+`Test-ClawLabFirstInstallProfileSafe` adds a separate baseline rule: a genuine
+`CLEAN/NONE` first installation accepts only Intel `RECOMMENDED` or `EXCELLENT`.
+It refuses an unmanaged `CUSTOM` profile before saving any original-state file.
+
 No exception exists for stable-to-stable, stable-to-experimental, or one
 experimental range to another. The pure test covers every pair for both panel
 families.
@@ -229,6 +233,19 @@ Normal restore order is:
 5. remove tasks/helpers/scripts;
 6. restore the original Intel Graphics Software startup state;
 7. require a restart to reload the physical EDID.
+
+Step 3 is idempotent. The current snapshot is compared with every saved CUSTOM
+field (profile ID, range and both transition timings), or with the saved
+standard profile ID. If it already matches, the setter is skipped; fresh
+readback must still match before cleanup. Transient Intel device/KMD/retry
+results receive up to three fresh ControlLib attempts. Internal adapter,
+display, support and telemetry-drift failures use distinct ClawLab errors and
+are no longer reported as Intel `CTL_RESULT_ERROR_KMD_CALL`.
+
+The health policy distinguishes an exact clean uninstall (no managed record,
+backup, EDID, task, helper or LFC modification) from a broken installation and
+reports `CLEAN_NOT_INSTALLED`. A clean unmanaged CUSTOM Arc Sync profile remains
+visible but receives a standard-baseline instruction, not another Restore.
 
 Unknown third-party EDID blocks are never removed. Emergency EDID removal also
 requires an exact known hash and exact validated registry path.

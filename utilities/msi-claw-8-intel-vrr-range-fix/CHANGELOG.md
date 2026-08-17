@@ -32,6 +32,16 @@
 - Extends the Intel LFC correction to all stable and experimental profiles.
 - Refuses to adopt already-disabled Intel solution flags as original values
   when the original LFC backup is missing.
+- Refuses to adopt an unmanaged Intel Arc Sync `CUSTOM` profile as a clean
+  first-install baseline; users must return to `RECOMMENDED` or `EXCELLENT` and
+  restart first.
+- Makes original-profile restoration fully idempotent. Exact already-active
+  CUSTOM ID/range/timing or standard-profile ID is verified without a redundant
+  Intel setter call, fixing the collected A1M `0x40000017` recovery failure.
+- Retries transient Intel device/KMD operations in fresh ControlLib sessions
+  and separates internal target-drift errors from official Intel result codes.
+- Reports a fully restored configuration as `CLEAN_NOT_INSTALLED` rather than
+  the misleading `ATTENTION_REQUIRED`/Restore recommendation.
 - Refuses to overwrite a managed 2.1.2-or-older installation; users must run
   that release's original-VRR restore and restart before installing 2.2.0.
 - Tests every same-profile and cross-profile transition: reapplying an exact

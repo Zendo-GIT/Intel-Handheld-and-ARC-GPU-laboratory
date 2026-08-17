@@ -49,6 +49,10 @@ MANDATORY BEFORE INSTALLATION
 6. Earlier ClawTweaks versions and all other VRR-writing tools must be disabled.
 7. Disconnect every external display during installation and guarded trials.
    Only the validated internal panel may be active while refresh rate changes.
+8. A first installation must start from Intel Arc Sync RECOMMENDED or
+   EXCELLENT. If Intel Graphics Software currently shows an unmanaged CUSTOM
+   profile, select RECOMMENDED or EXCELLENT, restart Windows, then retry.
+   ClawLab refuses to save an unknown CUSTOM state as the original profile.
 
 PROFILE SWITCHING
 -----------------
@@ -69,10 +73,14 @@ STATUS
 After installation and after every Intel driver update, run CHECK_STATUS.bat.
 Expected core results include ProfileSwitchGuard CONSISTENT,
 CLAWLAB_LFC_FIX_ACTIVE, both Intel solution flags False and LfcFixActive True.
+After complete removal, CLEAN_NOT_INSTALLED, ManagedMode NONE and
+ProfileSwitchGuard CLEAN are expected. Do not run Restore again in that state.
 
 RECOVERY
 --------
 - RECOVERY\RESTORE_ORIGINAL_VRR.bat: complete verified original-state restore.
+  If that exact saved profile is already active, its redundant Intel driver
+  write is skipped and cleanup completes only after exact readback.
 - RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat: Intel LFC flags only.
 - DIAGNOSTICS\EXPORT_STATUS_REPORT.bat: support report.
 - EMERGENCY: use only for the explicitly named failure case.

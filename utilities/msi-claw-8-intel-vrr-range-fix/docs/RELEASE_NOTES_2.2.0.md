@@ -70,6 +70,19 @@ installed.
   families.
 - Every installer asks users to confirm CRU cleanup and that conflicting
   VRR/EDID tools are disabled before any profile action.
+- A first installation now refuses an unmanaged Intel `CUSTOM` profile rather
+  than recording an unknown or previously modified state as the original.
+  Start from Intel `RECOMMENDED` or `EXCELLENT` and restart before retrying.
+- A collected A1M recovery case showed an already-active saved CUSTOM 30–120
+  profile receiving Intel KMD error `0x40000017` when redundantly rewritten.
+  Restore now skips that write only after exact ID/range/timing comparison,
+  performs fresh readback, and then completes cleanup.
+- Transient Intel KMD/device failures are retried in fresh ControlLib sessions;
+  ClawLab target-selection failures now have distinct diagnostic messages.
+- `CHECK_STATUS` now reports a completely restored machine as
+  `CLEAN_NOT_INSTALLED` instead of incorrectly requesting another Restore. If
+  that clean state still uses unmanaged Intel CUSTOM, it gives the required
+  RECOMMENDED/EXCELLENT baseline instruction.
 - Experimental installers then require a separate timed overclock warning and
   typed risk acceptance.
 

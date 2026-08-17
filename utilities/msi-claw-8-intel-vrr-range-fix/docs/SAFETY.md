@@ -79,6 +79,13 @@ same range. Run the older release's `RECOVERY\RESTORE_ORIGINAL_VRR.bat`, finish
 the restart, extract 2.2.0 to a new folder and install the desired profile.
 Factory Reset is not required for this normal migration.
 
+A clean first installation is accepted only while Intel Arc Sync is using the
+standard `RECOMMENDED` or `EXCELLENT` profile. An unmanaged `CUSTOM` profile is
+not adopted as the original state: it may belong to another VRR writer or a
+previous manually deleted installation, and some Intel drivers refuse to
+recreate it. Select a standard profile in Intel Graphics Software, restart and
+retry instead of deleting ClawLab state.
+
 The release includes an offline test of all eight managed modes against all
 eight desired modes for both panel families. Its expected matrix contains 16
 same-profile approvals and 112 cross-profile refusals, plus clean-state and
@@ -140,3 +147,6 @@ not interact with games or controller-management applications.
 - Use `EMERGENCY` only for the exact labelled failure condition.
 - If support is needed, export status JSON before changing anything else.
 - Do not repeatedly alternate Restore and Factory Reset.
+- Normal restore is idempotent: when the complete saved profile is already
+  active, ClawLab skips the unnecessary ControlLib write, verifies the exact
+  state and safely finishes cleanup.

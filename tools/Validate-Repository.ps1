@@ -215,10 +215,19 @@ $requiredVrrValues = @(
     'Overclock48_180EdidSha256'
     'Overclock30_180EdidSha256'
     'OLDER_VERSION_RESTORE_REQUIRED'
+    'Test-ClawLabFirstInstallProfileSafe'
+    'Test-SnapshotMatchesSavedProfile'
+    'CTL_RESULT_ERROR_KMD_CALL'
 )
 foreach ($value in $requiredVrrValues) {
     if ($vrrScript -notmatch [regex]::Escape($value)) {
         throw "VRR utility no longer contains required integrity value: $value"
+    }
+}
+$vrrHealthScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Health-Check.ps1') -Raw
+foreach ($value in @('Test-ClawLabCleanNotInstalledState', 'CLEAN_NOT_INSTALLED', 'InstallationState')) {
+    if ($vrrHealthScript -notmatch [regex]::Escape($value)) {
+        throw "VRR health check no longer contains required clean-state value: $value"
     }
 }
 $installActions = @(

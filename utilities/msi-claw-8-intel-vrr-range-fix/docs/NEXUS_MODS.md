@@ -44,6 +44,11 @@ Disable every other VRR/EDID-writing tool. The only supported exception is
 includes the compatibility patch. ClawTweaks is optional and is not required
 for ClawLab VRR to work.
 
+A first installation must start from Intel Arc Sync `RECOMMENDED` or
+`EXCELLENT`. ClawLab refuses an unmanaged `CUSTOM` profile instead of saving an
+unknown modified state as the original. Select a standard profile in Intel
+Graphics Software and restart before retrying.
+
 Changing to any different ClawLab profile always requires a successful
 `RESTORE_ORIGINAL_VRR.bat` and restart first. The package refuses mixed states.
 
@@ -79,6 +84,9 @@ inject into, patch, hook or monitor any game process.
 
 Run `RECOVERY\RESTORE_ORIGINAL_VRR.bat`, accept the restart, then confirm clean
 status. Never delete `%LOCALAPPDATA%\ClawLab` manually.
+
+Restore safely skips a redundant Intel write when exact readback proves that
+the complete saved original profile is already active.
 
 ## Permissions and credits
 

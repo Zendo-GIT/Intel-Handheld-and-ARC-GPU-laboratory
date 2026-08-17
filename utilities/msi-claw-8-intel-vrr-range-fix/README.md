@@ -106,6 +106,10 @@ LFC patch is applied, and normal one-shot sign-in persistence is installed.
    Windows refresh rate is changed.
 8. If any different ClawLab profile is installed, successfully run
    `RECOVERY\RESTORE_ORIGINAL_VRR.bat` and complete the restart first.
+9. A first installation must start from Intel Arc Sync `RECOMMENDED` or
+   `EXCELLENT`. An unmanaged `CUSTOM` profile is refused instead of being saved
+   as a potentially unrestorable original state. Select one of the two standard
+   profiles in Intel Graphics Software, restart Windows, then retry.
 
 Every installer asks for CRU-cleanup and exclusive VRR-ownership confirmation
 before doing anything. Experimental installers then add the separate mandatory
@@ -179,6 +183,10 @@ After every installation and Intel graphics-driver update, run
 report queries both Intel interfaces directly and separates capability
 telemetry from the selected profile.
 
+After a complete restoration, `OverallHealth: CLEAN_NOT_INSTALLED`,
+`ManagedMode: NONE` and `ProfileSwitchGuard: CLEAN` are expected. Do not run
+Restore again in that state.
+
 Do not repair while status is `INITIALIZING`; wait up to two minutes and check
 again. If the driver update reset the profile, reinstall the **same** profile.
 Switching profiles still requires a verified restore and restart.
@@ -186,7 +194,9 @@ Switching profiles still requires a verified restore and restart.
 ## Restore and emergency recovery
 
 - `RECOVERY\RESTORE_ORIGINAL_VRR.bat` restores the exact saved Intel VRR/LFC
-  state, removes the known ClawLab EDID and tasks, and requires a restart.
+  state, removes the known ClawLab EDID and tasks, and requires a restart. If
+  the saved profile is already active, the redundant Intel driver write is
+  skipped and exact readback is still required before cleanup.
 - `RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat` restores only the saved Intel
   low/high-FPS flags.
 - `EMERGENCY` is reserved for the explicitly named recovery failures.
