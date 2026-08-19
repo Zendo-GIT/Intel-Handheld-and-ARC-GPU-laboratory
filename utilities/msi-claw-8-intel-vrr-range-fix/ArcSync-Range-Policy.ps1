@@ -18,7 +18,7 @@ function Get-ClawLabArcSyncMonitorRangeState {
         [float]$CustomMinimumHz = 30.0,
         [float]$SupportedMaximumHz = 120.0,
         [float]$LegacyRecoveryMaximumHz = 144.0,
-        [float[]]$ExperimentalMaximumHz = @(144.0, 165.0, 180.0)
+        [float[]]$ExperimentalMaximumHz = @(144.0, 165.0, 180.0, 192.0)
     )
 
     $knownMinimum =
@@ -62,7 +62,7 @@ function Test-ClawLabArcSyncMonitorRangeCompatible {
         [float]$CustomMinimumHz = 30.0,
         [float]$SupportedMaximumHz = 120.0,
         [float]$LegacyRecoveryMaximumHz = 144.0,
-        [float[]]$ExperimentalMaximumHz = @(144.0, 165.0, 180.0)
+        [float[]]$ExperimentalMaximumHz = @(144.0, 165.0, 180.0, 192.0)
     )
 
     $expectedMinimumKnown =
@@ -109,7 +109,7 @@ function Test-ClawLabDirectRangeReady {
         [int]$PhysicalMinimumHz = 48,
         [int]$CustomMinimumHz = 30,
         [int]$SupportedMaximumHz = 120,
-        [int[]]$ExperimentalMaximumHz = @(144, 165, 180)
+        [int[]]$ExperimentalMaximumHz = @(144, 165, 180, 192)
     )
 
     if ($ReportedEdidSha256 -ne $ExpectedEdidSha256 -or

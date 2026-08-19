@@ -17,7 +17,7 @@ Use game-scoped tags so versions can evolve independently:
 - `jwe3-v1.0.0`
 - `kena-v1.0.0`
 - `ievr-v1.0.0`
-- `detroit-v1.0.0`
+- `the-isle-v1.0.0`
 - `claw8-vrr-v1.0.1`
 - `claw8-vrr-v1.0.2`
 - `claw8-vrr-v1.0.3`
@@ -26,6 +26,7 @@ Use game-scoped tags so versions can evolve independently:
 - `claw-vrr-v2.1.1`
 - `claw-vrr-v2.1.2`
 - `claw-vrr-v2.2.0`
+- `claw-vrr-v2.2.1`
 
 Attach only the matching ZIP and checksum from `dist`. Do not attach the entire repository, source captures, backups, or publication workspace.
 
@@ -38,7 +39,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `jwe3-v1.0.0` | `JWE3 Intel Arc Water Glitch Fix 1.0.0` | `JWE3-Intel-Arc-Water-Glitch-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `kena-v1.0.0` | `Kena Intel Arc Water Flash Fix 1.0.0` | `Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `ievr-v1.0.0` | `IEVR Offline Stutter Fix 1.0.0` | `IEVR-Offline-Stutter-Fix-1.0.0.zip` and its `.sha256.txt` file |
-| `detroit-v1.0.0` | `Detroit Intel Arc Stability Fix 1.0.0` | `Detroit-Intel-Arc-Stability-Fix-1.0.0.zip` and its `.sha256.txt` file |
+| `the-isle-v1.0.0` | `The Isle Evrima MSI Claw Performance Fix 1.0.0` | `The-Isle-Evrima-MSI-Claw-Performance-Fix-1.0.0.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v1.0.1` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.1` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.1.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v1.0.2` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.2` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.2.zip` and its `.sha256.txt` file |
 | `claw8-vrr-v1.0.3` | `MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.3` | `MSI-Claw-8-Intel-VRR-Range-Fix-1.0.3.zip` and its `.sha256.txt` file |
@@ -47,6 +48,7 @@ Push the repository first, then create these releases from the GitHub **Releases
 | `claw-vrr-v2.1.1` | `MSI Claw Intel VRR Range Fix 2.1.1` | `MSI-Claw-Intel-VRR-Range-Fix-2.1.1.zip` and its `.sha256.txt` file |
 | `claw-vrr-v2.1.2` | `MSI Claw Intel VRR Range Fix 2.1.2` | `MSI-Claw-Intel-VRR-Range-Fix-2.1.2.zip` and its `.sha256.txt` file |
 | `claw-vrr-v2.2.0` | `MSI Claw Intel VRR Range Fix 2.2.0` | `MSI-Claw-Intel-VRR-Range-Fix-2.2.0.zip` and its `.sha256.txt` file |
+| `claw-vrr-v2.2.1` | `MSI Claw Intel VRR Range Fix 2.2.1` | `MSI-Claw-Intel-VRR-Range-Fix-2.2.1.zip` and its `.sha256.txt` file |
 
 For each release:
 

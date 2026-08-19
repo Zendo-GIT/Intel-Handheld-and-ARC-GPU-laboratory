@@ -13,7 +13,7 @@ Each project is distributed as an independent GitHub Release asset. You do not n
 | Jurassic World Evolution 3 | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/jwe3-v1.0.0/JWE3-Intel-Arc-Water-Glitch-Fix-1.0.0.zip) | [jwe3-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/jwe3-v1.0.0) |
 | Kena: Bridge of Spirits | [Download fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/kena-v1.0.0/Kena-Intel-Arc-Water-Flash-Fix-1.0.0.zip) | [kena-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/kena-v1.0.0) |
 | INAZUMA ELEVEN: Victory Road | [Download offline fix 1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/ievr-v1.0.1/IEVR-Offline-Stutter-Fix-1.0.1.zip) | [ievr-v1.0.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/ievr-v1.0.1) |
-| Detroit: Become Human | [Download stability fix 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/detroit-v1.0.0/Detroit-Intel-Arc-Stability-Fix-1.0.0.zip) | [detroit-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/detroit-v1.0.0) |
+| The Isle: Evrima | [Download MSI Claw profile 1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/the-isle-v1.0.0/The-Isle-Evrima-MSI-Claw-Performance-Fix-1.0.0.zip) | [the-isle-v1.0.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/the-isle-v1.0.0) |
 
 Read the linked game documentation before installation. The Inazuma fix is offline-only and must be uninstalled before EAC or online use.
 
@@ -24,7 +24,7 @@ checks, safety model and restoration path.
 
 | Utility | Direct download | Release page |
 |---|---|---|
-| MSI Claw Intel VRR Range Fix | [Download utility 2.2.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw-vrr-v2.2.0/MSI-Claw-Intel-VRR-Range-Fix-2.2.0.zip) | [claw-vrr-v2.2.0](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw-vrr-v2.2.0) |
+| MSI Claw Intel VRR Range Fix | [Download utility 2.2.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/download/claw-vrr-v2.2.1/MSI-Claw-Intel-VRR-Range-Fix-2.2.1.zip) | [claw-vrr-v2.2.1](https://github.com/Zendo-GIT/Intel-Handheld-and-ARC-GPU-laboratory/releases/tag/claw-vrr-v2.2.1) |
 
 ## Published projects
 
@@ -33,13 +33,13 @@ checks, safety model and restoration path.
 | [Jurassic World Evolution 3](games/jurassic-world-evolution-3/README.md) | Polygonal, flashing, or missing lake water on Intel Arc | Forces the engine's existing VS/SM60 fallback instead of the broken mesh-shader path | 1.0.0 validated | Local executable patch; normal Steam launch; no anti-cheat interaction |
 | [Kena: Bridge of Spirits](games/kena-bridge-of-spirits/README.md) | Cyan/white flashing on calm and surface water under native DX12 | Data-only Unreal PAK neutralizing the active procedural foam contribution | 1.0.0 validated | Data-only PAK; no executable modification |
 | [INAZUMA ELEVEN: Victory Road](games/inazuma-eleven-victory-road/README.md) | Recurring one-to-two-second Steam/EOS synchronization hitch | Four-byte synchronization-path patch with automatic game-network isolation | 1.0.1 validated | **Offline only; incompatible with EAC and online play** |
-| [Detroit: Become Human](games/detroit-become-human/README.md) | Unsupported-GPU prompt, scaler corruption and persistent transition stalls on Intel Arc | Exact dialog suppression, safe graphics path, cache validation and chapter-only presentation recovery | 1.0.0 reference-platform validation | Six-byte patch plus optional locally compiled Steam wrapper; no DLL injection |
+| [The Isle: Evrima](games/the-isle-evrima/README.md) | Blocky rendering, broken 16:10 UI and poor MSI Claw performance | Reversible per-user Unreal configuration profile at native 1920x1200 output and 40% internal 3D scale | 1.0.0 validated on Steam build 24664737 | Configuration-only; normal Steam/EAC launch; small engine-level shader stalls remain |
 
 ## System utilities
 
 | Utility | Purpose | Status | Safety model |
 |---|---|---|---|
-| [MSI Claw Intel VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Corrected 30-120 Hz profile, official Intel/MSI 48-120 Hz profile, plus guarded display-overclock trials | Exact support for Claw A1M, Claw 7 AI+, Claw 8 AI+ and Claw 8 EX AI+ panels; Claw 8 family community validated; A1M/7 Intel 24-120 telemetry handled without creating a 24 Hz profile | Intel LFC correction on every profile, event-driven desktop-cursor helper, exact panel/EDID validation, mandatory restore-before-switch interlock, 15-second automatic overclock rollback, original backup, factory and Safe Mode recovery |
+| [MSI Claw Intel VRR Range Fix](utilities/msi-claw-8-intel-vrr-range-fix/README.md) | Corrected 30-120 Hz profile, official Intel/MSI 48-120 Hz profile, plus guarded display-overclock trials up to 192 Hz | Exact support for Claw A1M, Claw 7 AI+, Claw 8 AI+ and Claw 8 EX AI+ panels; normal Windows fixed-mode choices are left intact and are not used as a health criterion | Intel LFC correction on every profile, event-driven desktop-cursor helper, exact panel/EDID validation, mandatory restore-before-switch interlock, 15-second automatic overclock rollback, original backup, factory and Safe Mode recovery |
 
 ## Start here
 
@@ -50,7 +50,7 @@ games/
 ├── jurassic-world-evolution-3/
 ├── kena-bridge-of-spirits/
 ├── inazuma-eleven-victory-road/
-└── detroit-become-human/
+└── the-isle-evrima/
 
 utilities/
 └── msi-claw-8-intel-vrr-range-fix/
@@ -74,6 +74,12 @@ Each game folder contains its own installer or PAK, technical documentation, cha
 Fixes for games with anti-cheat receive a separate safety assessment. A technique that is acceptable for an unprotected single-player title is not automatically acceptable for a protected game.
 
 The Inazuma patch is an explicit offline-only research result. It modifies the protected executable, cannot be called EAC-compatible, and must be removed before normal EAC or online use. Its installer blocks game-directory executables before patching and restores a verified vanilla executable before returning their network access. The project does not provide or link to an anti-cheat bypass.
+
+The Isle profile is classified **compatible by design** because it modifies
+only per-user INI configuration, leaves the protected process and game
+directory untouched, and uses the normal Steam/EAC launch. This classification
+is not an official anti-cheat guarantee. Its documentation records the
+remaining shader-transition stalls instead of claiming a complete stutter fix.
 
 See [Anti-cheat policy](docs/ANTI_CHEAT_POLICY.md) and each game's own documentation.
 

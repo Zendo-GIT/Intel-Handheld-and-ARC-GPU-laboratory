@@ -69,7 +69,7 @@ function Get-LiteralStringArrayAssignment {
 
 $commonPreflight = @(
     'IMPORTANT VERSION UPGRADE',
-    '2.1.2 or any older release',
+    '2.2.0 or any older release',
     'refuses to overwrite an older managed installation',
     'reset-all.exe',
     'If CRU has never been used',
@@ -104,9 +104,11 @@ $experimentalProfiles = @(
     [pscustomobject]@{ File = 'INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'; Action = 'Install48_144'; Mode = 'CLAWLAB_48_144'; Classification = 'STABLE EXPERIMENTAL'; Minimum = 48; Maximum = 144 },
     [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'; Action = 'Install48_165'; Mode = 'CLAWLAB_48_165'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 48; Maximum = 165 },
     [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'; Action = 'Install48_180'; Mode = 'CLAWLAB_48_180'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 48; Maximum = 180 },
+    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat'; Action = 'Install48_192'; Mode = 'CLAWLAB_48_192'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 48; Maximum = 192 },
     [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'; Action = 'Install30_144'; Mode = 'CLAWLAB_30_144'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 144 },
     [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'; Action = 'Install30_165'; Mode = 'CLAWLAB_30_165'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 165 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'; Action = 'Install30_180'; Mode = 'CLAWLAB_30_180'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 180 }
+    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'; Action = 'Install30_180'; Mode = 'CLAWLAB_30_180'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 180 },
+    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'; Action = 'Install30_192'; Mode = 'CLAWLAB_30_192'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 192 }
 )
 foreach ($profile in $experimentalProfiles) {
     $relativePath = Join-Path 'EXPERIMENTAL' $profile.File
@@ -146,7 +148,7 @@ foreach ($marker in @(
         'try { Remove-ExperimentalOverclockTrial }',
         '$backupPath,',
         "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
-        'ClawLab-VRR-Privileged\2.2.0',
+        'ClawLab-VRR-Privileged\2.2.1',
         'Assert-ProtectedRuntimeIntegrity',
         'protected-runtime.json',
         'Remove-ProtectedExperimentalRuntime',
@@ -191,7 +193,7 @@ if ($trial -notmatch 'Assert-ProtectedRuntimeIntegrity\s*\r?\n\$trial = Read-Jso
     throw 'Protected trial integrity is not verified before trial-state processing.'
 }
 foreach ($marker in @(
-        "`$fixVersion = '2.2.0'",
+        "`$fixVersion = '2.2.1'",
         "'STABLE_EXPERIMENTAL'",
         "'UNSTABLE_EXPERIMENTAL'",
         'ObservationSeconds = 15',
@@ -201,7 +203,7 @@ foreach ($marker in @(
         '$answer -eq 6',
         'Confirm-AdministratorOrRelaunch',
         '-RunLevel Limited',
-        'ClawLab-VRR-Privileged\2.2.0',
+        'ClawLab-VRR-Privileged\2.2.1',
         'Initialize-ProtectedRuntimeDirectory',
         'DirectorySecurity',
         'Write-ProtectedRuntimeManifest',

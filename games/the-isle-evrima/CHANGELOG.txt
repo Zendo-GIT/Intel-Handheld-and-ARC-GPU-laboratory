@@ -1,0 +1,11 @@
+1.0.0 - 2026-08-19
+
+- Initial public configuration-only profile for Evrima 0.21.784 / Steam build
+  24664737.
+- Corrects the validated Intel Arc rendering corruption and 1920x1200 high-DPI
+  16:10 presentation.
+- Uses 1920x1200 output, 40 percent internal 3D rendering, Low settings and
+  Medium view distance.
+- Adds shader-precache, streaming, TSR and conservative VRS tuning.
+- Adds exact backup, read-only persistence, status verification and restoration.
+- Documents that smaller shader/PSO stalls remain during some transitions.

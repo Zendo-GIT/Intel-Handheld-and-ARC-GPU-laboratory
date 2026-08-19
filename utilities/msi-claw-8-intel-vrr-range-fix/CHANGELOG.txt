@@ -1,6 +1,20 @@
 MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 ========================================
 
+2.2.1 - 2026-08-17
+------------------
+- Removes the target-only Windows refresh-choice experiment that could reject
+  valid Intel mode enumeration and block installation or restoration.
+- Restores the proven 2.2.0 profile, EDID, guarded-trial and recovery behavior.
+- Uses Intel profile/range readback, exact EDID, LFC flags, persistence and the
+  switch guard as installation-health criteria.
+- Keeps stable 30-120 and official 48-120 profiles plus every guarded
+  experimental profile.
+- Adds untested Unstable Experimental 48-192 and 30-192 profiles for both
+  pinned panel families with the same guarded trial and automatic rollback.
+- Updates the Intel LFC component to 2.0.6 and the package and Cursor Refresh
+  Helper to 2.2.1.
+
 2.2.0 - 2026-08-17
 ------------------
 - Refuses residual CRU_* or other third-party EDID_OVERRIDE metadata before

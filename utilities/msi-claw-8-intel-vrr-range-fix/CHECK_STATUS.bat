@@ -3,7 +3,7 @@ setlocal
 title MSI Claw VRR status
 set "CLAWLAB_SCRIPTS=%~dp0"
 if exist "%~dp0scripts\MSI-Claw-VRR-Fix.ps1" set "CLAWLAB_SCRIPTS=%~dp0scripts\"
-echo === ClawLab 2.2.0 overall health ===
+echo === ClawLab 2.2.1 overall health ===
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%CLAWLAB_SCRIPTS%ClawLab-Health-Check.ps1"
 set "CLAWLAB_EXIT=%ERRORLEVEL%"
 echo.

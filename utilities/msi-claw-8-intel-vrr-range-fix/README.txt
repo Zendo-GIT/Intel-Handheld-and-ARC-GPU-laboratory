@@ -1,4 +1,4 @@
-MSI CLAW INTEL VRR RANGE FIX 2.2.0
+MSI CLAW INTEL VRR RANGE FIX 2.2.1
 =================================
 
 SUPPORTED EXACT PANELS
@@ -16,7 +16,8 @@ Both include the Intel LFC x2 correction and event-driven desktop cursor helper.
 EXPERIMENTAL FOLDER
 -------------------
 - 48-144 Hz: Stable Experimental. Tested on one MSI Claw 8 AI+ Polar Tempest.
-- 48-165, 48-180, 30-144, 30-165 and 30-180 Hz: Unstable Experimental and untested.
+- 48-165, 48-180, 48-192, 30-144, 30-165, 30-180 and 30-192 Hz:
+  Unstable Experimental and untested.
 
 Every value above 120 Hz is a display overclock outside MSI specifications.
 Results depend on each panel's silicon lottery. The experimental installers
@@ -32,12 +33,15 @@ If the screen flickers, shows artifacts or goes black, WAIT PATIENTLY. DO NOT
 POWER OFF OR REBOOT. No, no response within 30 seconds, any error, or failed
 verification restores the original VRR/LFC state and restarts Windows.
 
+The 192 Hz profiles can align with a 48 FPS x4 frame-generation output target.
+They do not install, enable or guarantee XeSS/XeFG and are extreme overclocks.
+
 MANDATORY BEFORE INSTALLATION
 -----------------------------
 1. Extract the complete ZIP.
-2. If version 2.1.2 or any older ClawLab VRR release is installed, run its
+2. If version 2.2.0 or any older ClawLab VRR release is installed, run its
    RECOVERY\RESTORE_ORIGINAL_VRR.bat and complete the restart first. Version
-   2.2.0 refuses to overwrite an older managed installation. Do not use Factory
+   2.2.1 refuses to overwrite an older managed installation. Do not use Factory
    Reset for a normal upgrade.
 3. If CRU was ever used, run reset-all.exe from the current official CRU
    release and restart Windows.
@@ -64,7 +68,7 @@ PROFILE SWITCHING
 Before applying any different stable or experimental profile, successfully run
 RECOVERY\RESTORE_ORIGINAL_VRR.bat and complete the restart. The installer
 refuses every cross-profile change. Only an exact same-profile repair is
-idempotent within version 2.2.0. Any managed 2.1.2-or-older state requires the
+idempotent within version 2.2.1. Any managed 2.2.0-or-older state requires the
 upgrade restoration described above.
 
 A1M / CLAW 7 AI+ NOTE

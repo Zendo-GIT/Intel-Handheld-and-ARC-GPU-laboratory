@@ -21,9 +21,17 @@ $requiredFiles = @(
     'games\jurassic-world-evolution-3\JWE3-IntelArc-WaterFix.ps1',
     'games\kena-bridge-of-spirits\mod\Kena-WindowsNoEditor_IntelArcWaterFlashFix_P.pak',
     'games\inazuma-eleven-victory-road\IEVR-Offline-Stutter-Fix.ps1',
-    'games\detroit-become-human\Detroit-IntelArc-StabilityFix.ps1',
-    'games\detroit-become-human\INSTALL_STEAM_INTEGRATION.bat',
-    'games\detroit-become-human\REMOVE_STEAM_INTEGRATION.bat',
+    'games\the-isle-evrima\The-Isle-Evrima-Claw-Fix.ps1',
+    'games\the-isle-evrima\INSTALL_FIX.bat',
+    'games\the-isle-evrima\UNINSTALL_FIX.bat',
+    'games\the-isle-evrima\CHECK_STATUS.bat',
+    'games\the-isle-evrima\README.md',
+    'games\the-isle-evrima\docs\COMPATIBILITY.md',
+    'games\the-isle-evrima\docs\SAFETY.md',
+    'games\the-isle-evrima\docs\TECHNICAL_DETAILS.md',
+    'games\the-isle-evrima\docs\RELEASE_NOTES_1.0.0.md',
+    'games\the-isle-evrima\tools\Test-Profile.ps1',
+    'games\the-isle-evrima\tools\Build-Release.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Edid-Normalization.ps1',
@@ -53,14 +61,16 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.2.0.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.2.1.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\docs\A1M_EDID_REFERENCE.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
     'utilities\msi-claw-8-intel-vrr-range-fix\SET_INTEL_LFC_FACTORY_DEFAULTS.bat'
 )
@@ -136,18 +146,39 @@ if ($inazumaScript -notmatch [regex]::Escape('$rules = @(Get-IsolationRules)')) 
     throw 'Inazuma uninstaller no longer guards the single-firewall-rule case.'
 }
 
-$detroitScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'games\detroit-become-human\Detroit-IntelArc-StabilityFix.ps1') -Raw
-$requiredDetroitValues = @(
-    'ECF52321921387E683904E089082D76B973326FC093AF14E524056715519C1CF',
-    '1B31A15AC8AF8A236B3B7FB721DF439D03EB40ACAA5ECF59BC6BCF0CDF49D2AE',
-    '0x661E57',
-    'DetroitBecomeHuman.ClawLab.real.exe'
-)
-foreach ($value in $requiredDetroitValues) {
-    if ($detroitScript -notmatch [regex]::Escape($value)) {
-        throw "Detroit source no longer contains required integrity value: $value"
+$theIsleScript = Get-Content -LiteralPath (
+    Join-Path $repositoryRoot 'games\the-isle-evrima\The-Isle-Evrima-Claw-Fix.ps1'
+) -Raw
+foreach ($marker in @(
+        "`$FixVersion = '1.0.0'",
+        "`$ValidatedBuildId = '24664737'",
+        "`$ValidatedGameVersion = '0.21.784'",
+        'BuildIdOverride is restricted to an isolated test configuration directory.',
+        'CONFIGURATION_ONLY_NO_INJECTION',
+        'Set-ReadOnly -LiteralPath $enginePath -Enabled $true',
+        'Set-ReadOnly -LiteralPath $gameUserSettingsPath -Enabled $true',
+        'Assert-SupportedDisplayProfile',
+        'Restore-OperationSnapshot',
+        'Unsupported or unverified Steam build',
+        "'ScreenPercentage' = '40'",
+        "'sg.ViewDistanceQuality' = '1'",
+        "'sg.FoliageQuality' = '0'"
+    )) {
+    if ($theIsleScript -notmatch [regex]::Escape($marker)) {
+        throw "The Isle source is missing a required profile or safety marker: $marker"
     }
 }
+foreach ($forbiddenMarker in @(
+        'D3D12.PSO.DiskCache',
+        'D3D12.PSO.DriverOptimizedDiskCache',
+        'WriteProcessMemory',
+        'netsh advfirewall'
+    )) {
+    if ($theIsleScript -match [regex]::Escape($forbiddenMarker)) {
+        throw "The Isle source contains a forbidden or ineffective public mechanism: $forbiddenMarker"
+    }
+}
+& (Join-Path $repositoryRoot 'games\the-isle-evrima\tools\Test-Profile.ps1') | Out-Host
 
 $vrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 $retiredVrrPublicFiles = @(
@@ -163,7 +194,7 @@ foreach ($relativePath in $retiredVrrPublicFiles) {
     }
 }
 $requiredVrrValues = @(
-    "`$fixVersion = '2.2.0'",
+    "`$fixVersion = '2.2.1'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -176,6 +207,10 @@ $requiredVrrValues = @(
     '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
     '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1',
     '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647',
+    'DC60F9E3CC7B33C4F094181C57E4AF271C1BFB4449AFDE2614B4EAC27C032752',
+    '949A7143DB4549FC7D0D36F9F2521A528C1C796DE8F3F1FA948E4B3DBF5ECED6',
+    '4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE',
+    '6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9',
     "Name = 'TL070FVXS02-0'",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
@@ -214,6 +249,8 @@ $requiredVrrValues = @(
     'CLAW_A1M_CLAW_7_AI_PLUS'
     'Overclock48_180EdidSha256'
     'Overclock30_180EdidSha256'
+    'Overclock48_192EdidSha256'
+    'Overclock30_192EdidSha256'
     'OLDER_VERSION_RESTORE_REQUIRED'
     'Test-ClawLabFirstInstallProfileSafe'
     'Test-SnapshotMatchesSavedProfile'
@@ -237,8 +274,8 @@ $installActions = @(
 )
 $expectedInstallActions = @(
     "'Install30'", "'Install48'",
-    "'Install30_144'", "'Install30_165'", "'Install30_180'",
-    "'Install48_144'", "'Install48_165'", "'Install48_180'"
+    "'Install30_144'", "'Install30_165'", "'Install30_180'", "'Install30_192'",
+    "'Install48_144'", "'Install48_165'", "'Install48_180'", "'Install48_192'"
 )
 if (@(Compare-Object -ReferenceObject $expectedInstallActions -DifferenceObject $installActions).Count -ne 0) {
     throw "Unexpected VRR installation actions: $($installActions -join ', ')"
@@ -247,8 +284,8 @@ foreach ($requiredRangeMarker in @(
         '$targetMinimumHz = 48.0',
         '$experimentalMinimumHz = 30.0',
         '$targetMaximumHz = 120.0',
-        "'Install48_144', 'Install48_165', 'Install48_180'",
-        "'Install30_144', 'Install30_165', 'Install30_180'"
+        "'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192'",
+        "'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192'"
     )) {
     if ($vrrScript -notmatch [regex]::Escape($requiredRangeMarker)) {
         throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
@@ -284,7 +321,7 @@ if ($null -eq $rangePolicyResult -or [string]$rangePolicyResult.Result -ne 'PASS
 $overclockEdidTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Experimental-Overclock-Edids.ps1'
 $overclockEdidResult = & $overclockEdidTestPath
 if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne 'PASS' -or
-    [int]$overclockEdidResult.ProfilesVerified -ne 12 -or
+    [int]$overclockEdidResult.ProfilesVerified -ne 16 -or
     [int]$overclockEdidResult.Unsupported24HzProfiles -ne 0) {
     throw 'The two-panel guarded overclock EDID test failed.'
 }
@@ -292,7 +329,7 @@ if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne '
 $installerMatrixTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Public-Installer-Matrix.ps1'
 $installerMatrixResult = & $installerMatrixTestPath
 if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -ne 'PASS' -or
-    [int]$installerMatrixResult.LfcIntegratedProfiles -ne 8 -or
+    [int]$installerMatrixResult.LfcIntegratedProfiles -ne 10 -or
     [string]$installerMatrixResult.GuardedTrialOrder -ne 'PASS' -or
     [int]$installerMatrixResult.Forbidden24HzProfiles -ne 0) {
     throw 'The public installer/action/LFC/guarded-trial matrix test failed.'
@@ -300,7 +337,7 @@ if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -
 
 $cursorHelperPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe'
 $cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
-if ($cursorHelperAssembly.Version.ToString() -ne '2.2.0.0') {
+if ($cursorHelperAssembly.Version.ToString() -ne '2.2.1.0') {
     throw "Cursor Refresh Helper has unexpected assembly version $($cursorHelperAssembly.Version)."
 }
 $cursorHelperSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs') -Raw
@@ -343,7 +380,7 @@ foreach ($value in @(
 
 $lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.5'",
+    "`$toolVersion = '2.0.6'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -351,8 +388,10 @@ foreach ($value in @(
     "'CLAWLAB_30_144'",
     "'CLAWLAB_48_165'",
     "'CLAWLAB_48_180'",
+    "'CLAWLAB_48_192'",
     "'CLAWLAB_30_165'",
     "'CLAWLAB_30_180'",
+    "'CLAWLAB_30_192'",
     '$managedProfiles.ContainsKey($managedModeName)',
     'OriginalLowFpsSolutionEnabled',
     'OriginalHighFpsSolutionEnabled',
@@ -421,7 +460,7 @@ foreach ($installerName in $lfcInstallers) {
     }
     foreach ($cruMarker in @(
             'IMPORTANT VERSION UPGRADE',
-            '2.1.2 or any older release',
+            '2.2.0 or any older release',
             'refuses to overwrite an older managed installation',
             'reset-all.exe',
             'Has CRU never been used',
@@ -442,9 +481,11 @@ $experimentalInstallers = @(
     'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'
 )
 foreach ($installerName in $experimentalInstallers) {
     $installerPath = Join-Path $repositoryRoot "utilities\msi-claw-8-intel-vrr-range-fix\$installerName"
@@ -452,7 +493,7 @@ foreach ($installerName in $experimentalInstallers) {
     foreach ($marker in @(
             'DISPLAY OVERCLOCK',
             'IMPORTANT VERSION UPGRADE',
-            '2.1.2 or any older release',
+            '2.2.0 or any older release',
             'refuses to overwrite an older managed installation',
             'silicon lottery',
             'timeout /t 10 /nobreak',
@@ -480,7 +521,7 @@ foreach ($marker in @(
         'try { Remove-ExperimentalOverclockTrial }',
         '$backupPath,',
         "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
-        'ClawLab-VRR-Privileged\2.2.0',
+        'ClawLab-VRR-Privileged\2.2.1',
         'Assert-ProtectedRuntimeIntegrity',
         'protected-runtime.json',
         'Remove-ProtectedExperimentalRuntime',
@@ -494,14 +535,14 @@ foreach ($marker in @(
 
 $trialScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\Experimental-Overclock-VRR-Trial.ps1') -Raw
 foreach ($marker in @(
-        "`$fixVersion = '2.2.0'",
+        "`$fixVersion = '2.2.1'",
         'ObservationSeconds = 15',
         'TimeoutSeconds 15',
         "-ToolAction 'SetSafe120ForTrial'",
         'UserConfirmed = $false',
         'Confirm-AdministratorOrRelaunch',
         '-RunLevel Limited',
-        'ClawLab-VRR-Privileged\2.2.0',
+        'ClawLab-VRR-Privileged\2.2.1',
         'Initialize-ProtectedRuntimeDirectory',
         'DirectorySecurity',
         'Write-ProtectedRuntimeManifest',
@@ -559,6 +600,6 @@ if ($nestedGitDirectories.Count -gt 0) {
     PowerShellFiles = $powerShellFiles.Count
     KenaPakSha256 = $actualKenaPakHash
     InazumaKnownHashes = $requiredInazumaHashes.Count
-    DetroitIntegrityValues = $requiredDetroitValues.Count
+    TheIsleProfileTest = 'PASS'
     VrrIntegrityValues = $requiredVrrValues.Count + 3
 }

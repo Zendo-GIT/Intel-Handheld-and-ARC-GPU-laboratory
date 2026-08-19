@@ -2,7 +2,7 @@
 
 ## Supported MSI Claw families
 
-Version 2.2.0 supports these exact internal-panel families:
+Version 2.2.1 supports these exact internal-panel families:
 
 | Handheld family | Exact panel | Native mode | Physical EDID SHA-256 |
 |---|---|---:|---|
@@ -20,7 +20,8 @@ All supported exact panels receive the same profile choices:
 
 - stable: 30–120 Hz and official 48–120 Hz;
 - Stable Experimental: 48–144 Hz;
-- Unstable Experimental: 48–165, 48–180, 30–144, 30–165 and 30–180 Hz.
+- Unstable Experimental: 48–165, 48–180, 48–192, 30–144, 30–165, 30–180
+  and 30–192 Hz.
 
 Availability in the package is not a validation claim. Every profile above
 120 Hz is a display overclock outside MSI specifications and depends on the
@@ -36,10 +37,10 @@ individual panel silicon lottery.
 - 48–144 Hz reached and remained stable on one MSI Claw 8 AI+ Polar Tempest
   Edition. It is therefore labelled **Stable Experimental**, not official.
 - 165 Hz has been reported as attainable on some Claw panels outside this
-  guarded 2.2.0 validation. 180 Hz is unvalidated. These outcomes are treated
+  guarded 2.2.1 validation. 180 and 192 Hz are unvalidated. These outcomes are treated
   only as silicon-lottery possibilities.
 - A1M Core Ultra 5 and Ultra 7 diagnostics and a Claw 7 AI+ report established
-  the shared TMA2027 telemetry behavior. Their 2.2.0 policy is exact-EDID
+  the shared TMA2027 telemetry behavior. Their 2.2.1 policy is exact-EDID
   constrained; high-refresh experiments remain unvalidated on those models.
 
 ## A1M / Claw 7 AI+ Intel telemetry anomaly
@@ -50,13 +51,13 @@ query while the active profile query independently returns custom 30–120 or
 official 48–120. The direct Intel D3DKMT interface continues to expose the
 physical 48–120 range.
 
-Version 2.2.0 accepts the half-physical 24 Hz value only when all of these are
+Version 2.2.1 accepts the half-physical 24 Hz value only when all of these are
 true:
 
 - panel key is the exact A1M / Claw 7 AI+ Tianma definition;
 - canonical EDID and selected ClawLab override have pinned hashes;
 - the separately queried active Intel profile exactly matches the requested
-  30/48 Hz minimum and 120/144/165/180 Hz maximum;
+  30/48 Hz minimum and 120/144/165/180/192 Hz maximum;
 - the direct interface, expected EDID and managed record agree.
 
 The 24 Hz value is capability telemetry only. No 24 Hz EDID, install action,
@@ -84,9 +85,9 @@ range, backup identity or status result.
 
 ## Upgrade from an older ClawLab VRR release
 
-Version 2.2.0 deliberately refuses any managed state recorded by 2.1.2 or an
+Version 2.2.1 deliberately refuses any managed state recorded by 2.2.0 or an
 older release, including the same nominal range. Use that older release's
-`RECOVERY\RESTORE_ORIGINAL_VRR.bat`, restart Windows, then install 2.2.0 from a
+`RECOVERY\RESTORE_ORIGINAL_VRR.bat`, restart Windows, then install 2.2.1 from a
 newly extracted folder. Do not use Factory Reset for a normal upgrade.
 
 ## Mandatory CRU cleanup
@@ -127,7 +128,7 @@ ClawLab therefore requires exactly one active Intel Arc Sync output.
   separates physical range, ControlLib telemetry and selected active profile.
 - A custom EDID needs a restart before the driver loads it.
 - 30 Hz is below MSI's official floor and may flicker on an individual panel.
-- 144/165/180 Hz are display overclocks and can fail despite an identical EDID.
+- 144/165/180/192 Hz are display overclocks and can fail despite an identical EDID.
 - Disabling Intel's low/high-FPS solutions removes traditional refresh
   multiplication below the selected profile floor.
 - The tool cannot force a game to present through a VRR-capable swap chain.

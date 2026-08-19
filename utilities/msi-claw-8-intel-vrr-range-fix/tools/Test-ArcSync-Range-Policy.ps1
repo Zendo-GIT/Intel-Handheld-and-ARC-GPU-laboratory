@@ -60,7 +60,7 @@ Assert-Equal `
         -MonitorMinimumHz 24 -MonitorMaximumHz 120 -ExpectedMinimumHz 30 -ExpectedMaximumHz 144) `
     $true 'The A1M/Claw 7 AI+ telemetry exception rejected the guarded 30-144 profile.'
 
-foreach ($maximum in @(144, 165, 180)) {
+foreach ($maximum in @(144, 165, 180, 192)) {
     foreach ($minimum in @(30, 48)) {
         Assert-Equal `
             (Test-ClawLabArcSyncMonitorRangeCompatible -PanelKey $tmaPanel `
@@ -98,8 +98,8 @@ Assert-Equal `
 
 $profiles = @(
     'OFFICIAL_48_120', 'CLAWLAB_30_120',
-    'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180',
-    'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180'
+    'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180', 'CLAWLAB_48_192',
+    'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180', 'CLAWLAB_30_192'
 )
 foreach ($panelKey in @($claw8, $tmaPanel)) {
     foreach ($current in $profiles) {
@@ -182,7 +182,7 @@ Assert-Equal `
 [pscustomobject]@{
     Result = 'PASS'
     StableProfiles = '30-120, 48-120'
-    GuardedExperimentalProfiles = '30/48 x 144/165/180'
+    GuardedExperimentalProfiles = '30/48 x 144/165/180/192'
     Tma2027TelemetryPolicy = 'INTEL_CONTROL_LIB_HALF_PHYSICAL_FLOOR'
     TelemetryFloorInstallable = $false
     Claw8RegressionGuard = 'PASS'

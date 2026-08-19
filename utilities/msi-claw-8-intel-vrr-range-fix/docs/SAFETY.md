@@ -20,7 +20,7 @@ readback checks before LFC flags can change.
 
 ## Experimental overclock risk
 
-Every 144, 165 or 180 Hz maximum is a display overclock outside MSI
+Every 144, 165, 180 or 192 Hz maximum is a display overclock outside MSI
 specifications. It can cause temporary flicker, scan lines, artifacts, an
 unstable image or a black screen. Identical model names and EDIDs do not
 guarantee identical headroom; the result depends on the individual panel
@@ -28,8 +28,9 @@ silicon lottery.
 
 - 48–144 is **Stable Experimental** because it was tested on one MSI Claw 8 AI+
   Polar Tempest Edition. This does not make it official or universally safe.
-- 48–165, 48–180, 30–144, 30–165 and 30–180 are **Unstable Experimental** and
-  have not been validated by ClawLab.
+- 48–165, 48–180, 48–192, 30–144, 30–165, 30–180 and 30–192 are **Unstable
+  Experimental** and have not been validated by ClawLab. The 192 Hz profiles
+  are the highest risk and exist only as extreme silicon-lottery trials.
 
 Each experimental BAT enforces a 10-second reading delay and exact typed risk
 acknowledgement. The profile is never persisted immediately.
@@ -72,11 +73,11 @@ original profile and LFC state and restarts Windows.
 No direct profile switching is permitted. This applies to all models and to
 every stable or experimental combination. A different requested mode is refused
 until `RECOVERY\RESTORE_ORIGINAL_VRR.bat` completes successfully and Windows
-restarts. Only exact same-profile repair within version 2.2.0 is idempotent.
+restarts. Only exact same-profile repair within version 2.2.1 is idempotent.
 
-A managed 2.1.2-or-older installation is also refused, even when it uses the
+A managed 2.2.0-or-older installation is also refused, even when it uses the
 same range. Run the older release's `RECOVERY\RESTORE_ORIGINAL_VRR.bat`, finish
-the restart, extract 2.2.0 to a new folder and install the desired profile.
+the restart, extract 2.2.1 to a new folder and install the desired profile.
 Factory Reset is not required for this normal migration.
 
 A clean first installation accepts Intel Arc Sync `RECOMMENDED` or `EXCELLENT`

@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-19
+
+- Added The Isle: Evrima MSI Claw Performance Fix 1.0.0 for game version
+  0.21.784 / Steam build 24664737. The reversible per-user configuration
+  corrects the validated Intel Arc rendering corruption and 1920x1200
+  high-DPI/16:10 crop, keeps native output for VRR, and applies the validated
+  40 percent internal render scale with Low settings and Medium view distance.
+- Added exact original backups, atomic INI merges, read-only persistence,
+  post-install health checks, exact attribute restoration, isolated functional
+  tests and a reproducible checksummed release archive.
+- Documented that smaller shader/PSO stalls remain during some map and scene
+  transitions. The shipping game ignored the attempted early D3D12 disk-cache
+  override, so that ineffective experiment is excluded from the public release.
+
+## 2026-08-17
+
+- Prepared MSI Claw Intel VRR Range Fix 2.2.1 as a corrective release. It
+  preserves the proven 2.2.0 profile, EDID, guarded-trial and recovery paths and
+  removes the unsafe target-only Windows refresh-choice experiment. Stable
+  profiles remain 30–120 and official 48–120; Intel profile/range readback,
+  exact EDID, LFC state, persistence and switch-guard consistency remain the
+  authoritative health checks.
+- Added guarded, untested 48–192 and 30–192 extreme-overclock profiles for all
+  supported MSI Claw panel families, including exact generated EDID hashes,
+  Intel LFC integration, 15-second trial and automatic safe-120 rollback.
+- Removed the abandoned Detroit: Become Human experiment and all publication
+  references so no incomplete launcher or patch is shipped by the laboratory.
+
 ## 2026-08-16
 
 - Prepared MSI Claw VRR Range Fix 2.1.0 with the real-hardware-validated
@@ -68,10 +96,6 @@
 - Added shared scope, release, contribution, security, and anti-cheat policies.
 - Added a shared release builder and repository validation workflow.
 - Added INAZUMA ELEVEN: Victory Road Offline Stutter Fix 1.0.0.
-- Added Detroit: Become Human Intel Arc Stability Fix 1.0.0 with verified
-  unsupported-GPU dialog suppression, cache-aware launch safeguards and
-  transition presentation recovery, plus optional reversible Steam Play
-  integration.
 - Added MSI Claw 8 AI+ / 8 EX AI+ VRR Range Fix 1.0.0 with a validated official
   48-120 Hz Intel Arc Sync profile, exact status reporting, reversible recovery,
   and a separately marked panel-specific experimental 30-120 Hz EDID override.

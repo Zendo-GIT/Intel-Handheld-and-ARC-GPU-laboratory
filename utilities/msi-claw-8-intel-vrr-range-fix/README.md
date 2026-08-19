@@ -1,10 +1,10 @@
 # MSI Claw Intel VRR Range Fix
 
-![Version](https://img.shields.io/badge/release-2.2.0-blue)
+![Version](https://img.shields.io/badge/release-2.2.1-blue)
 ![Stable profiles](https://img.shields.io/badge/stable-30--120_%2F_48--120_Hz-green)
-![Experimental maximum](https://img.shields.io/badge/experimental-up_to_180_Hz-orange)
+![Experimental maximum](https://img.shields.io/badge/experimental-up_to_192_Hz-orange)
 
-ClawLab 2.2.0 corrects Intel Arc VRR/LFC behavior on exact, pinned internal
+ClawLab 2.2.1 corrects Intel Arc VRR/LFC behavior on exact, pinned internal
 panels used by these handhelds:
 
 - MSI Claw A1M;
@@ -15,7 +15,7 @@ panels used by these handhelds:
 The utility changes global Windows/Intel display state only. It never injects
 into, patches, hooks, opens or monitors a game process.
 
-See the [2.2.0 release notes](docs/RELEASE_NOTES_2.2.0.md),
+See the [2.2.1 release notes](docs/RELEASE_NOTES_2.2.1.md),
 [compatibility](docs/COMPATIBILITY.md), [safety](docs/SAFETY.md), and
 [technical details](docs/TECHNICAL_DETAILS.md).
 
@@ -40,14 +40,20 @@ The `EXPERIMENTAL` folder contains:
 | 48–144 Hz | **Stable Experimental** | Tested on one MSI Claw 8 AI+ Polar Tempest Edition |
 | 48–165 Hz | **Unstable Experimental** | Untested; panel silicon lottery |
 | 48–180 Hz | **Unstable Experimental** | Untested; panel silicon lottery |
+| 48–192 Hz | **Unstable Experimental** | Untested; extreme overclock and panel silicon lottery |
 | 30–144 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus overclock |
 | 30–165 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus overclock |
 | 30–180 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus overclock |
+| 30–192 Hz | **Unstable Experimental** | Untested; unofficial 30 Hz floor plus extreme overclock |
 
 “Stable Experimental” is a ClawLab classification, not an MSI specification or
 a guarantee for another unit. Every refresh rate above 120 Hz is a display
 overclock. Success depends on the individual panel silicon lottery, even when
 the model and EDID are identical.
+
+The 192 Hz profiles provide an optional display target that can align with a
+48 FPS ×4 frame-generation output. They do not install, enable or guarantee
+XeSS/XeFG and remain untested extreme panel overclocks.
 
 ### Mandatory guarded overclock test
 
@@ -82,9 +88,9 @@ LFC patch is applied, and normal one-shot sign-in persistence is installed.
 ## Mandatory pre-install conditions
 
 1. Extract the complete ZIP to a normal folder.
-2. **Upgrade from 2.1.2 or any older ClawLab VRR release:** use that release's
+2. **Upgrade from 2.2.0 or any older ClawLab VRR release:** use that release's
    `RECOVERY\RESTORE_ORIGINAL_VRR.bat`, complete the Windows restart, then use
-   the newly extracted 2.2.0 package. Version 2.2.0 detects and refuses to
+   the newly extracted 2.2.1 package. Version 2.2.1 detects and refuses to
    overwrite an older managed installation. Do not use Factory Reset for a
    normal upgrade.
 3. Close games and display-control applications.
@@ -129,7 +135,7 @@ The switch guard applies identically to every supported model and every stable
 or experimental profile:
 
 - clean state → any one profile is allowed;
-- exact same fully installed **2.2.0** profile → idempotent repair/reinstall is
+- exact same fully installed **2.2.1** profile → idempotent repair/reinstall is
   allowed;
 - an older ClawLab release → refused until its original profile is restored and
   Windows is restarted;
@@ -165,7 +171,7 @@ therefore unavailable.
 The exact `TMA2027 / TL070FVXS02-0` panel can expose `24–120 Hz` through one
 Intel Control Library monitor-capability query even though its physical EDID is
 48–120 Hz and the selected active profile is independently 30–120 or 48–120 Hz.
-Version 2.2.0 recognizes that value only as a telemetry anomaly on the exact
+Version 2.2.1 recognizes that value only as a telemetry anomaly on the exact
 pinned Tianma EDID. It never creates, offers or installs a 24 Hz profile.
 
 `CHECK_STATUS.bat` reports physical panel range, Intel monitor telemetry and
@@ -224,11 +230,11 @@ removed by ClawLab.
 ## Build
 
 ```powershell
-.\tools\Build-Release.ps1 -Version 2.2.0
+.\tools\Build-Release.ps1 -Version 2.2.1
 ```
 
 The builder parses every PowerShell file, regenerates the helper, verifies all
-12 overclock EDID hashes, checks the A1M/Claw 7 telemetry policy, exercises the
+16 overclock EDID hashes, checks the A1M/Claw 7 telemetry policy, exercises the
 complete profile-transition matrix, validates warning/timeout/rollback markers,
 and writes a SHA-256 manifest.
 

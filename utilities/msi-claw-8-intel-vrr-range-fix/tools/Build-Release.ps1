@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.2.0'
+    [string]$Version = '2.2.1'
 )
 
 Set-StrictMode -Version Latest
@@ -50,9 +50,11 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat' },
+    [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat' },
     [pscustomobject]@{ Source = 'CHECK_STATUS.bat'; Destination = 'CHECK_STATUS.bat' },
     [pscustomobject]@{ Source = 'README.txt'; Destination = 'README.txt' },
     [pscustomobject]@{ Source = 'CHANGELOG.txt'; Destination = 'CHANGELOG.txt' },
@@ -86,7 +88,7 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'docs\TECHNICAL_DETAILS.md'; Destination = 'docs\TECHNICAL_DETAILS.md' },
     [pscustomobject]@{ Source = 'docs\NEXUS_MODS.md'; Destination = 'docs\NEXUS_MODS.md' },
     [pscustomobject]@{ Source = 'docs\A1M_EDID_REFERENCE.md'; Destination = 'docs\A1M_EDID_REFERENCE.md' },
-    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.2.0.md'; Destination = 'docs\RELEASE_NOTES_2.2.0.md' },
+    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.2.1.md'; Destination = 'docs\RELEASE_NOTES_2.2.1.md' },
 
     [pscustomobject]@{ Source = 'tools\Test-A1M-Edid.ps1'; Destination = 'SOURCE\Test-A1M-Edid.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Lfc-Backup-Identity.ps1'; Destination = 'SOURCE\Test-Lfc-Backup-Identity.ps1' },
@@ -147,6 +149,10 @@ $requiredIntegrityValues = @(
     'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E',
     'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51',
     'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679',
+    'DC60F9E3CC7B33C4F094181C57E4AF271C1BFB4449AFDE2614B4EAC27C032752',
+    '949A7143DB4549FC7D0D36F9F2521A528C1C796DE8F3F1FA948E4B3DBF5ECED6',
+    '4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE',
+    '6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9',
     "Name = 'TL070FVXS02-0'",
     'ctlSetIntelArcSyncProfile',
     'Get-AuthenticodeSignature',
@@ -185,6 +191,8 @@ $requiredIntegrityValues = @(
     'CLAW_A1M_CLAW_7_AI_PLUS'
     'Overclock48_180EdidSha256'
     'Overclock30_180EdidSha256'
+    'Overclock48_192EdidSha256'
+    'Overclock30_192EdidSha256'
 )
 foreach ($value in $requiredIntegrityValues) {
     if ($scriptText -notmatch [regex]::Escape($value)) {
@@ -198,8 +206,8 @@ $installActions = @(
 )
 $expectedInstallActions = @(
     "'Install30'", "'Install48'",
-    "'Install30_144'", "'Install30_165'", "'Install30_180'",
-    "'Install48_144'", "'Install48_165'", "'Install48_180'"
+    "'Install30_144'", "'Install30_165'", "'Install30_180'", "'Install30_192'",
+    "'Install48_144'", "'Install48_165'", "'Install48_180'", "'Install48_192'"
 )
 if (@(Compare-Object -ReferenceObject $expectedInstallActions -DifferenceObject $installActions).Count -ne 0) {
     throw "Unexpected VRR installation actions: $($installActions -join ', ')"
@@ -208,8 +216,8 @@ foreach ($requiredRangeMarker in @(
         '$targetMinimumHz = 48.0',
         '$experimentalMinimumHz = 30.0',
         '$targetMaximumHz = 120.0',
-        "'Install48_144', 'Install48_165', 'Install48_180'",
-        "'Install30_144', 'Install30_165', 'Install30_180'"
+        "'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192'",
+        "'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192'"
     )) {
     if ($scriptText -notmatch [regex]::Escape($requiredRangeMarker)) {
         throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
@@ -245,7 +253,7 @@ if ($null -eq $rangePolicyResult -or [string]$rangePolicyResult.Result -ne 'PASS
 $overclockEdidTest = Join-Path $projectRoot 'tools\Test-Experimental-Overclock-Edids.ps1'
 $overclockEdidResult = & $overclockEdidTest
 if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne 'PASS' -or
-    [int]$overclockEdidResult.ProfilesVerified -ne 12 -or
+    [int]$overclockEdidResult.ProfilesVerified -ne 16 -or
     [int]$overclockEdidResult.Unsupported24HzProfiles -ne 0) {
     throw 'The two-panel guarded overclock EDID test failed.'
 }
@@ -253,7 +261,7 @@ if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne '
 $installerMatrixTest = Join-Path $projectRoot 'tools\Test-Public-Installer-Matrix.ps1'
 $installerMatrixResult = & $installerMatrixTest
 if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -ne 'PASS' -or
-    [int]$installerMatrixResult.LfcIntegratedProfiles -ne 8 -or
+    [int]$installerMatrixResult.LfcIntegratedProfiles -ne 10 -or
     [string]$installerMatrixResult.GuardedTrialOrder -ne 'PASS' -or
     [int]$installerMatrixResult.Forbidden24HzProfiles -ne 0) {
     throw 'The public installer/action/LFC/guarded-trial matrix test failed.'
@@ -303,7 +311,7 @@ if ($helperLaunchIndex -lt 0 -or $startupApplyIndex -lt 0 -or $helperLaunchIndex
 
 $lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.5'",
+    "`$toolVersion = '2.0.6'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -311,8 +319,10 @@ foreach ($value in @(
     "'CLAWLAB_30_144'",
     "'CLAWLAB_48_165'",
     "'CLAWLAB_48_180'",
+    "'CLAWLAB_48_192'",
     "'CLAWLAB_30_165'",
     "'CLAWLAB_30_180'",
+    "'CLAWLAB_30_192'",
     '$managedProfiles.ContainsKey($managedModeName)',
     'OriginalLowFpsSolutionEnabled',
     'OriginalHighFpsSolutionEnabled',
@@ -370,9 +380,11 @@ $experimentalInstallers = @(
     'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat',
     'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat',
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'
 )
 foreach ($installerName in $experimentalInstallers) {
     $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
@@ -404,7 +416,7 @@ foreach ($marker in @(
         'try { Remove-ExperimentalOverclockTrial }',
         '$backupPath,',
         "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
-        'ClawLab-VRR-Privileged\2.2.0',
+        'ClawLab-VRR-Privileged\2.2.1',
         'Assert-ProtectedRuntimeIntegrity',
         'protected-runtime.json',
         'Remove-ProtectedExperimentalRuntime',
@@ -509,7 +521,7 @@ foreach ($marker in @(
         'UserConfirmed = $false',
         'Confirm-AdministratorOrRelaunch',
         '-RunLevel Limited',
-        'ClawLab-VRR-Privileged\2.2.0',
+        'ClawLab-VRR-Privileged\2.2.1',
         'Initialize-ProtectedRuntimeDirectory',
         'New-ProtectedRuntimeAcl',
         'DirectorySecurity',
@@ -660,9 +672,11 @@ try {
             'EXPERIMENTAL/INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'
             'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'
             'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat'
             'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'
             'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'
             'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'
+            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'
         )) {
         if ($requiredEntry -notin $relativeEntries) {
             throw "Required structured ZIP entry is missing: $requiredEntry"

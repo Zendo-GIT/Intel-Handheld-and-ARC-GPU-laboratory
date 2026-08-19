@@ -6,7 +6,7 @@ MSI Claw Intel VRR Range and LFC Fix
 
 ## Version
 
-2.2.0
+2.2.1
 
 ## Short description
 
@@ -16,7 +16,7 @@ experimental display-overclock trials.
 
 ## Description
 
-ClawLab 2.2.0 corrects the Intel refresh-multiplication/LFC behavior that can
+ClawLab 2.2.1 corrects the Intel refresh-multiplication/LFC behavior that can
 turn values such as 60 FPS into 120 Hz while preserving exact restoration of
 the original driver state. It supports only pinned internal-panel definitions
 used by MSI Claw A1M, Claw 7 AI+, Claw 8 AI+ and Claw 8 EX AI+.
@@ -27,7 +27,8 @@ event-driven desktop cursor helper.
 
 The optional `EXPERIMENTAL` folder adds 48–144 Hz as Stable Experimental,
 validated on one Claw 8 AI+ Polar Tempest Edition, plus untested Unstable
-Experimental 48–165, 48–180, 30–144, 30–165 and 30–180 profiles. Every value
+Experimental 48–165, 48–180, 48–192, 30–144, 30–165, 30–180 and 30–192
+profiles. Every value
 above 120 Hz is an overclock outside MSI specifications and depends on the
 individual panel silicon lottery.
 
@@ -54,10 +55,10 @@ fresh readback, and falls back to `EXCELLENT` if the driver silently retains
 Changing to any different ClawLab profile always requires a successful
 `RESTORE_ORIGINAL_VRR.bat` and restart first. The package refuses mixed states.
 
-When upgrading from 2.1.2 or any older managed release, first run
+When upgrading from 2.2.0 or any older managed release, first run
 `RECOVERY\RESTORE_ORIGINAL_VRR.bat` from that older extracted package and
-restart Windows. Then extract 2.2.0 into a new folder and install the desired
-profile. Do not use Factory Reset for a normal upgrade. Version 2.2.0 detects
+restart Windows. Then extract 2.2.1 into a new folder and install the desired
+profile. Do not use Factory Reset for a normal upgrade. Version 2.2.1 detects
 an older managed state and refuses installation until this restore is complete.
 
 The utility changes global Windows/Intel display settings only. It does not

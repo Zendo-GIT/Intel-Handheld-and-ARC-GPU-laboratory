@@ -11,6 +11,7 @@ body:
         - Jurassic World Evolution 3
         - Kena: Bridge of Spirits
         - INAZUMA ELEVEN: Victory Road
+        - The Isle: Evrima
     validations:
       required: true
   - type: input

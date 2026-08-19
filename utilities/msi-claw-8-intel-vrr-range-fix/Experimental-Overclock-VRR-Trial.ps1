@@ -3,8 +3,8 @@ param(
     [ValidateSet('Schedule', 'Run')]
     [string]$Action = 'Schedule',
     [ValidateSet(
-        'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180',
-        'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180'
+        'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180', 'CLAWLAB_48_192',
+        'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180', 'CLAWLAB_30_192'
     )]
     [string]$Mode = 'CLAWLAB_48_144'
 )
@@ -12,13 +12,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.2.0'
+$fixVersion = '2.2.1'
 $stateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $managedModePath = Join-Path $stateRoot 'managed-mode.json'
 $customEdidStatePath = Join-Path $stateRoot 'experimental-edid.json'
 $originalProfilePath = Join-Path $stateRoot 'original-profile.json'
 $trialStatePath = Join-Path $stateRoot 'experimental-overclock-trial.json'
-$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.2.0'
+$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.2.1'
 $installedTrialPath = Join-Path $protectedRuntimeRoot 'Experimental-Overclock-VRR-Trial.ps1'
 $installedTrialLauncherPath = Join-Path $protectedRuntimeRoot 'ClawLab-Experimental-Trial-Startup.vbs'
 $installedVrrToolPath = Join-Path $protectedRuntimeRoot 'MSI-Claw-VRR-Fix.ps1'
@@ -31,9 +31,11 @@ $profiles = @{
     'CLAWLAB_48_144' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; Stability = 'STABLE_EXPERIMENTAL' }
     'CLAWLAB_48_165' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 165; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_48_180' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 180; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_48_192' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 192; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_30_144' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_30_165' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 165; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_30_180' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 180; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_30_192' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 192; Stability = 'UNSTABLE_EXPERIMENTAL' }
 }
 
 function Test-Administrator {

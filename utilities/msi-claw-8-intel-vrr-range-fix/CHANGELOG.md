@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.1 — 2026-08-17
+
+- Removes the target-only Windows refresh-choice experiment that could reject
+  valid Intel mode enumeration and block profile installation or restoration.
+- Restores the known-good 2.2.0 profile, EDID, guarded-trial and original-state
+  recovery behavior.
+- Verifies installation through Intel profile/range readback, exact EDID, LFC
+  flags, persistence and switch-guard consistency rather than the number of
+  refresh choices shown by Windows.
+- Keeps stable 30–120 and official 48–120 profiles, all guarded experimental
+  profiles, exact panel validation and mandatory restore-before-switch safety.
+- Adds untested Unstable Experimental 48–192 and 30–192 profiles for both exact
+  panel families with pinned EDID hashes, LFC integration, mandatory warnings,
+  15-second trial and automatic safe-120 rollback.
+- Updates the Intel LFC component to 2.0.6 and the public package and Cursor
+  Refresh Helper to version 2.2.1.
+
 ## 2.2.0 — 2026-08-17
 
 - Adds a fail-closed registry preflight for residual `CRU_*` and other

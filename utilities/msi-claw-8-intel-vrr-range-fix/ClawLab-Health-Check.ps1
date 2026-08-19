@@ -87,9 +87,11 @@ $activeManagedStates = @(
     'EXPERIMENTAL_48_144_ACTIVE',
     'EXPERIMENTAL_48_165_ACTIVE',
     'EXPERIMENTAL_48_180_ACTIVE',
+    'EXPERIMENTAL_48_192_ACTIVE',
     'EXPERIMENTAL_30_144_ACTIVE',
     'EXPERIMENTAL_30_165_ACTIVE',
-    'EXPERIMENTAL_30_180_ACTIVE'
+    'EXPERIMENTAL_30_180_ACTIVE',
+    'EXPERIMENTAL_30_192_ACTIVE'
 )
 $managedProfileHealthy = (
     [string]$vrr.State -in $activeManagedStates -and
@@ -138,8 +140,8 @@ $driverChanged = (
     $savedDriver -ne [string]$vrr.IntelDriver
 )
 $experimentalProfileActive = [string]$vrr.ManagedMode -in @(
-    'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180',
-    'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180'
+    'CLAWLAB_48_144', 'CLAWLAB_48_165', 'CLAWLAB_48_180', 'CLAWLAB_48_192',
+    'CLAWLAB_30_144', 'CLAWLAB_30_165', 'CLAWLAB_30_180', 'CLAWLAB_30_192'
 )
 
 $coreHealth = if ($cleanNotInstalled) { 'NOT_INSTALLED' } elseif ($coreFixHealthy) { 'HEALTHY' } elseif ($startupInitializing) { 'INITIALIZING' } else { 'ATTENTION_REQUIRED' }

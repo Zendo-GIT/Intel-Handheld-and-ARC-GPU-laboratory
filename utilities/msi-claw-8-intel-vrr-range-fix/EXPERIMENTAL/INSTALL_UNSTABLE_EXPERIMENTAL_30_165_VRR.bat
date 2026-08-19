@@ -5,9 +5,9 @@ set "CLAWLAB_ROOT=%~dp0..\"
 set "CLAWLAB_SCRIPTS=%CLAWLAB_ROOT%"
 if exist "%CLAWLAB_ROOT%scripts\MSI-Claw-VRR-Fix.ps1" set "CLAWLAB_SCRIPTS=%CLAWLAB_ROOT%scripts\"
 echo IMPORTANT VERSION UPGRADE:
-echo If ClawLab VRR 2.1.2 or any older release is installed, run its
+echo If ClawLab VRR 2.2.0 or any older release is installed, run its
 echo RECOVERY\RESTORE_ORIGINAL_VRR.bat and complete the restart first.
-echo Version 2.2.0 refuses to overwrite an older managed installation.
+echo Version 2.2.1 refuses to overwrite an older managed installation.
 echo.
 echo ===============================================================================
 echo   UNTESTED 30 HZ FLOOR PLUS DISPLAY OVERCLOCK - VERY HIGH RISK

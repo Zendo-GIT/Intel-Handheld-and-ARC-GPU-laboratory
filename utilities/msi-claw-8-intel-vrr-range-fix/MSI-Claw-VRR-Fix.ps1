@@ -2,8 +2,8 @@
 param(
     [ValidateSet(
         'Status', 'Install48', 'Install30',
-        'Install48_144', 'Install48_165', 'Install48_180',
-        'Install30_144', 'Install30_165', 'Install30_180',
+        'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192',
+        'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192',
         'ApplyExperimentalTrial', 'ConfirmExperimentalTrial', 'SetSafe120ForTrial',
         'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup'
     )]
@@ -13,7 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.2.0'
+$fixVersion = '2.2.1'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
@@ -53,7 +53,7 @@ $script:activeEdidNormalization = 'NOT_READ'
 $script:activeEdidSourceLength = 0
 $startupApplyMutexName = 'Local\ClawLab.MSIClaw.VrrApplyStartup'
 $script:startupApplyMutex = $null
-$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.2.0'
+$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.2.1'
 $protectedRuntimePayloadNames = @(
     'MSI-Claw-VRR-Fix.ps1',
     'Edid-Normalization.ps1',
@@ -146,6 +146,9 @@ $panelCatalog = @(
         Overclock48_180EdidSha256 = '279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62'
         Overclock48_180Block0Sha256 = '441D68C76B23063CDC879B6E119D2F7B43F7067B0F019A7C89D1BA6E94FF7080'
         Overclock48_180Block1Sha256 = '156506633F8D543C7BE72ADF35D2C4A0311A0156B4C21E0C6A913D4663F0ADD6'
+        Overclock48_192EdidSha256 = 'DC60F9E3CC7B33C4F094181C57E4AF271C1BFB4449AFDE2614B4EAC27C032752'
+        Overclock48_192Block0Sha256 = '1BFACB4E04EA4311DB37602B37993084B92224409D74F1E02B72FB60960780DA'
+        Overclock48_192Block1Sha256 = 'D64A5FBADB951D28D0B48D798E90844192D91974F60331E95FBF7AEB8A90E93E'
         Overclock30_144EdidSha256 = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
         Overclock30_144Block0Sha256 = '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D'
         Overclock30_144Block1Sha256 = '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640'
@@ -155,6 +158,9 @@ $panelCatalog = @(
         Overclock30_180EdidSha256 = '0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B'
         Overclock30_180Block0Sha256 = 'BBE14483FE647D0B2F525538820F753A36EB4F4FC5500BB8903CA34F0E7CF5BD'
         Overclock30_180Block1Sha256 = '0BBB9F4ABCFEF81A270FE926D2BE3AA9E7AA47FD3DB44673E9C75E57D1045292'
+        Overclock30_192EdidSha256 = '949A7143DB4549FC7D0D36F9F2521A528C1C796DE8F3F1FA948E4B3DBF5ECED6'
+        Overclock30_192Block0Sha256 = 'F2C2663185750971DDCB28E8398F4F39E42E97864F0D738069003C5A26F98B42'
+        Overclock30_192Block1Sha256 = '10768276A262262FC0C99256AE0E2AFD23CFE6C2061A4FC90918AB758CA3FEFE'
     },
     [pscustomobject]@{
         Key = 'CLAW_A1M_CLAW_7_AI_PLUS'
@@ -194,6 +200,9 @@ $panelCatalog = @(
         Overclock48_180EdidSha256 = '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D'
         Overclock48_180Block0Sha256 = '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D'
         Overclock48_180Block1Sha256 = $null
+        Overclock48_192EdidSha256 = '4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE'
+        Overclock48_192Block0Sha256 = '4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE'
+        Overclock48_192Block1Sha256 = $null
         Overclock30_144EdidSha256 = 'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E'
         Overclock30_144Block0Sha256 = 'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E'
         Overclock30_144Block1Sha256 = $null
@@ -203,6 +212,9 @@ $panelCatalog = @(
         Overclock30_180EdidSha256 = 'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679'
         Overclock30_180Block0Sha256 = 'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679'
         Overclock30_180Block1Sha256 = $null
+        Overclock30_192EdidSha256 = '6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9'
+        Overclock30_192Block0Sha256 = '6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9'
+        Overclock30_192Block1Sha256 = $null
     }
 )
 
@@ -210,9 +222,11 @@ $experimentalOverclockModes = @{
     'CLAWLAB_48_144' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 144; Stability = 'STABLE_EXPERIMENTAL' }
     'CLAWLAB_48_165' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 165; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_48_180' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 180; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_48_192' = [pscustomobject]@{ MinimumHz = 48; MaximumHz = 192; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_30_144' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 144; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_30_165' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 165; Stability = 'UNSTABLE_EXPERIMENTAL' }
     'CLAWLAB_30_180' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 180; Stability = 'UNSTABLE_EXPERIMENTAL' }
+    'CLAWLAB_30_192' = [pscustomobject]@{ MinimumHz = 30; MaximumHz = 192; Stability = 'UNSTABLE_EXPERIMENTAL' }
 }
 $managedModeNames = @('OFFICIAL_48_120', 'CLAWLAB_30_120') + @($experimentalOverclockModes.Keys)
 
@@ -414,9 +428,11 @@ function Get-KnownOverrideHashes {
                 [pscustomobject]@{ Edid = $definition.Overclock48_144EdidSha256; Block0 = $definition.Overclock48_144Block0Sha256; Block1 = $definition.Overclock48_144Block1Sha256 },
                 [pscustomobject]@{ Edid = $definition.Overclock48_165EdidSha256; Block0 = $definition.Overclock48_165Block0Sha256; Block1 = $definition.Overclock48_165Block1Sha256 },
                 [pscustomobject]@{ Edid = $definition.Overclock48_180EdidSha256; Block0 = $definition.Overclock48_180Block0Sha256; Block1 = $definition.Overclock48_180Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock48_192EdidSha256; Block0 = $definition.Overclock48_192Block0Sha256; Block1 = $definition.Overclock48_192Block1Sha256 },
                 [pscustomobject]@{ Edid = $definition.Overclock30_144EdidSha256; Block0 = $definition.Overclock30_144Block0Sha256; Block1 = $definition.Overclock30_144Block1Sha256 },
                 [pscustomobject]@{ Edid = $definition.Overclock30_165EdidSha256; Block0 = $definition.Overclock30_165Block0Sha256; Block1 = $definition.Overclock30_165Block1Sha256 },
-                [pscustomobject]@{ Edid = $definition.Overclock30_180EdidSha256; Block0 = $definition.Overclock30_180Block0Sha256; Block1 = $definition.Overclock30_180Block1Sha256 }
+                [pscustomobject]@{ Edid = $definition.Overclock30_180EdidSha256; Block0 = $definition.Overclock30_180Block0Sha256; Block1 = $definition.Overclock30_180Block1Sha256 },
+                [pscustomobject]@{ Edid = $definition.Overclock30_192EdidSha256; Block0 = $definition.Overclock30_192Block0Sha256; Block1 = $definition.Overclock30_192Block1Sha256 }
             )) {
             if (-not [string]::IsNullOrWhiteSpace([string]$candidate.Edid) -and $EdidSha256 -eq $candidate.Edid) {
                 return [pscustomobject]@{
@@ -494,9 +510,11 @@ function Get-PanelRegistryContext {
                 $definition.Overclock48_144EdidSha256,
                 $definition.Overclock48_165EdidSha256,
                 $definition.Overclock48_180EdidSha256,
+                $definition.Overclock48_192EdidSha256,
                 $definition.Overclock30_144EdidSha256,
                 $definition.Overclock30_165EdidSha256,
-                $definition.Overclock30_180EdidSha256
+                $definition.Overclock30_180EdidSha256,
+                $definition.Overclock30_192EdidSha256
             )
         $recoverableClawLabBlocks = $false
         if (-not $knownCompleteOverride -and $Action -eq 'FactoryReset') {
@@ -514,9 +532,11 @@ function Get-PanelRegistryContext {
                         $definition.Overclock48_144Block0Sha256,
                         $definition.Overclock48_165Block0Sha256,
                         $definition.Overclock48_180Block0Sha256,
+                        $definition.Overclock48_192Block0Sha256,
                         $definition.Overclock30_144Block0Sha256,
                         $definition.Overclock30_165Block0Sha256,
-                        $definition.Overclock30_180Block0Sha256
+                        $definition.Overclock30_180Block0Sha256,
+                        $definition.Overclock30_192Block0Sha256
                     )
                 $knownBlock1 = $null -eq $block1 -or
                     (Get-ByteArraySha256 -Bytes $block1) -in @(
@@ -526,9 +546,11 @@ function Get-PanelRegistryContext {
                         $definition.Overclock48_144Block1Sha256,
                         $definition.Overclock48_165Block1Sha256,
                         $definition.Overclock48_180Block1Sha256,
+                        $definition.Overclock48_192Block1Sha256,
                         $definition.Overclock30_144Block1Sha256,
                         $definition.Overclock30_165Block1Sha256,
-                        $definition.Overclock30_180Block1Sha256
+                        $definition.Overclock30_180Block1Sha256,
+                        $definition.Overclock30_192Block1Sha256
                     )
                 $recoverableClawLabBlocks = ($null -ne $block0 -or $null -ne $block1) -and $knownBlock0 -and $knownBlock1
             }
@@ -629,7 +651,7 @@ function New-ExperimentalEdidVariant {
     }
 
     if ($ExperimentalTimingHz -ne 0) {
-        if ($ExperimentalTimingHz -notin @(144, 165, 180) -or
+        if ($ExperimentalTimingHz -notin @(144, 165, 180, 192) -or
             [Math]::Abs($MaximumHz - $ExperimentalTimingHz) -gt 0.1 -or
             ([Math]::Abs($MinimumHz - $targetMinimumHz) -gt 0.1 -and
                 [Math]::Abs($MinimumHz - $experimentalMinimumHz) -gt 0.1)) {
@@ -741,6 +763,11 @@ function Get-ExperimentalEdidCatalog {
             -ExpectedEdidSha256 $Definition.Overclock48_180EdidSha256 `
             -ExpectedBlock0Sha256 $Definition.Overclock48_180Block0Sha256 `
             -ExpectedBlock1Sha256 $Definition.Overclock48_180Block1Sha256 -ExperimentalTimingHz 180))
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_48_192' `
+            -MinimumHz $targetMinimumHz -MaximumHz 192 `
+            -ExpectedEdidSha256 $Definition.Overclock48_192EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock48_192Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock48_192Block1Sha256 -ExperimentalTimingHz 192))
 
     $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_144' `
             -MinimumHz $experimentalMinimumHz -MaximumHz 144 `
@@ -757,6 +784,11 @@ function Get-ExperimentalEdidCatalog {
             -ExpectedEdidSha256 $Definition.Overclock30_180EdidSha256 `
             -ExpectedBlock0Sha256 $Definition.Overclock30_180Block0Sha256 `
             -ExpectedBlock1Sha256 $Definition.Overclock30_180Block1Sha256 -ExperimentalTimingHz 180))
+    $variants.Add((New-ExperimentalEdidVariant -PhysicalEdid $PhysicalEdid -Definition $Definition -State 'CLAWLAB_30_192' `
+            -MinimumHz $experimentalMinimumHz -MaximumHz 192 `
+            -ExpectedEdidSha256 $Definition.Overclock30_192EdidSha256 `
+            -ExpectedBlock0Sha256 $Definition.Overclock30_192Block0Sha256 `
+            -ExpectedBlock1Sha256 $Definition.Overclock30_192Block1Sha256 -ExperimentalTimingHz 192))
     return @($variants)
 }
 
@@ -825,9 +857,11 @@ function Get-ClawLabRecoveryBlockState {
         $Definition.Overclock48_144Block0Sha256
         $Definition.Overclock48_165Block0Sha256
         $Definition.Overclock48_180Block0Sha256
+        $Definition.Overclock48_192Block0Sha256
         $Definition.Overclock30_144Block0Sha256
         $Definition.Overclock30_165Block0Sha256
         $Definition.Overclock30_180Block0Sha256
+        $Definition.Overclock30_192Block0Sha256
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
     $knownBlock1Hashes = @(
         $Definition.Custom30Block1Sha256
@@ -836,9 +870,11 @@ function Get-ClawLabRecoveryBlockState {
         $Definition.Overclock48_144Block1Sha256
         $Definition.Overclock48_165Block1Sha256
         $Definition.Overclock48_180Block1Sha256
+        $Definition.Overclock48_192Block1Sha256
         $Definition.Overclock30_144Block1Sha256
         $Definition.Overclock30_165Block1Sha256
         $Definition.Overclock30_180Block1Sha256
+        $Definition.Overclock30_192Block1Sha256
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
     $knownBlock0 = $null -eq $block0 -or (Get-ByteArraySha256 -Bytes $block0) -in $knownBlock0Hashes
     $knownBlock1 = $null -eq $block1 -or (Get-ByteArraySha256 -Bytes $block1) -in $knownBlock1Hashes
@@ -2849,8 +2885,8 @@ try {
     $registryContext = Get-PanelRegistryContext -Panel $panel
     if ($Action -in @(
             'Install48', 'Install30',
-            'Install48_144', 'Install48_165', 'Install48_180',
-            'Install30_144', 'Install30_165', 'Install30_180',
+            'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192',
+            'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192',
             'ApplyExperimentalTrial', 'ConfirmExperimentalTrial', 'ApplyStartup'
         )) {
         Assert-NoThirdPartyEdidOverrideValues -RegistryContext $registryContext
@@ -3089,6 +3125,12 @@ try {
                 -DesiredState 'CLAWLAB_48_180'
         }
 
+        'Install48_192' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_48_192'
+        }
+
         'Install30_144' {
             Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
@@ -3105,6 +3147,12 @@ try {
             Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
                 -DesiredState 'CLAWLAB_30_180'
+        }
+
+        'Install30_192' {
+            Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
+                -DesiredState 'CLAWLAB_30_192'
         }
 
         'FactoryReset' {

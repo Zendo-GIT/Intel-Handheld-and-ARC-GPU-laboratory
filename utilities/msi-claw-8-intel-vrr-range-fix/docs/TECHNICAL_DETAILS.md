@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Version 2.2.0 separates six responsibilities:
+Version 2.2.1 separates six responsibilities:
 
 1. `MSI-Claw-VRR-Fix.ps1` validates hardware, generates exact EDID variants,
    selects Intel Arc Sync profiles, manages Windows refresh and owns the
@@ -63,16 +63,20 @@ reproduced by `tools/Test-Experimental-Overclock-Edids.ps1`.
 | CSW0801 | 48–144 | `4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E` |
 | CSW0801 | 48–165 | `FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677` |
 | CSW0801 | 48–180 | `279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62` |
+| CSW0801 | 48–192 | `DC60F9E3CC7B33C4F094181C57E4AF271C1BFB4449AFDE2614B4EAC27C032752` |
 | CSW0801 | 30–144 | `0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05` |
 | CSW0801 | 30–165 | `8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7` |
 | CSW0801 | 30–180 | `0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B` |
+| CSW0801 | 30–192 | `949A7143DB4549FC7D0D36F9F2521A528C1C796DE8F3F1FA948E4B3DBF5ECED6` |
 | TMA2027 | 30–120 | `7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647` |
 | TMA2027 | 48–144 | `AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB` |
 | TMA2027 | 48–165 | `89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2` |
 | TMA2027 | 48–180 | `0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D` |
+| TMA2027 | 48–192 | `4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE` |
 | TMA2027 | 30–144 | `DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E` |
 | TMA2027 | 30–165 | `C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51` |
 | TMA2027 | 30–180 | `CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679` |
+| TMA2027 | 30–192 | `6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9` |
 
 The official 48–120 mode has no EDID override and uses the physical hash.
 
@@ -87,7 +91,7 @@ Three sources of truth are intentionally separate:
 `ArcSync-Range-Policy.ps1` accepts 24–120 only as
 `INTEL_CONTROL_LIB_HALF_PHYSICAL_FLOOR` for panel key
 `CLAW_A1M_CLAW_7_AI_PLUS`. Expected profile minimum remains restricted to 30 or
-48, and expected maximum to 120, 144, 165 or 180. The direct D3DKMT interface
+48, and expected maximum to 120, 144, 165, 180 or 192. The direct D3DKMT interface
 may continue to report physical 48–120 on this panel; it is accepted only when
 the loaded EDID hash is the exact expected managed variant. Thus a pending,
 foreign or mismatched EDID cannot be mistaken for a ready profile.
@@ -166,7 +170,7 @@ required artifacts agree. `Test-ClawLabProfileTransitionAllowed` implements:
 
 ```text
 CLEAN/NONE                       -> requested mode allowed
-CONSISTENT + current 2.2.0 + same requested mode -> allowed as idempotent repair
+CONSISTENT + current 2.2.1 + same requested mode -> allowed as idempotent repair
 older managed FixVersion -> OLDER_VERSION_RESTORE_REQUIRED
 anything else                    -> RESTORE_ORIGINAL_VRR required
 ```
@@ -183,7 +187,7 @@ No exception exists for stable-to-stable, stable-to-experimental, or one
 experimental range to another. The pure test covers every pair for both panel
 families.
 
-## Intel LFC component 2.0.5
+## Intel LFC component 2.0.6
 
 The direct Intel driver interface queries VRR support, range, enable state and
 both solution flags. Before change, schema-4 backup records original values,
@@ -275,7 +279,7 @@ requires an exact known hash and exact validated registry path.
 - parses every PowerShell source file;
 - rebuilds and versions the cursor helper;
 - verifies physical and custom EDID hashes for both panels;
-- reproduces all 12 overclock variants;
+- reproduces all 16 overclock variants;
 - runs the complete profile-switch matrix;
 - validates mandatory 10/15/30-second trial markers and rollback actions;
 - rejects any 24 Hz install marker;

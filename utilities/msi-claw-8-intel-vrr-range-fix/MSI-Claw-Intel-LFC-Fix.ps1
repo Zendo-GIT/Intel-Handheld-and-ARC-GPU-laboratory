@@ -6,7 +6,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.5'
+$toolVersion = '2.0.6'
 
 # Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
@@ -27,9 +27,11 @@ $panelCatalog = @(
         Overclock48_144EdidHash = '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E'
         Overclock48_165EdidHash = 'FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677'
         Overclock48_180EdidHash = '279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62'
+        Overclock48_192EdidHash = 'DC60F9E3CC7B33C4F094181C57E4AF271C1BFB4449AFDE2614B4EAC27C032752'
         Overclock30_144EdidHash = '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05'
         Overclock30_165EdidHash = '8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7'
         Overclock30_180EdidHash = '0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B'
+        Overclock30_192EdidHash = '949A7143DB4549FC7D0D36F9F2521A528C1C796DE8F3F1FA948E4B3DBF5ECED6'
     },
     [pscustomobject]@{
         Key = 'CLAW_A1M_CLAW_7_AI_PLUS'
@@ -43,9 +45,11 @@ $panelCatalog = @(
         Overclock48_144EdidHash = 'AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB'
         Overclock48_165EdidHash = '89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2'
         Overclock48_180EdidHash = '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D'
+        Overclock48_192EdidHash = '4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE'
         Overclock30_144EdidHash = 'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E'
         Overclock30_165EdidHash = 'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51'
         Overclock30_180EdidHash = 'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679'
+        Overclock30_192EdidHash = '6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9'
     }
 )
 $vrrStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
@@ -149,9 +153,11 @@ $validatedEdidHashes = @(
     $panelDefinition.Overclock48_144EdidHash,
     $panelDefinition.Overclock48_165EdidHash,
     $panelDefinition.Overclock48_180EdidHash,
+    $panelDefinition.Overclock48_192EdidHash,
     $panelDefinition.Overclock30_144EdidHash,
     $panelDefinition.Overclock30_165EdidHash,
-    $panelDefinition.Overclock30_180EdidHash
+    $panelDefinition.Overclock30_180EdidHash,
+    $panelDefinition.Overclock30_192EdidHash
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
 $panelInstanceId = $panel.InstanceName -replace '_\d+$', ''
 $panelDeviceParameters = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\$panelInstanceId\Device Parameters"
@@ -186,9 +192,11 @@ foreach ($profile in @(
         [pscustomobject]@{ Name = 'CLAWLAB_48_144'; MinimumHz = 48; MaximumHz = 144; Hash = $panelDefinition.Overclock48_144EdidHash },
         [pscustomobject]@{ Name = 'CLAWLAB_48_165'; MinimumHz = 48; MaximumHz = 165; Hash = $panelDefinition.Overclock48_165EdidHash },
         [pscustomobject]@{ Name = 'CLAWLAB_48_180'; MinimumHz = 48; MaximumHz = 180; Hash = $panelDefinition.Overclock48_180EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_48_192'; MinimumHz = 48; MaximumHz = 192; Hash = $panelDefinition.Overclock48_192EdidHash },
         [pscustomobject]@{ Name = 'CLAWLAB_30_144'; MinimumHz = 30; MaximumHz = 144; Hash = $panelDefinition.Overclock30_144EdidHash },
         [pscustomobject]@{ Name = 'CLAWLAB_30_165'; MinimumHz = 30; MaximumHz = 165; Hash = $panelDefinition.Overclock30_165EdidHash },
-        [pscustomobject]@{ Name = 'CLAWLAB_30_180'; MinimumHz = 30; MaximumHz = 180; Hash = $panelDefinition.Overclock30_180EdidHash }
+        [pscustomobject]@{ Name = 'CLAWLAB_30_180'; MinimumHz = 30; MaximumHz = 180; Hash = $panelDefinition.Overclock30_180EdidHash },
+        [pscustomobject]@{ Name = 'CLAWLAB_30_192'; MinimumHz = 30; MaximumHz = 192; Hash = $panelDefinition.Overclock30_192EdidHash }
     )) {
     $managedProfiles[$profile.Name] = [pscustomobject]@{
         MinimumHz = $profile.MinimumHz
