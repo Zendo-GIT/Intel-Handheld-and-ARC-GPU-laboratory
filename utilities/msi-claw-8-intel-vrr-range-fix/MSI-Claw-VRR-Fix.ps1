@@ -1,19 +1,23 @@
 [CmdletBinding()]
 param(
     [ValidateSet(
-        'Status', 'Install48', 'Install30',
+        'Status', 'Install48', 'Install30', 'Repair48', 'Repair30',
         'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192',
         'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192',
-        'ApplyExperimentalTrial', 'ConfirmExperimentalTrial', 'SetSafe120ForTrial',
-        'Restore', 'FactoryReset', 'EmergencyRestoreEdid', 'ApplyStartup'
+        'ApplyExperimentalTrial', 'VerifyExperimentalTrial', 'ConfirmExperimentalTrial', 'SetSafe120ForTrial',
+        'Restore', 'RestoreGuardedTrial', 'RecoverOrphanedDefaultState', 'FactoryReset', 'EmergencyRestoreEdid',
+        'UpdateCursorRefresh', 'ApplyStartup'
     )]
-    [string]$Action = 'Status'
+    [string]$Action = 'Status',
+
+    [ValidateSet('VrrTask', 'LfcTask')]
+    [string]$StartupSource = 'VrrTask'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$fixVersion = '2.2.1'
+$fixVersion = '2.3.0'
 $targetMinimumHz = 48.0
 $experimentalMinimumHz = 30.0
 $targetMaximumHz = 120.0
@@ -23,6 +27,7 @@ $profileExcellent = 2
 $profileCustom = 7
 $stateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $backupPath = Join-Path $stateRoot 'original-profile.json'
+$normalizationCompensationPath = Join-Path $stateRoot 'normalization-compensation.json'
 $experimentalStatePath = Join-Path $stateRoot 'experimental-edid.json'
 $managedModeStatePath = Join-Path $stateRoot 'managed-mode.json'
 $installedScriptPath = Join-Path $stateRoot 'MSI-Claw-VRR-Fix.ps1'
@@ -32,14 +37,31 @@ $installedEdidNormalizationModulePath = Join-Path $stateRoot $edidNormalizationM
 $arcSyncRangePolicyModuleName = 'ArcSync-Range-Policy.ps1'
 $arcSyncRangePolicyModulePath = Join-Path $PSScriptRoot $arcSyncRangePolicyModuleName
 $installedArcSyncRangePolicyModulePath = Join-Path $stateRoot $arcSyncRangePolicyModuleName
+$scheduledTaskPersistenceModuleName = 'Scheduled-Task-Persistence.ps1'
+$scheduledTaskPersistenceModulePath = Join-Path $PSScriptRoot $scheduledTaskPersistenceModuleName
+$installedScheduledTaskPersistenceModulePath = Join-Path $stateRoot $scheduledTaskPersistenceModuleName
 $startupLauncherName = 'ClawLab-VRR-Startup.vbs'
 $installedLauncherPath = Join-Path $stateRoot $startupLauncherName
 $startupStatusPath = Join-Path $stateRoot 'startup-last-run.json'
 $lastErrorPath = Join-Path $stateRoot 'last-error.txt'
 $startupTaskName = 'ClawLab MSI Claw 8 VRR Range'
+$lfcStartupTaskName = 'ClawLab MSI Claw Intel LFC Fix'
+$lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-LFC-Fix'
+$installedLfcToolPath = Join-Path $lfcStateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
+$installedLfcDriverInterfacePath = Join-Path $lfcStateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'
+$installedLfcBackupIdentityPath = Join-Path $lfcStateRoot 'Lfc-Backup-Identity.ps1'
+$installedLfcEdidNormalizationPath = Join-Path $lfcStateRoot 'Edid-Normalization.ps1'
+$installedLfcArcSyncRangePolicyPath = Join-Path $lfcStateRoot 'ArcSync-Range-Policy.ps1'
+$installedLfcScheduledTaskPersistencePath = Join-Path $lfcStateRoot 'Scheduled-Task-Persistence.ps1'
+$installedLfcLauncherPath = Join-Path $lfcStateRoot 'ClawLab-LFC-Startup.vbs'
 $cursorRefreshHelperName = 'ClawLab-Cursor-Refresh-Helper.exe'
 $installedCursorRefreshHelperPath = Join-Path $stateRoot $cursorRefreshHelperName
 $cursorRefreshHelperStatePath = Join-Path $stateRoot 'cursor-refresh-helper.json'
+$cursorRefreshTaskName = 'ClawLab MSI Claw Cursor Refresh Engine'
+$cursorRefreshReadyEventName = 'Local\ClawLab.MSIClaw.CursorRefresh.Ready'
+$cursorRefreshResyncEventName = 'Local\ClawLab.MSIClaw.CursorRefresh.Resync'
+$cursorRefreshShutdownEventName = 'Local\ClawLab.MSIClaw.CursorRefresh.Shutdown'
+$cursorRefreshRuntimeStatePath = Join-Path $env:LOCALAPPDATA 'ClawLab\Cursor-Refresh-Helper\runtime-state.txt'
 $experimentalTrialTaskName = 'ClawLab MSI Claw Experimental Overclock Trial'
 $experimentalTrialStatePath = Join-Path $stateRoot 'experimental-overclock-trial.json'
 $installedExperimentalTrialPath = Join-Path $stateRoot 'Experimental-Overclock-VRR-Trial.ps1'
@@ -51,13 +73,21 @@ $script:intelStartupIdentityRenewed = $false
 $script:activePanelDefinition = $null
 $script:activeEdidNormalization = 'NOT_READ'
 $script:activeEdidSourceLength = 0
-$startupApplyMutexName = 'Local\ClawLab.MSIClaw.VrrApplyStartup'
+$displayTransactionMutexName = 'Global\ClawLab.VRR.DisplayTransaction'
+$startupApplyMutexName = 'Global\ClawLab.MSIClaw.VrrApplyStartup'
+$script:startupDisplayTransactionMutex = $null
 $script:startupApplyMutex = $null
-$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.2.1'
+$script:intelGraphicsLaunchWarning = $null
+$script:cursorRefreshLaunchWarning = $null
+$script:normalizationCompensationContext = $null
+$protectedRuntimeRoot = Join-Path $env:ProgramData 'ClawLab-VRR-Privileged\2.3.0'
 $protectedRuntimePayloadNames = @(
     'MSI-Claw-VRR-Fix.ps1',
     'Edid-Normalization.ps1',
     'ArcSync-Range-Policy.ps1',
+    'Scheduled-Task-Persistence.ps1',
+    'ClawLab-Localization.ps1',
+    'locales\messages.json',
     'ClawLab-VRR-Startup.vbs',
     'ClawLab-Cursor-Refresh-Helper.exe',
     'MSI-Claw-Intel-LFC-Fix.ps1',
@@ -102,7 +132,11 @@ function Assert-ProtectedRuntimeIntegrity {
 }
 
 Assert-ProtectedRuntimeIntegrity
-foreach ($requiredModule in @($edidNormalizationModulePath, $arcSyncRangePolicyModulePath)) {
+foreach ($requiredModule in @(
+        $edidNormalizationModulePath,
+        $arcSyncRangePolicyModulePath,
+        $scheduledTaskPersistenceModulePath
+    )) {
     if (-not (Test-Path -LiteralPath $requiredModule -PathType Leaf)) {
         throw "A required VRR safety module is missing: $requiredModule"
     }
@@ -262,6 +296,35 @@ function Remove-FileIfPresent {
     }
 }
 
+function Write-ClawLabJsonAtomically {
+    param(
+        [Parameter(Mandatory)][string]$LiteralPath,
+        [Parameter(Mandatory)][object]$Value
+    )
+
+    $directory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($LiteralPath))
+    [IO.Directory]::CreateDirectory($directory) | Out-Null
+    $temporaryPath = Join-Path $directory ('.clawlab-json-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    $rollbackPath = Join-Path $directory ('.clawlab-json-previous-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    try {
+        [IO.File]::WriteAllText(
+            $temporaryPath,
+            ($Value | ConvertTo-Json -Depth 8),
+            [Text.UTF8Encoding]::new($false)
+        )
+        if (Test-Path -LiteralPath $LiteralPath -PathType Leaf) {
+            [IO.File]::Replace($temporaryPath, $LiteralPath, $rollbackPath, $true)
+        }
+        else {
+            [IO.File]::Move($temporaryPath, $LiteralPath)
+        }
+    }
+    finally {
+        Remove-FileIfPresent -LiteralPath $temporaryPath
+        Remove-FileIfPresent -LiteralPath $rollbackPath
+    }
+}
+
 function Remove-ProtectedExperimentalRuntime {
     $programDataRoot = [IO.Path]::GetFullPath($env:ProgramData).TrimEnd('\')
     $runtimeRoot = [IO.Path]::GetFullPath($protectedRuntimeRoot).TrimEnd('\')
@@ -286,6 +349,16 @@ function Remove-ProtectedExperimentalRuntime {
     }
     foreach ($fileName in $protectedRuntimeFileNames) {
         Remove-FileIfPresent -LiteralPath (Join-Path $runtimeRoot $fileName)
+    }
+    $localesRoot = Join-Path $runtimeRoot 'locales'
+    if (Test-Path -LiteralPath $localesRoot -PathType Container) {
+        $localesItem = Get-Item -LiteralPath $localesRoot -Force
+        if (($localesItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to clean a protected locales reparse point: $localesRoot"
+        }
+        if (@([IO.Directory]::EnumerateFileSystemEntries($localesRoot)).Count -eq 0) {
+            [IO.Directory]::Delete($localesRoot, $false)
+        }
     }
     if (@([IO.Directory]::EnumerateFileSystemEntries($runtimeRoot)).Count -eq 0) {
         [IO.Directory]::Delete($runtimeRoot, $false)
@@ -315,6 +388,68 @@ function Enter-StartupApplyMutex {
         }
         throw
     }
+}
+
+function Enter-StartupDisplayTransactionMutex {
+    $mutex = [Threading.Mutex]::new($false, $displayTransactionMutexName)
+    $acquired = $false
+    try {
+        try {
+            $acquired = $mutex.WaitOne(180000)
+        }
+        catch [Threading.AbandonedMutexException] {
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            throw 'Another ClawLab display transaction did not finish within three minutes.'
+        }
+        $script:startupDisplayTransactionMutex = $mutex
+    }
+    catch {
+        if (-not $acquired) {
+            $mutex.Dispose()
+        }
+        throw
+    }
+}
+
+function Exit-StartupDisplayTransactionMutex {
+    if ($null -eq $script:startupDisplayTransactionMutex) {
+        return
+    }
+    try {
+        $script:startupDisplayTransactionMutex.ReleaseMutex()
+    }
+    finally {
+        $script:startupDisplayTransactionMutex.Dispose()
+        $script:startupDisplayTransactionMutex = $null
+    }
+}
+
+function Enter-StartupTransactionLocks {
+    param([Parameter(Mandatory)][ValidateSet('VrrTask', 'LfcTask')][string]$Source)
+
+    # The LFC orchestrator already owns DisplayTransaction in its parent
+    # process. Its VRR child must only take the second lock. A direct VRR-task
+    # fallback owns both locks in the same machine-wide order as installers,
+    # recovery and guarded overclock trials.
+    if ($Source -eq 'VrrTask') {
+        Enter-StartupDisplayTransactionMutex
+    }
+    try {
+        Enter-StartupApplyMutex
+    }
+    catch {
+        if ($Source -eq 'VrrTask') {
+            Exit-StartupDisplayTransactionMutex
+        }
+        throw
+    }
+}
+
+function Exit-StartupTransactionLocks {
+    Exit-StartupApplyMutex
+    Exit-StartupDisplayTransactionMutex
 }
 
 function Exit-StartupApplyMutex {
@@ -900,35 +1035,176 @@ function Get-ClawLabRecoveryOverrideState {
     return Get-ClawLabRecoveryBlockState -Block0 $block0 -Block1 $block1 -Definition $RegistryContext.Definition
 }
 
+function Get-VrrStartupTaskSpec {
+    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    New-ClawLabLogonTaskSpec -TaskName $startupTaskName -ExecutePath $wscriptPath `
+        -Arguments ("//B //Nologo `"$installedLauncherPath`"") `
+        -Description 'Silently applies MSI Claw Intel Arc Sync VRR, then starts Intel Graphics Software.' `
+        -ExecutionTimeLimitMinutes 10
+}
+
+function Get-CursorRefreshHelperTaskSpec {
+    # The native engine starts directly at interactive logon. It no longer
+    # waits behind PowerShell, WMI, Intel Graphics Software or the ordered VRR
+    # transaction. PT0S deliberately allows this event-driven process to stay
+    # registered for the complete user session.
+    New-ClawLabLogonTaskSpec -TaskName $cursorRefreshTaskName `
+        -ExecutePath $installedCursorRefreshHelperPath -Arguments '--startup' `
+        -Description 'Starts the native ClawLab Win32/DXGI desktop refresh engine directly at interactive logon.' `
+        -ExecutionTimeLimitMinutes 0 -TaskPriority 2
+}
+
+function Get-LfcStartupOrchestratorTaskSpec {
+    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    New-ClawLabLogonTaskSpec -TaskName $lfcStartupTaskName -ExecutePath $wscriptPath `
+        -Arguments ("//B //Nologo `"$installedLfcLauncherPath`"") `
+        -Description 'Silently reapplies the selected ClawLab VRR range and Intel LFC state once at logon, then exits.' `
+        -ExecutionTimeLimitMinutes 12 -TriggerDelaySeconds 15
+}
+
+function Test-LfcStartupOrchestratorReady {
+    foreach ($payloadPath in @(
+        $installedLfcToolPath,
+        $installedLfcDriverInterfacePath,
+        $installedLfcBackupIdentityPath,
+        $installedLfcEdidNormalizationPath,
+        $installedLfcArcSyncRangePolicyPath,
+        $installedLfcScheduledTaskPersistencePath,
+        $installedLfcLauncherPath
+    )) {
+        if (-not (Test-Path -LiteralPath $payloadPath -PathType Leaf)) {
+            return $false
+        }
+    }
+    $record = Get-ClawLabScheduledTaskRecord -TaskName $lfcStartupTaskName
+    if ($null -eq $record) { return $false }
+    return [bool](Test-ClawLabScheduledTaskRecord -Record $record `
+        -Spec (Get-LfcStartupOrchestratorTaskSpec)).Valid
+}
+
+function Get-ExperimentalTrialTaskSpec {
+    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $protectedTrialLauncher = Join-Path $protectedRuntimeRoot 'ClawLab-Experimental-Trial-Startup.vbs'
+    New-ClawLabLogonTaskSpec -TaskName $experimentalTrialTaskName -ExecutePath $wscriptPath `
+        -Arguments ("//B //Nologo `"$protectedTrialLauncher`"") `
+        -Description 'Runs one user-started MSI Claw display-overclock trial with a visible 30-second observation, automatic safe-120 restoration and explicit confirmation.' `
+        -ExecutionTimeLimitMinutes 5 -TriggerDelaySeconds 10
+}
+
 function Get-ManagedArtifactSnapshot {
-    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
+    $task = Get-ClawLabScheduledTaskRecord -TaskName $startupTaskName
+    $taskValid = $false
+    if ($null -ne $task) {
+        $taskValid = [bool](Test-ClawLabScheduledTaskRecord -Record $task -Spec (Get-VrrStartupTaskSpec)).Valid
+    }
+    $cursorTask = Get-ClawLabScheduledTaskRecord -TaskName $cursorRefreshTaskName
+    $cursorTaskValid = $false
+    if ($null -ne $cursorTask) {
+        $cursorTaskValid = [bool](Test-ClawLabScheduledTaskRecord -Record $cursorTask `
+            -Spec (Get-CursorRefreshHelperTaskSpec)).Valid
+    }
     $snapshot = [pscustomobject]@{
         OriginalProfile = Test-Path -LiteralPath $backupPath -PathType Leaf
+        NormalizationCompensation = Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf
         ExperimentalState = Test-Path -LiteralPath $experimentalStatePath -PathType Leaf
         InstalledScript = Test-Path -LiteralPath $installedScriptPath -PathType Leaf
         InstalledEdidNormalizationModule = Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf
         InstalledArcSyncRangePolicyModule = Test-Path -LiteralPath $installedArcSyncRangePolicyModulePath -PathType Leaf
+        InstalledScheduledTaskPersistenceModule = Test-Path -LiteralPath $installedScheduledTaskPersistenceModulePath -PathType Leaf
         InstalledLauncher = Test-Path -LiteralPath $installedLauncherPath -PathType Leaf
         StartupStatus = Test-Path -LiteralPath $startupStatusPath -PathType Leaf
         IntelStartupBackup = Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf
         StartupTask = $null -ne $task
+        StartupTaskValid = $taskValid
         CursorRefreshHelper = Test-Path -LiteralPath $installedCursorRefreshHelperPath -PathType Leaf
         CursorRefreshHelperState = Test-Path -LiteralPath $cursorRefreshHelperStatePath -PathType Leaf
+        CursorRefreshTask = $null -ne $cursorTask
+        CursorRefreshTaskValid = $cursorTaskValid
     }
     $snapshot | Add-Member -NotePropertyName Any -NotePropertyValue (
         $snapshot.OriginalProfile -or
+        $snapshot.NormalizationCompensation -or
         $snapshot.ExperimentalState -or
         $snapshot.InstalledScript -or
         $snapshot.InstalledEdidNormalizationModule -or
         $snapshot.InstalledArcSyncRangePolicyModule -or
+        $snapshot.InstalledScheduledTaskPersistenceModule -or
         $snapshot.InstalledLauncher -or
         $snapshot.StartupStatus -or
         $snapshot.IntelStartupBackup -or
         $snapshot.StartupTask -or
         $snapshot.CursorRefreshHelper -or
-        $snapshot.CursorRefreshHelperState
+        $snapshot.CursorRefreshHelperState -or
+        $snapshot.CursorRefreshTask
     )
     return $snapshot
+}
+
+function Get-ManagedModeExpectedRange {
+    param([Parameter(Mandatory)][string]$Mode)
+
+    if ($Mode -eq 'OFFICIAL_48_120') {
+        return [pscustomobject]@{ MinimumHz = 48.0; MaximumHz = 120.0 }
+    }
+    if ($Mode -eq 'CLAWLAB_30_120') {
+        return [pscustomobject]@{ MinimumHz = 30.0; MaximumHz = 120.0 }
+    }
+    $experimental = Get-ExperimentalOverclockMode -Mode $Mode
+    return [pscustomobject]@{
+        MinimumHz = [float]$experimental.MinimumHz
+        MaximumHz = [float]$experimental.MaximumHz
+    }
+}
+
+function Get-ExperimentalEdidRecord {
+    param(
+        [Parameter(Mandatory)][object]$OverrideState,
+        [Parameter(Mandatory)][object]$ManagedRecord
+    )
+
+    if (-not (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf)) {
+        return $null
+    }
+    $record = [IO.File]::ReadAllText($experimentalStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @(
+            'SchemaVersion', 'FixVersion', 'Mode', 'PanelKey', 'PhysicalEdidSha256',
+            'ExperimentalEdidSha256', 'ExperimentalMinimumHz', 'MaximumHz',
+            'ArcSyncPolicy', 'OriginalBaselinePolicy'
+        )) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The custom EDID state is invalid: missing $property."
+        }
+    }
+    if ([int]$record.SchemaVersion -ne 4 -or [string]$record.FixVersion -ne $fixVersion) {
+        throw 'The custom EDID state belongs to another ClawLab schema or release.'
+    }
+    if ([string]$record.Mode -ne [string]$ManagedRecord.Mode -or
+        [string]$record.PanelKey -ne [string]$ManagedRecord.PanelKey -or
+        [string]$record.ArcSyncPolicy -ne [string]$ManagedRecord.ArcSyncPolicy) {
+        throw 'The custom EDID state and managed VRR record do not share one exact identity.'
+    }
+    if ($null -eq $script:activePanelDefinition -or
+        [string]$record.PanelKey -ne [string]$script:activePanelDefinition.Key -or
+        [string]$record.PhysicalEdidSha256 -ne [string]$script:activePanelDefinition.PhysicalEdidSha256) {
+        throw 'The custom EDID state does not match the active validated physical panel.'
+    }
+    $expected = Get-ManagedModeExpectedRange -Mode ([string]$record.Mode)
+    if (-not (Test-ClawLabFrequencyEqual -Left ([float]$record.ExperimentalMinimumHz) -Right ([float]$expected.MinimumHz)) -or
+        -not (Test-ClawLabFrequencyEqual -Left ([float]$record.MaximumHz) -Right ([float]$expected.MaximumHz)) -or
+        [string]$OverrideState.State -ne [string]$record.Mode -or
+        [string]$OverrideState.Variant.Sha256 -ne [string]$record.ExperimentalEdidSha256) {
+        throw 'The active EDID override does not match the verified custom EDID state.'
+    }
+    if ([string]$record.ArcSyncPolicy -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120') {
+        if ([string]$record.OriginalBaselinePolicy -ne 'TMA2027_VERIFIED_CUSTOM_30_120' -or
+            [string]$record.Mode -ne 'CLAWLAB_30_120') {
+            throw 'The TMA2027 custom EDID state contains an invalid original-baseline binding.'
+        }
+    }
+    elseif ([string]$record.OriginalBaselinePolicy -ne 'INTEL_STANDARD_BASELINE') {
+        throw 'The custom EDID state contains an invalid Intel baseline binding.'
+    }
+    return $record
 }
 
 function Get-ManagedModeRecord {
@@ -942,8 +1218,40 @@ function Get-ManagedModeRecord {
             throw "The managed VRR mode record is invalid: missing $property. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
         }
     }
-    if ([int]$record.SchemaVersion -ne 1 -or [string]$record.Mode -notin $managedModeNames) {
+    if ([string]$record.Mode -notin $managedModeNames) {
         throw 'The managed VRR mode record contains an unsupported value. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
+    }
+    if ([string]$record.FixVersion -ne $fixVersion) {
+        return $record
+    }
+    foreach ($property in @('PanelKey', 'ArcSyncPolicy', 'ExpectedMinimumHz', 'ExpectedMaximumHz')) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The current managed VRR record is missing $property. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat."
+        }
+    }
+    if ([int]$record.SchemaVersion -ne 2) {
+        throw 'The current managed VRR record has an unsupported schema. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
+    }
+    $expected = Get-ManagedModeExpectedRange -Mode ([string]$record.Mode)
+    if (-not (Test-ClawLabFrequencyEqual -Left ([float]$record.ExpectedMinimumHz) -Right ([float]$expected.MinimumHz)) -or
+        -not (Test-ClawLabFrequencyEqual -Left ([float]$record.ExpectedMaximumHz) -Right ([float]$expected.MaximumHz))) {
+        throw 'The managed VRR record range does not match its mode. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
+    }
+    if ($null -ne $script:activePanelDefinition -and
+        [string]$record.PanelKey -ne [string]$script:activePanelDefinition.Key) {
+        throw 'The managed VRR record belongs to another panel. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
+    }
+    $policyValid = if ([string]$record.ArcSyncPolicy -eq 'INTEL_EXCELLENT_REQUIRED') {
+        $true
+    }
+    elseif ([string]$record.ArcSyncPolicy -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120') {
+        [string]$record.PanelKey -eq 'CLAW_A1M_CLAW_7_AI_PLUS' -and [string]$record.Mode -eq 'CLAWLAB_30_120'
+    }
+    else {
+        $false
+    }
+    if (-not $policyValid) {
+        throw 'The managed VRR Arc Sync policy is invalid. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat.'
     }
     return $record
 }
@@ -964,9 +1272,21 @@ function Get-EffectiveManagedMode {
         $expectedOverride = if ([string]$record.Mode -eq 'OFFICIAL_48_120') { 'NONE' } else { [string]$record.Mode }
         $artifacts = Get-ManagedArtifactSnapshot
         $requiresExperimentalState = [string]$record.Mode -ne 'OFFICIAL_48_120'
+        $experimentalStateValid = -not $requiresExperimentalState
+        if ($requiresExperimentalState) {
+            try {
+                $experimentalStateValid = $null -ne (Get-ExperimentalEdidRecord -OverrideState $OverrideState -ManagedRecord $record)
+            }
+            catch {
+                $experimentalStateValid = $false
+            }
+        }
+        $trialTaskRecord = Get-ClawLabScheduledTaskRecord -TaskName $experimentalTrialTaskName
+        $trialTaskValid = $null -ne $trialTaskRecord -and
+            [bool](Test-ClawLabScheduledTaskRecord -Record $trialTaskRecord -Spec (Get-ExperimentalTrialTaskSpec)).Valid
         $trialPending = (Test-IsExperimentalOverclockMode -Mode ([string]$record.Mode)) -and
             (Test-Path -LiteralPath $experimentalTrialStatePath -PathType Leaf) -and
-            $null -ne (Get-ScheduledTask -TaskName $experimentalTrialTaskName -ErrorAction SilentlyContinue)
+            $trialTaskValid
         if ($trialPending -and $overrideMode -eq $expectedOverride -and
             $artifacts.OriginalProfile -and $artifacts.ExperimentalState -and $artifacts.InstalledScript) {
             return [pscustomobject]@{
@@ -980,10 +1300,12 @@ function Get-EffectiveManagedMode {
             $artifacts.InstalledScript -and
             $artifacts.InstalledEdidNormalizationModule -and
             $artifacts.InstalledArcSyncRangePolicyModule -and
+            $artifacts.InstalledScheduledTaskPersistenceModule -and
             $artifacts.InstalledLauncher -and
             $artifacts.IntelStartupBackup -and
-            $artifacts.StartupTask -and
-            ($artifacts.ExperimentalState -eq $requiresExperimentalState)
+            $artifacts.StartupTask -and $artifacts.StartupTaskValid -and
+            ($artifacts.ExperimentalState -eq $requiresExperimentalState) -and
+            $experimentalStateValid
         )
         if ($overrideMode -ne $expectedOverride -or -not $artifactsComplete) {
             return [pscustomobject]@{
@@ -1043,24 +1365,102 @@ function Assert-ProfileTransitionAllowed {
     throw "VRR profile switch refused. Current managed state: $($current.Mode) / $($current.State). Run RECOVERY\RESTORE_ORIGINAL_VRR.bat successfully before installing $DesiredMode."
 }
 
+function Assert-StableSameModeRepairAllowed {
+    param(
+        [Parameter(Mandatory)][object]$OverrideState,
+        [Parameter(Mandatory)][string]$DesiredMode,
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Snapshot
+    )
+
+    $repairIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $repairPrincipal = [Security.Principal.WindowsPrincipal]::new($repairIdentity)
+    if (-not $repairPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Private same-profile repair must be invoked by the already elevated ClawLab transaction coordinator.'
+    }
+    if ($DesiredMode -notin @('CLAWLAB_30_120', 'OFFICIAL_48_120')) {
+        throw 'Internal same-profile repair is restricted to the stable 30-120 and 48-120 modes.'
+    }
+    $expectedOverride = if ($DesiredMode -eq 'CLAWLAB_30_120') { 'CLAWLAB_30_120' } else { 'NONE' }
+    $current = Get-EffectiveManagedMode -OverrideState $OverrideState
+    if ([string]$current.Mode -ne $DesiredMode -or
+        [string]$current.State -notin @('CONSISTENT', 'INCONSISTENT_RESTORE_REQUIRED') -or
+        [string]$OverrideState.State -ne $expectedOverride) {
+        throw "Same-profile repair refused the current managed identity: $($current.Mode) / $($current.State) / override $($OverrideState.State)."
+    }
+
+    $record = Get-ManagedModeRecord
+    $original = Get-OriginalProfile
+    if ($null -eq $record -or $null -eq $original -or
+        [string]$record.FixVersion -ne $fixVersion -or
+        [string]$record.Mode -ne $DesiredMode -or
+        [string]$record.PanelKey -ne [string]$Panel.Definition.Key -or
+        [string]$original.PanelKey -ne [string]$Panel.Definition.Key -or
+        [string]$original.PhysicalEdidSha256 -ne [string]$Panel.Definition.PhysicalEdidSha256) {
+        throw 'Same-profile repair could not verify one current-version managed record and its exact original-profile backup.'
+    }
+    if ((Test-Path -LiteralPath $experimentalTrialStatePath -PathType Leaf) -or
+        (Test-Path -LiteralPath $installedExperimentalTrialPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $installedExperimentalTrialLauncherPath -PathType Leaf) -or
+        $null -ne (Get-ClawLabScheduledTaskRecord -TaskName $experimentalTrialTaskName)) {
+        throw 'Same-profile repair is unavailable while guarded-trial artifacts exist. Run verified Restore instead.'
+    }
+
+    $expected = Get-ManagedModeExpectedRange -Mode $DesiredMode
+    if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
+            -PanelKey ([string]$Panel.Definition.Key) `
+            -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+            -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+            -ExpectedMinimumHz ([float]$expected.MinimumHz) `
+            -ExpectedMaximumHz ([float]$expected.MaximumHz) `
+            -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+            -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
+        throw "Same-profile repair found an incompatible monitor range: $($Snapshot.MonitorMinimumHz)-$($Snapshot.MonitorMaximumHz) Hz."
+    }
+
+    $lfcToolPath = Join-Path $PSScriptRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
+    if (-not (Test-Path -LiteralPath $lfcToolPath -PathType Leaf)) {
+        throw 'Same-profile repair requires the matching Intel LFC component.'
+    }
+    $lfcResults = @(& $lfcToolPath -Action Status)
+    $lfc = if ($lfcResults.Count -gt 0) { $lfcResults[-1] } else { $null }
+    if ($null -eq $lfc -or [string]$lfc.ToolVersion -ne '2.0.7' -or
+        [string]$lfc.ManagedVrrMode -ne $DesiredMode -or
+        -not [bool]$lfc.LfcTransition.BackupPresent -or
+        $null -eq $lfc.LfcBackupIdentity -or -not [bool]$lfc.LfcBackupIdentity.Accepted -or
+        [bool]$lfc.RestoreTombstonePresent -or [bool]$lfc.RestoreFinalizedPresent) {
+        throw 'Same-profile repair could not verify the matching 2.0.7 LFC original-state backup identity.'
+    }
+    return $current
+}
+
 function Set-ManagedModeRecord {
-    param([Parameter(Mandatory)][string]$Mode)
+    param(
+        [Parameter(Mandatory)][string]$Mode,
+        [ValidateSet('INTEL_EXCELLENT_REQUIRED', 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120')]
+        [string]$ArcSyncPolicy = 'INTEL_EXCELLENT_REQUIRED',
+        [string]$PanelKey = ([string]$script:activePanelDefinition.Key)
+    )
 
     if ($Mode -notin $managedModeNames) {
         throw "Internal managed VRR mode is invalid: $Mode"
     }
-    [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+    $expected = Get-ManagedModeExpectedRange -Mode $Mode
+    if ($ArcSyncPolicy -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120' -and
+        ($PanelKey -ne 'CLAW_A1M_CLAW_7_AI_PLUS' -or $Mode -ne 'CLAWLAB_30_120')) {
+        throw 'The TMA2027 Arc Sync policy can only be bound to the exact ClawLab 30-120 mode.'
+    }
     $record = [ordered]@{
-        SchemaVersion = 1
+        SchemaVersion = 2
         FixVersion = $fixVersion
         Mode = $Mode
         InstalledAt = (Get-Date).ToString('o')
+        PanelKey = $PanelKey
+        ArcSyncPolicy = $ArcSyncPolicy
+        ExpectedMinimumHz = [float]$expected.MinimumHz
+        ExpectedMaximumHz = [float]$expected.MaximumHz
     }
-    [IO.File]::WriteAllText(
-        $managedModeStatePath,
-        ($record | ConvertTo-Json),
-        [Text.UTF8Encoding]::new($false)
-    )
+    Write-ClawLabJsonAtomically -LiteralPath $managedModeStatePath -Value $record
     $verified = Get-ManagedModeRecord
     if ([string]$verified.Mode -ne $Mode) {
         throw 'The managed VRR mode record failed verification.'
@@ -1074,8 +1474,12 @@ function Confirm-AdministratorOrRelaunch {
         return
     }
 
+    $windowsPowerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
+        throw "Windows PowerShell was not found at the trusted system path: $windowsPowerShellPath"
+    }
     $arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Action $Action"
-    $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments -Wait -PassThru
+    $process = Start-Process -FilePath $windowsPowerShellPath -Verb RunAs -ArgumentList $arguments -Wait -PassThru
     if ($process.ExitCode -ne 0 -and (Test-Path -LiteralPath $lastErrorPath -PathType Leaf)) {
         Write-Host 'The elevated operation reported:' -ForegroundColor Red
         Get-Content -LiteralPath $lastErrorPath | ForEach-Object { Write-Host $_ -ForegroundColor Red }
@@ -1084,13 +1488,19 @@ function Confirm-AdministratorOrRelaunch {
 }
 
 function Get-StartupReapplyState {
-    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
+    $spec = Get-VrrStartupTaskSpec
+    $task = Get-ClawLabScheduledTaskRecord -TaskName $startupTaskName
     if ($null -eq $task) {
         return 'NOT_INSTALLED'
+    }
+    $validation = Test-ClawLabScheduledTaskRecord -Record $task -Spec $spec
+    if (-not $validation.Valid) {
+        return 'TASK_INVALID'
     }
     if (-not (Test-Path -LiteralPath $installedScriptPath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedArcSyncRangePolicyModulePath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedScheduledTaskPersistenceModulePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
         return 'TASK_WITHOUT_FILES'
     }
@@ -1098,10 +1508,7 @@ function Get-StartupReapplyState {
 }
 
 function Remove-ExperimentalOverclockTrial {
-    $trialTask = Get-ScheduledTask -TaskName $experimentalTrialTaskName -ErrorAction SilentlyContinue
-    if ($null -ne $trialTask) {
-        Unregister-ScheduledTask -TaskName $experimentalTrialTaskName -Confirm:$false -ErrorAction Stop
-    }
+    [void](Remove-ClawLabScheduledTask -Spec (Get-ExperimentalTrialTaskSpec) -AllowAbsent)
     Remove-FileIfPresent -LiteralPath $experimentalTrialStatePath
     Remove-FileIfPresent -LiteralPath $installedExperimentalTrialPath
     Remove-FileIfPresent -LiteralPath $installedExperimentalTrialLauncherPath
@@ -1116,13 +1523,16 @@ function Get-ExperimentalOverclockTrialRecord {
     foreach ($property in @(
         'SchemaVersion', 'FixVersion', 'Mode', 'MinimumHz', 'MaximumHz',
         'PanelKey', 'PhysicalEdidSha256', 'ExperimentalEdidSha256',
-        'Stability', 'ObservationSeconds', 'UserConfirmed'
+        'Stability', 'ObservationSeconds', 'UserConfirmed',
+        'LifecycleState', 'AttemptConsumed', 'TaskConsumed',
+        'PreTrialLfcDisposition', 'PreTrialLfc',
+        'OwnerSid', 'OwnerLocalAppData', 'RunSessionId'
     )) {
         if ($property -notin $record.PSObject.Properties.Name) {
             throw "The experimental overclock trial state is invalid: missing $property."
         }
     }
-    if ([int]$record.SchemaVersion -ne 1 -or [string]$record.FixVersion -ne $fixVersion -or
+    if ([int]$record.SchemaVersion -ne 2 -or [string]$record.FixVersion -ne $fixVersion -or
         -not (Test-IsExperimentalOverclockMode -Mode ([string]$record.Mode))) {
         throw 'The experimental overclock trial state has an unsupported identity.'
     }
@@ -1130,7 +1540,7 @@ function Get-ExperimentalOverclockTrialRecord {
     if ([int]$record.MinimumHz -ne [int]$mode.MinimumHz -or
         [int]$record.MaximumHz -ne [int]$mode.MaximumHz -or
         [string]$record.Stability -ne [string]$mode.Stability -or
-        [int]$record.ObservationSeconds -ne 15) {
+        [int]$record.ObservationSeconds -ne 30) {
         throw 'The experimental overclock trial state has unexpected range or timeout values.'
     }
     return $record
@@ -1140,7 +1550,8 @@ function Assert-ExperimentalOverclockTrialContext {
     param(
         [Parameter(Mandatory)][object]$Panel,
         [Parameter(Mandatory)][object]$OverrideState,
-        [switch]$RequireUserConfirmation
+        [switch]$RequireUserConfirmation,
+        [string[]]$RequiredLifecycleStates = @()
     )
 
     $trial = Get-ExperimentalOverclockTrialRecord
@@ -1159,9 +1570,75 @@ function Assert-ExperimentalOverclockTrialContext {
         throw 'The guarded trial does not match the managed VRR mode record.'
     }
     if ($RequireUserConfirmation -and -not [bool]$trial.UserConfirmed) {
-        throw 'The experimental overclock cannot be persisted before the user confirms the completed 15-second trial.'
+        throw 'The experimental overclock cannot be persisted before the user confirms the completed 30-second trial.'
+    }
+    if ($RequiredLifecycleStates.Count -gt 0 -and
+        [string]$trial.LifecycleState -notin $RequiredLifecycleStates) {
+        throw "The guarded trial lifecycle is $($trial.LifecycleState); expected one of: $($RequiredLifecycleStates -join ', ')."
+    }
+    if ([string]$trial.LifecycleState -ne 'SCHEDULED' -and
+        (-not [bool]$trial.AttemptConsumed -or -not [bool]$trial.TaskConsumed)) {
+        throw 'The guarded trial was not durably consumed before a display operation was requested.'
+    }
+    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentSid = if ($null -eq $currentIdentity.User) { '' } else { [string]$currentIdentity.User.Value }
+    $currentLocalAppData = [IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\')
+    $ownerLocalAppData = [IO.Path]::GetFullPath([string]$trial.OwnerLocalAppData).TrimEnd('\')
+    $currentSessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    if ([string]::IsNullOrWhiteSpace($currentSid) -or
+        -not $currentSid.Equals([string]$trial.OwnerSid, [StringComparison]::OrdinalIgnoreCase) -or
+        -not $currentLocalAppData.Equals($ownerLocalAppData, [StringComparison]::OrdinalIgnoreCase) -or
+        $currentSessionId -ne [int]$trial.RunSessionId) {
+        throw 'The guarded trial owner SID, current session or canonical LOCALAPPDATA identity did not verify.'
     }
     return [pscustomobject]@{ Trial = $trial; Mode = $mode }
+}
+
+function Complete-ExperimentalOverclockTrialCommit {
+    param([Parameter(Mandatory)][object]$Trial)
+
+    # Commit evidence is durable before any recovery payload can be removed.
+    # ConfirmExperimentalTrial reaches this function only after VRR, startup
+    # persistence and Intel LFC have all been independently verified.
+    $Trial | Add-Member -NotePropertyName LifecycleState `
+        -NotePropertyValue 'COMMIT_VERIFIED' -Force
+    $Trial | Add-Member -NotePropertyName CommitVerifiedAt `
+        -NotePropertyValue (Get-Date).ToString('o') -Force
+    $Trial | Add-Member -NotePropertyName RecoveryRequired `
+        -NotePropertyValue $false -Force
+    Write-ClawLabJsonAtomically -LiteralPath $experimentalTrialStatePath -Value $Trial
+
+    [void](Remove-ClawLabScheduledTask -Spec (Get-ExperimentalTrialTaskSpec) -AllowAbsent)
+    if ($null -ne (Get-ClawLabScheduledTaskRecord -TaskName $experimentalTrialTaskName)) {
+        throw 'The consumed guarded-trial task could not be removed before final cleanup.'
+    }
+    Remove-FileIfPresent -LiteralPath $installedExperimentalTrialPath
+    Remove-FileIfPresent -LiteralPath $installedExperimentalTrialLauncherPath
+    if ((Test-Path -LiteralPath $installedExperimentalTrialPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $installedExperimentalTrialLauncherPath -PathType Leaf)) {
+        throw 'Local guarded-trial launch artifacts remain after final cleanup.'
+    }
+
+    # Protected runtime deletion is intentionally last. If it cannot be
+    # completed, retain the atomic COMMIT_VERIFIED state and report success for
+    # the already verified profile; Restore can retry this housekeeping later.
+    try {
+        Remove-ProtectedExperimentalRuntime
+        if (Test-Path -LiteralPath $protectedRuntimeRoot -PathType Container) {
+            throw 'The protected guarded-trial runtime remains after cleanup.'
+        }
+        Remove-FileIfPresent -LiteralPath $experimentalTrialStatePath
+        return 'PROTECTED_RUNTIME_REMOVED_AFTER_COMMIT_VERIFICATION'
+    }
+    catch {
+        $Trial | Add-Member -NotePropertyName ProtectedRuntimeCleanupPending `
+            -NotePropertyValue $true -Force
+        $Trial | Add-Member -NotePropertyName ProtectedRuntimeCleanupError `
+            -NotePropertyValue ([string]$_.Exception.Message) -Force
+        Write-ClawLabJsonAtomically -LiteralPath $experimentalTrialStatePath -Value $Trial
+        Write-Warning "The confirmed profile is verified; protected recovery-payload cleanup will be retried by Restore: $($_.Exception.Message)"
+        return 'PROTECTED_RUNTIME_RETAINED_FOR_RECOVERY'
+    }
 }
 
 function Get-CursorRefreshHelperProcesses {
@@ -1180,17 +1657,74 @@ function Get-CursorRefreshHelperProcesses {
     )
 }
 
+function Get-CursorRefreshRuntimeState {
+    if (-not (Test-Path -LiteralPath $cursorRefreshRuntimeStatePath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $values = [ordered]@{}
+        foreach ($line in [IO.File]::ReadAllLines($cursorRefreshRuntimeStatePath, [Text.Encoding]::UTF8)) {
+            $separator = $line.IndexOf('=')
+            if ($separator -le 0) { continue }
+            $values[$line.Substring(0, $separator)] = $line.Substring($separator + 1)
+        }
+        foreach ($required in @('SchemaVersion', 'FixVersion', 'Engine', 'ProcessId', 'SessionId')) {
+            if (-not $values.Contains($required)) { return $null }
+        }
+        return [pscustomobject]$values
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-CursorRefreshControlEvent {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $event = $null
+    try {
+        $event = [Threading.EventWaitHandle]::OpenExisting($Name)
+        return $event.WaitOne(0)
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $event) { $event.Dispose() }
+    }
+}
+
+function Set-CursorRefreshControlEvent {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $event = $null
+    try {
+        $event = [Threading.EventWaitHandle]::OpenExisting($Name)
+        return [bool]$event.Set()
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $event) { $event.Dispose() }
+    }
+}
+
 function Get-CursorRefreshHelperState {
     $binaryPresent = Test-Path -LiteralPath $installedCursorRefreshHelperPath -PathType Leaf
     $statePresent = Test-Path -LiteralPath $cursorRefreshHelperStatePath -PathType Leaf
-    if (-not $binaryPresent -and -not $statePresent) {
+    $task = Get-ClawLabScheduledTaskRecord -TaskName $cursorRefreshTaskName
+    if (-not $binaryPresent -and -not $statePresent -and $null -eq $task) {
         return 'NOT_INSTALLED'
     }
-    if (-not $binaryPresent -or -not $statePresent) {
+    if (-not $binaryPresent -or -not $statePresent -or $null -eq $task) {
         return 'INCOMPLETE'
     }
 
     try {
+        $taskValidation = Test-ClawLabScheduledTaskRecord -Record $task `
+            -Spec (Get-CursorRefreshHelperTaskSpec)
+        if (-not $taskValidation.Valid) { return 'TASK_INVALID' }
         $record = [IO.File]::ReadAllText($cursorRefreshHelperStatePath, [Text.Encoding]::UTF8) | ConvertFrom-Json
         foreach ($property in @('SchemaVersion', 'FixVersion', 'FileName', 'FileSha256')) {
             if ($property -notin $record.PSObject.Properties.Name) {
@@ -1208,9 +1742,29 @@ function Get-CursorRefreshHelperState {
         if ($actualHash -ne [string]$record.FileSha256) {
             return 'HASH_MISMATCH'
         }
-        if (@(Get-CursorRefreshHelperProcesses).Count -eq 1) {
-            return 'RUNNING_EVENT_DRIVEN'
+        $processes = @(Get-CursorRefreshHelperProcesses)
+        if ($processes.Count -eq 1) {
+            if (-not (Test-CursorRefreshControlEvent -Name $cursorRefreshReadyEventName)) {
+                return 'STARTING'
+            }
+            $runtime = Get-CursorRefreshRuntimeState
+            if ($null -eq $runtime -or
+                [int]$runtime.ProcessId -ne [int]$processes[0].Id -or
+                [string]$runtime.FixVersion -ne $fixVersion) {
+                return 'RUNNING_UNVERIFIED'
+            }
+            if ([string]$runtime.Engine -eq 'NATIVE_WIN32_DXGI_FLIP_MODEL') {
+                return 'RUNNING_NATIVE_DXGI'
+            }
+            if ([string]$runtime.Engine -eq 'NATIVE_WIN32_DXGI_SEQUENTIAL_FALLBACK') {
+                return 'RUNNING_NATIVE_DXGI_COMPATIBILITY'
+            }
+            if ([string]$runtime.Engine -eq 'WPF_FALLBACK') {
+                return 'RUNNING_WPF_FALLBACK'
+            }
+            return 'RUNNING_UNVERIFIED'
         }
+        if ($processes.Count -gt 1) { return 'MULTIPLE_INSTANCES' }
         return 'READY_AT_NEXT_SIGN_IN'
     }
     catch {
@@ -1219,9 +1773,23 @@ function Get-CursorRefreshHelperState {
 }
 
 function Stop-CursorRefreshHelper {
+    $processes = @(Get-CursorRefreshHelperProcesses)
+    if ($processes.Count -eq 0) { return }
+
+    # New engines leave cooperatively through the named shutdown event. The
+    # forced path is retained only for legacy binaries or a genuinely hung
+    # helper and never touches the display driver or its managed profile.
+    [void](Set-CursorRefreshControlEvent -Name $cursorRefreshShutdownEventName)
+    $deadline = [DateTime]::UtcNow.AddSeconds(3)
+    foreach ($process in $processes) {
+        $remaining = [int][Math]::Max(0, ($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if ($remaining -gt 0) {
+            try { [void]$process.WaitForExit($remaining) } catch {}
+        }
+    }
     foreach ($process in @(Get-CursorRefreshHelperProcesses)) {
         Stop-Process -Id $process.Id -Force -ErrorAction Stop
-        try { $process.WaitForExit(3000) | Out-Null } catch {}
+        try { [void]$process.WaitForExit(3000) } catch {}
     }
 }
 
@@ -1232,6 +1800,7 @@ function Install-CursorRefreshHelper {
     }
 
     Stop-CursorRefreshHelper
+    Remove-FileIfPresent -LiteralPath $cursorRefreshRuntimeStatePath
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
     if (-not [IO.Path]::GetFullPath($sourcePath).Equals(
             [IO.Path]::GetFullPath($installedCursorRefreshHelperPath),
@@ -1250,14 +1819,16 @@ function Install-CursorRefreshHelper {
         FileName = $cursorRefreshHelperName
         FileSha256 = $sourceHash
         InstalledAt = (Get-Date).ToString('o')
-        Activation = 'RAW_MOUSE_INPUT_EVENT_DRIVEN'
-        IdleBehavior = 'DEEP_IDLE_NO_TIMER_RESOLUTION'
+        Activation = 'NATIVE_WIN32_DXGI_FLIP_MODEL_WITH_WPF_FAILSAFE'
+        Synchronization = 'NAMED_EVENT_RESYNC_WITHOUT_PROCESS_RESTART'
+        IdleBehavior = 'KERNEL_EVENT_WAIT_NO_ACTIVE_PRESENTS_OR_TIMER_RESOLUTION'
     }
     [IO.File]::WriteAllText(
         $cursorRefreshHelperStatePath,
         ($record | ConvertTo-Json),
         [Text.UTF8Encoding]::new($false)
     )
+    [void](Install-ClawLabScheduledTask -Spec (Get-CursorRefreshHelperTaskSpec))
     if ((Get-CursorRefreshHelperState) -ne 'READY_AT_NEXT_SIGN_IN') {
         throw 'The Cursor Refresh Helper installation could not be verified.'
     }
@@ -1265,39 +1836,159 @@ function Install-CursorRefreshHelper {
 
 function Start-CursorRefreshHelper {
     $state = Get-CursorRefreshHelperState
-    if ($state -eq 'RUNNING_EVENT_DRIVEN') {
-        return
+    $runningStates = @(
+        'RUNNING_NATIVE_DXGI',
+        'RUNNING_NATIVE_DXGI_COMPATIBILITY',
+        'RUNNING_WPF_FALLBACK'
+    )
+    if ($state -in $runningStates) {
+        return $state
     }
-    if ($state -ne 'READY_AT_NEXT_SIGN_IN') {
-        throw "The Cursor Refresh Helper cannot start from state $state. Reinstall the current VRR profile."
+    if ($state -notin @('READY_AT_NEXT_SIGN_IN', 'STARTING')) {
+        throw "The Cursor Refresh Helper cannot start from state $state. Run UPDATE_CURSOR_REFRESH_ENGINE.bat; the managed VRR profile does not need to be reinstalled."
     }
 
-    $process = Start-Process -FilePath $installedCursorRefreshHelperPath -WindowStyle Hidden -PassThru
-    Start-Sleep -Milliseconds 500
-    if ($process.HasExited -or (Get-CursorRefreshHelperState) -ne 'RUNNING_EVENT_DRIVEN') {
-        throw 'The Cursor Refresh Helper did not remain active after launch.'
+    if ($state -eq 'READY_AT_NEXT_SIGN_IN') {
+        # Never inherit the elevated installer token. The exact verified task
+        # owns InteractiveToken + Limited and starts the process in the bound
+        # user's desktop session even when this maintenance action has UAC.
+        [void](Start-ClawLabScheduledTask -Spec (Get-CursorRefreshHelperTaskSpec))
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 100
+        $state = Get-CursorRefreshHelperState
+        if ($state -in $runningStates) { return $state }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "The Cursor Refresh Helper did not publish a verified runtime state after launch (state $state)."
+}
+
+function Sync-CursorRefreshHelper {
+    $state = Start-CursorRefreshHelper
+    $runtimeBefore = Get-CursorRefreshRuntimeState
+    $resyncBefore = if ($null -ne $runtimeBefore -and
+        'Resynchronizations' -in $runtimeBefore.PSObject.Properties.Name) {
+        [int64]$runtimeBefore.Resynchronizations
+    }
+    else { -1 }
+
+    if (-not (Set-CursorRefreshControlEvent -Name $cursorRefreshResyncEventName)) {
+        throw 'The Cursor Refresh Helper resynchronization channel is unavailable.'
+    }
+    if ($state -eq 'RUNNING_WPF_FALLBACK') {
+        return $state
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        Start-Sleep -Milliseconds 100
+        $currentState = Get-CursorRefreshHelperState
+        if ($currentState -notin @(
+                'RUNNING_NATIVE_DXGI',
+                'RUNNING_NATIVE_DXGI_COMPATIBILITY'
+            )) {
+            throw "The native Cursor Refresh Engine left its verified state during resynchronization ($currentState)."
+        }
+        $runtimeAfter = Get-CursorRefreshRuntimeState
+        if ($null -ne $runtimeAfter -and
+            'Resynchronizations' -in $runtimeAfter.PSObject.Properties.Name -and
+            [int64]$runtimeAfter.Resynchronizations -gt $resyncBefore) {
+            return $currentState
+        }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw 'The native Cursor Refresh Engine did not acknowledge the resynchronization request.'
+}
+
+function Update-CursorRefreshHelperOnly {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Snapshot,
+        [Parameter(Mandatory)][object]$OverrideState
+    )
+
+    if (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf) {
+        throw 'A display recovery transaction is pending. The cursor-only update was refused without changing the VRR profile.'
+    }
+    $effective = Get-EffectiveManagedMode -OverrideState $OverrideState
+    if ([string]$effective.State -ne 'CONSISTENT') {
+        throw "The cursor-only update requires an already consistent managed VRR profile. Current state: $($effective.Mode) / $($effective.State)."
+    }
+    $managed = Get-ManagedModeRecord
+    if ($null -eq $managed -or [string]$managed.FixVersion -ne $fixVersion) {
+        throw 'The cursor-only update requires a verified ClawLab 2.3.0 managed profile.'
+    }
+    $expected = Get-ManagedModeExpectedRange -Mode ([string]$managed.Mode)
+    if (-not (Test-ManagedArcSyncSnapshot -Snapshot $Snapshot `
+            -PanelKey ([string]$Panel.Definition.Key) -Mode ([string]$managed.Mode) `
+            -Policy ([string]$managed.ArcSyncPolicy) `
+            -ExpectedMinimumHz ([float]$expected.MinimumHz) `
+            -ExpectedMaximumHz ([float]$expected.MaximumHz))) {
+        throw 'The active Intel Arc Sync state is not the verified managed profile. The cursor-only update made no change.'
+    }
+
+    Install-CursorRefreshHelper
+    $engine = Start-CursorRefreshHelper
+    $engine = Sync-CursorRefreshHelper
+    return [pscustomobject]@{
+        State = 'CURSOR_REFRESH_ENGINE_UPDATED'
+        Engine = $engine
+        ManagedMode = [string]$managed.Mode
+        DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f `
+            $Snapshot.ActiveMinimumHz, $Snapshot.ActiveMaximumHz
+        ProfileChanged = $false
+        LfcChanged = $false
+        EdidChanged = $false
+        RestartRequired = $false
     }
 }
 
-function Restart-CursorRefreshHelper {
-    # Intel profile/display initialization can invalidate a DWM surface that
-    # was created very early at sign-in. Recreate the helper exactly once after
-    # final profile verification so a running process also means a fresh,
-    # effective desktop surface.
-    Stop-CursorRefreshHelper
-    Start-CursorRefreshHelper
+function Invoke-CursorRefreshHelperStartupBestEffort {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Start', 'Resync')]
+        [string]$Operation
+    )
+
+    try {
+        $engine = if ($Operation -eq 'Resync') {
+            Sync-CursorRefreshHelper
+        }
+        else {
+            Start-CursorRefreshHelper
+        }
+        $script:cursorRefreshLaunchWarning = if ($engine -eq 'RUNNING_WPF_FALLBACK') {
+            'The native DXGI engine was unavailable; the isolated WPF compatibility engine is active.'
+        }
+        elseif ($engine -eq 'RUNNING_NATIVE_DXGI_COMPATIBILITY') {
+            'The native DXGI engine is active with its sequential compatibility presentation model.'
+        }
+        else { $null }
+        return $true
+    }
+    catch {
+        # The desktop helper is optional and independent from the game-facing
+        # Intel Arc Sync/LFC correction. Never hide its failure, but do not let
+        # it prevent the independently verified VRR setter/readback path.
+        $script:cursorRefreshLaunchWarning = "Cursor Refresh Helper $Operation failed: $($_.Exception.Message)"
+        Write-Warning $script:cursorRefreshLaunchWarning
+        return $false
+    }
 }
 
 function Remove-CursorRefreshHelper {
     Stop-CursorRefreshHelper
+    [void](Remove-ClawLabScheduledTask -Spec (Get-CursorRefreshHelperTaskSpec) -AllowAbsent)
     Remove-FileIfPresent -LiteralPath $installedCursorRefreshHelperPath
     Remove-FileIfPresent -LiteralPath $cursorRefreshHelperStatePath
+    Remove-FileIfPresent -LiteralPath $cursorRefreshRuntimeStatePath
     if ((Get-CursorRefreshHelperState) -ne 'NOT_INSTALLED') {
         throw 'The Cursor Refresh Helper could not be removed completely.'
     }
 }
 
 function Install-StartupReapply {
+    param([switch]$PreserveExperimentalRecovery)
+
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
     $sourceLauncherPath = Join-Path (Split-Path $PSCommandPath -Parent) $startupLauncherName
     if (-not (Test-Path -LiteralPath $sourceLauncherPath -PathType Leaf)) {
@@ -1307,6 +1998,7 @@ function Install-StartupReapply {
         @($PSCommandPath, $installedScriptPath),
         @($edidNormalizationModulePath, $installedEdidNormalizationModulePath),
         @($arcSyncRangePolicyModulePath, $installedArcSyncRangePolicyModulePath),
+        @($scheduledTaskPersistenceModulePath, $installedScheduledTaskPersistenceModulePath),
         @($sourceLauncherPath, $installedLauncherPath)
     )) {
         if (-not [IO.Path]::GetFullPath($pair[0]).Equals(
@@ -1322,50 +2014,42 @@ function Install-StartupReapply {
     $installedEdidModuleHash = (Get-FileHash -LiteralPath $installedEdidNormalizationModulePath -Algorithm SHA256).Hash
     $sourceRangePolicyHash = (Get-FileHash -LiteralPath $arcSyncRangePolicyModulePath -Algorithm SHA256).Hash
     $installedRangePolicyHash = (Get-FileHash -LiteralPath $installedArcSyncRangePolicyModulePath -Algorithm SHA256).Hash
+    $sourceTaskModuleHash = (Get-FileHash -LiteralPath $scheduledTaskPersistenceModulePath -Algorithm SHA256).Hash
+    $installedTaskModuleHash = (Get-FileHash -LiteralPath $installedScheduledTaskPersistenceModulePath -Algorithm SHA256).Hash
     $sourceLauncherHash = (Get-FileHash -LiteralPath $sourceLauncherPath -Algorithm SHA256).Hash
     $installedLauncherHash = (Get-FileHash -LiteralPath $installedLauncherPath -Algorithm SHA256).Hash
     if ($sourceHash -ne $installedHash -or
         $sourceEdidModuleHash -ne $installedEdidModuleHash -or
         $sourceRangePolicyHash -ne $installedRangePolicyHash -or
+        $sourceTaskModuleHash -ne $installedTaskModuleHash -or
         $sourceLauncherHash -ne $installedLauncherHash) {
         throw 'The installed startup files failed their integrity check.'
     }
 
-    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
-    $arguments = "//B //Nologo `"$installedLauncherPath`""
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
-    $taskAction = New-ScheduledTaskAction -Execute $wscriptPath -Argument $arguments
-    $principal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 3)
-    $task = New-ScheduledTask -Action $taskAction -Trigger $trigger -Principal $principal `
-        -Settings $settings -Description 'Silently applies MSI Claw Intel Arc Sync VRR, then starts Intel Graphics Software.'
     try {
-        Register-ScheduledTask -TaskName $startupTaskName -InputObject $task -Force | Out-Null
-        if ((Get-StartupReapplyState) -eq 'NOT_INSTALLED') {
-            throw 'The startup reapply task could not be verified.'
-        }
+        [void](Install-ClawLabScheduledTask -Spec (Get-VrrStartupTaskSpec))
         Set-ManagedIntelStartupOrder
         Install-CursorRefreshHelper
     }
     catch {
         try { Restore-IntelStartupOrder } catch { Write-Warning "Intel startup rollback failed: $($_.Exception.Message)" }
-        try { Remove-StartupReapply } catch {}
+        try { Remove-StartupReapply -PreserveExperimentalRecovery:$PreserveExperimentalRecovery } catch {}
         throw
     }
 }
 
 function Remove-StartupReapply {
-    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
-    if ($null -ne $task) {
-        Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
+    param([switch]$PreserveExperimentalRecovery)
+
+    [void](Remove-ClawLabScheduledTask -Spec (Get-VrrStartupTaskSpec) -AllowAbsent)
+    if (-not $PreserveExperimentalRecovery) {
+        Remove-ExperimentalOverclockTrial
     }
-    Remove-ExperimentalOverclockTrial
     Remove-CursorRefreshHelper
     Remove-FileIfPresent -LiteralPath $installedScriptPath
     Remove-FileIfPresent -LiteralPath $installedEdidNormalizationModulePath
     Remove-FileIfPresent -LiteralPath $installedArcSyncRangePolicyModulePath
+    Remove-FileIfPresent -LiteralPath $installedScheduledTaskPersistenceModulePath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     Remove-FileIfPresent -LiteralPath $startupStatusPath
     if ((Get-StartupReapplyState) -ne 'NOT_INSTALLED') {
@@ -1384,8 +2068,11 @@ function Write-StartupResult {
         SchemaVersion = 1
         FixVersion = $fixVersion
         Timestamp = (Get-Date).ToString('o')
+        InvocationSource = $StartupSource
         Success = $Success
         Message = $Message
+        IntelGraphicsLaunchWarning = $script:intelGraphicsLaunchWarning
+        CursorRefreshLaunchWarning = $script:cursorRefreshLaunchWarning
     }
     [IO.File]::WriteAllText(
         $startupStatusPath,
@@ -1402,7 +2089,7 @@ function Resolve-IntelGraphicsStartupCommand {
 
     $match = [regex]::Match(
         $Command,
-        '^"(?<Executable>[A-Za-z]:\\[^"]+\\IntelGraphicsSoftware\.exe)"\s+(?<Arguments>-s)$'
+        '(?i)^\s*"(?<Executable>[A-Za-z]:\\[^"]+\\IntelGraphicsSoftware\.exe)"\s+(?<Arguments>-s)\s*$'
     )
     if (-not $match.Success) {
         throw "Unexpected Intel Graphics Software startup command: $Command"
@@ -1667,7 +2354,17 @@ function Get-IntelStartupOrderState {
         }
         return 'MANAGED_COMMAND_REAPPEARED'
     }
-    return 'UNKNOWN_STARTUP_ENTRY'
+    try {
+        # Intel Graphics Software/driver updates can legitimately rewrite the
+        # Run value while ClawLab owns startup ordering. Treat it as an Intel
+        # update only after a fresh canonical-path and Authenticode proof. An
+        # arbitrary or unsigned replacement remains UNKNOWN and fail-closed.
+        [void](Resolve-IntelGraphicsStartupCommand -Command $current)
+        return 'SIGNED_INTEL_ENTRY_UPDATED'
+    }
+    catch {
+        return 'UNKNOWN_STARTUP_ENTRY'
+    }
 }
 
 function Set-ManagedIntelStartupOrder {
@@ -1688,7 +2385,29 @@ function Set-ManagedIntelStartupOrder {
         }
     }
     elseif (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
-        throw 'An unknown Intel Graphics Software startup entry is present. It was not modified.'
+        try {
+            $resolvedUpdate = Resolve-IntelGraphicsStartupCommand -Command $current
+        }
+        catch {
+            throw 'An unknown Intel Graphics Software startup entry is present. It was not modified.'
+        }
+
+        # The updater reintroduced a freshly signed canonical Intel entry. It
+        # is now the state that must be restored after ClawLab is removed, even
+        # when Intel Graphics Software was absent at the original installation.
+        if ('OriginalEntryPresent' -in $backup.PSObject.Properties.Name) {
+            $backup.OriginalEntryPresent = $true
+        }
+        else {
+            $backup | Add-Member -NotePropertyName OriginalEntryPresent -NotePropertyValue $true
+        }
+        $backup = Set-IntelStartupTrustedIdentity -ExistingBackup $backup `
+            -Resolved $resolvedUpdate -OriginalEntryPresent $true
+        if ([string]$backup.Command -ne $current -or
+            (Get-IntelStartupRegistryValue) -ne $current) {
+            throw 'Intel Graphics Software changed while its signed startup update was being adopted.'
+        }
+        Write-Warning 'A newly signed Intel Graphics Software startup entry was adopted after a verified Intel update.'
     }
 
     if (-not [string]::IsNullOrEmpty($current)) {
@@ -1706,10 +2425,26 @@ function Restore-IntelStartupOrder {
     }
     $current = Get-IntelStartupRegistryValue
     $originalEntryPresent = Test-OriginalIntelStartupEntryPresent -Backup $backup
-    if ($originalEntryPresent) {
-        if (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
+    $signedIntelUpdatePresent = $false
+    if (-not [string]::IsNullOrEmpty($current) -and $current -ne [string]$backup.Command) {
+        try {
+            [void](Resolve-IntelGraphicsStartupCommand -Command $current)
+            $signedIntelUpdatePresent = $true
+        }
+        catch {
             throw 'An unknown Intel Graphics Software startup entry is present. The saved entry was not restored.'
         }
+    }
+
+    if ($signedIntelUpdatePresent) {
+        # Do not replace a newer, independently verified Intel Run entry with a
+        # stale command saved before a driver/IGS update. Leaving it untouched
+        # restores normal Intel startup ownership without needing the old ZIP.
+        Write-Warning 'A newer signed Intel Graphics Software startup entry is present and was preserved.'
+        Remove-FileIfPresent -LiteralPath $intelStartupBackupPath
+        return
+    }
+    if ($originalEntryPresent) {
         New-ItemProperty -LiteralPath $intelStartupRegistryPath -Name $intelStartupValueName `
             -PropertyType String -Value ([string]$backup.Command) -Force | Out-Null
         if ((Get-IntelStartupRegistryValue) -ne [string]$backup.Command) {
@@ -1795,7 +2530,31 @@ function Start-ManagedIntelGraphicsSoftware {
         $resolved.SignerThumbprint -ne [string]$backup.SignerThumbprint) {
         throw 'Intel Graphics Software changed between trust verification and launch.'
     }
-    Start-Process -FilePath $resolved.Executable -ArgumentList $resolved.Arguments -WindowStyle Hidden
+    try {
+        Start-Process -FilePath $resolved.Executable -ArgumentList $resolved.Arguments -WindowStyle Hidden
+    }
+    catch {
+        # Starting the optional Intel UI can be rejected with Win32
+        # ERROR_CANCELLED (1223), for example when its own elevation request is
+        # dismissed. That must not prevent the independent Arc Sync setter and
+        # readback below from running. Trust/identity failures above and every
+        # other launch error remain fatal.
+        $exception = $_.Exception
+        $userCancelled = $false
+        for ($depth = 0; $depth -lt 6 -and $null -ne $exception; $depth++) {
+            if ($exception -is [System.ComponentModel.Win32Exception] -and
+                [int]$exception.NativeErrorCode -eq 1223) {
+                $userCancelled = $true
+                break
+            }
+            $exception = $exception.InnerException
+        }
+        if (-not $userCancelled) {
+            throw
+        }
+        $script:intelGraphicsLaunchWarning = 'Intel Graphics Software launch was cancelled by Windows or the user; VRR validation continued independently.'
+        Write-Warning $script:intelGraphicsLaunchWarning
+    }
 }
 
 function Add-ArcSyncControlType {
@@ -2268,6 +3027,18 @@ function Get-TargetSnapshot {
     param([int]$Attempts = 1)
 
     $lastError = $null
+    $telemetryExpectedMinimumHz = -1.0
+    $telemetryExpectedMaximumHz = -1.0
+    $managedTelemetryRecord = Get-ManagedModeRecord
+    if ($null -ne $managedTelemetryRecord -and
+        [string]$managedTelemetryRecord.FixVersion -eq $fixVersion -and
+        $null -ne $script:activePanelDefinition -and
+        [string]$managedTelemetryRecord.PanelKey -eq [string]$script:activePanelDefinition.Key) {
+        $managedTelemetryRange = Get-ManagedModeExpectedRange `
+            -Mode ([string]$managedTelemetryRecord.Mode)
+        $telemetryExpectedMinimumHz = [float]$managedTelemetryRange.MinimumHz
+        $telemetryExpectedMaximumHz = [float]$managedTelemetryRange.MaximumHz
+    }
     for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
         try {
             $candidates = @(
@@ -2283,6 +3054,8 @@ function Get-TargetSnapshot {
                     -PanelKey ([string]$script:activePanelDefinition.Key) `
                     -MonitorMinimumHz ([float]$candidates[0].MonitorMinimumHz) `
                     -MonitorMaximumHz ([float]$candidates[0].MonitorMaximumHz) `
+                    -ExpectedMinimumHz $telemetryExpectedMinimumHz `
+                    -ExpectedMaximumHz $telemetryExpectedMaximumHz `
                     -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
                     -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
                 if ($telemetryState -eq 'UNSUPPORTED') {
@@ -2309,6 +3082,12 @@ function Get-OriginalProfile {
     }
     $backup = [IO.File]::ReadAllText($backupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
     foreach ($property in @(
+        'SchemaVersion',
+        'FixVersion',
+        'BaselinePolicy',
+        'PanelKey',
+        'PhysicalEdidSha256',
+        'EdidOverrideStateAtSave',
         'ProfileId',
         'ProfileName',
         'MinRefreshRateInHz',
@@ -2323,6 +3102,37 @@ function Get-OriginalProfile {
     if ([int]$backup.ProfileId -lt 1 -or [int]$backup.ProfileId -gt 7) {
         throw 'The saved original profile ID is invalid. No display setting was changed.'
     }
+    if ([string]$backup.FixVersion -ne $fixVersion -or [int]$backup.SchemaVersion -ne 2) {
+        throw 'The saved original profile belongs to another ClawLab release. Use that release to restore it before installing 2.3.0.'
+    }
+    if ($null -eq $script:activePanelDefinition -or
+        [string]$backup.PanelKey -ne [string]$script:activePanelDefinition.Key -or
+        [string]$backup.PhysicalEdidSha256 -ne [string]$script:activePanelDefinition.PhysicalEdidSha256) {
+        throw 'The saved original profile does not match the validated physical panel. No display setting was changed.'
+    }
+    if ([string]$backup.EdidOverrideStateAtSave -ne 'NONE') {
+        throw 'The saved original profile was not captured from the physical EDID state. No display setting was changed.'
+    }
+    if ([string]$backup.BaselinePolicy -eq 'INTEL_STANDARD_BASELINE') {
+        if ([int]$backup.ProfileId -notin @(1, 2)) {
+            throw 'The saved Intel standard baseline contains a non-standard profile ID.'
+        }
+    }
+    elseif ([string]$backup.BaselinePolicy -eq 'TMA2027_VERIFIED_CUSTOM_30_120') {
+        if (-not (Test-ClawLabKnownTma2027Custom30Profile `
+                -PanelKey ([string]$backup.PanelKey) `
+                -TelemetryState 'INTEL_CONTROL_LIB_HALF_PHYSICAL_FLOOR' `
+                -ProfileId ([int]$backup.ProfileId) `
+                -MinimumHz ([float]$backup.MinRefreshRateInHz) `
+                -MaximumHz ([float]$backup.MaxRefreshRateInHz) `
+                -MaxIncreaseUs ([uint32]$backup.MaxFrameTimeIncreaseInUs) `
+                -MaxDecreaseUs ([uint32]$backup.MaxFrameTimeDecreaseInUs))) {
+            throw 'The saved TMA2027 custom baseline is not the exact validated 30-120 profile.'
+        }
+    }
+    else {
+        throw "Unknown saved original baseline policy: $($backup.BaselinePolicy)"
+    }
     return $backup
 }
 
@@ -2330,7 +3140,9 @@ function Save-OriginalProfile {
     param(
         [Parameter(Mandatory)][object]$Snapshot,
         [Parameter(Mandatory)][object]$Panel,
-        [Parameter(Mandatory)][object]$Gpu
+        [Parameter(Mandatory)][object]$Gpu,
+        [ValidateSet('INTEL_STANDARD_BASELINE', 'TMA2027_VERIFIED_CUSTOM_30_120')]
+        [string]$BaselinePolicy = 'INTEL_STANDARD_BASELINE'
     )
 
     if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
@@ -2338,11 +3150,40 @@ function Save-OriginalProfile {
         return
     }
 
+    if ([string]$Panel.Definition.Key -ne [string]$script:activePanelDefinition.Key -or
+        [string]$Panel.Definition.PhysicalEdidSha256 -ne [string]$script:activePanelDefinition.PhysicalEdidSha256) {
+        throw 'The original profile cannot be saved for a panel identity that is not currently active.'
+    }
+    if ($BaselinePolicy -eq 'INTEL_STANDARD_BASELINE' -and [int]$Snapshot.ProfileId -notin @(1, 2)) {
+        throw 'A non-standard Intel profile cannot be saved as an Intel standard baseline.'
+    }
+    if ($BaselinePolicy -eq 'TMA2027_VERIFIED_CUSTOM_30_120') {
+        $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+            -PanelKey ([string]$Panel.Definition.Key) `
+            -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+            -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+            -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+            -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+        if (-not (Test-ClawLabKnownTma2027Custom30Profile `
+                -PanelKey ([string]$Panel.Definition.Key) -TelemetryState $telemetryState `
+                -ProfileId ([int]$Snapshot.ProfileId) `
+                -MinimumHz ([float]$Snapshot.ActiveMinimumHz) `
+                -MaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+                -MaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+                -MaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs))) {
+            throw 'The current Intel profile is not the exact verified TMA2027 CUSTOM 30-120 baseline.'
+        }
+    }
+
     [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
     $backup = [ordered]@{
-        SchemaVersion = 1
+        SchemaVersion = 2
         FixVersion = $fixVersion
+        BaselinePolicy = $BaselinePolicy
         SavedAt = (Get-Date).ToString('o')
+        PanelKey = [string]$Panel.Definition.Key
+        PhysicalEdidSha256 = [string]$Panel.Definition.PhysicalEdidSha256
+        EdidOverrideStateAtSave = 'NONE'
         PanelInstanceName = $Panel.InstanceName
         PanelName = $Panel.Name
         IntelDriverVersion = [string]$Gpu.DriverVersion
@@ -2353,11 +3194,14 @@ function Save-OriginalProfile {
         MaxFrameTimeIncreaseInUs = $Snapshot.ActiveMaxIncreaseUs
         MaxFrameTimeDecreaseInUs = $Snapshot.ActiveMaxDecreaseUs
     }
-    [IO.File]::WriteAllText(
-        $backupPath,
-        ($backup | ConvertTo-Json),
-        [Text.UTF8Encoding]::new($false)
-    )
+    Write-ClawLabJsonAtomically -LiteralPath $backupPath -Value $backup
+    $verified = Get-OriginalProfile
+    if ([string]$verified.BaselinePolicy -ne $BaselinePolicy -or
+        -not (Test-SnapshotMatchesSavedProfile -Snapshot $Snapshot -Profile $verified)) {
+        throw 'The saved original Intel Arc Sync profile failed atomic readback verification.'
+    }
+    Complete-NormalizationCompensationAfterBackup -Panel $Panel -Gpu $Gpu `
+        -CurrentTarget $Snapshot
 }
 
 function Invoke-SetProfile {
@@ -2424,17 +3268,304 @@ function Test-SnapshotMatchesSavedProfile {
         -SavedMaxDecreaseUs ([uint32]$Profile.MaxFrameTimeDecreaseInUs)
 }
 
+function Test-ManagedArcSyncSnapshot {
+    param(
+        [Parameter(Mandatory)][object]$Snapshot,
+        [Parameter(Mandatory)][string]$PanelKey,
+        [Parameter(Mandatory)][string]$Mode,
+        [Parameter(Mandatory)][string]$Policy,
+        [Parameter(Mandatory)][float]$ExpectedMinimumHz,
+        [Parameter(Mandatory)][float]$ExpectedMaximumHz
+    )
+
+    $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+        -PanelKey $PanelKey `
+        -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+        -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -ExpectedMinimumHz $ExpectedMinimumHz -ExpectedMaximumHz $ExpectedMaximumHz `
+        -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+        -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+    if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
+            -PanelKey $PanelKey `
+            -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+            -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+            -ExpectedMinimumHz $ExpectedMinimumHz -ExpectedMaximumHz $ExpectedMaximumHz `
+            -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+            -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
+        return $false
+    }
+
+    Test-ClawLabManagedArcSyncSnapshot -Policy $Policy -PanelKey $PanelKey -Mode $Mode `
+        -TelemetryState $telemetryState `
+        -ProfileId ([int]$Snapshot.ProfileId) `
+        -MinimumHz ([float]$Snapshot.ActiveMinimumHz) `
+        -MaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+        -MaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+        -MaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs) `
+        -ExpectedMinimumHz $ExpectedMinimumHz -ExpectedMaximumHz $ExpectedMaximumHz
+}
+
+function Get-FactoryResetDecisionForSnapshot {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Snapshot
+    )
+
+    $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+        -PanelKey ([string]$Panel.Definition.Key) `
+        -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+        -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+        -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+    return Get-ClawLabFactoryResetProfileDecision `
+        -PanelKey ([string]$Panel.Definition.Key) -TelemetryState $telemetryState `
+        -ProfileId ([int]$Snapshot.ProfileId) `
+        -MinimumHz ([float]$Snapshot.ActiveMinimumHz) `
+        -MaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+        -MaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+        -MaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs)
+}
+
+function Assert-OrphanedDefaultVrrShellCleanupAllowed {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Snapshot,
+        [Parameter(Mandatory)][object]$OverrideState
+    )
+
+    if ($null -ne (Get-OriginalProfile)) {
+        throw 'Orphaned-state cleanup refused because an original VRR backup exists.'
+    }
+    if ([string]$OverrideState.State -ne 'NONE') {
+        throw "Orphaned-state cleanup requires no EDID override; current state is $([string]$OverrideState.State)."
+    }
+
+    $managed = Get-EffectiveManagedMode -OverrideState $OverrideState
+    if ([string]$managed.Mode -ne 'LEGACY_MANAGED_STATE' -or
+        [string]$managed.State -ne 'RESTORE_REQUIRED' -or
+        [string]$managed.Source -ne 'MANAGED_ARTIFACTS') {
+        throw "Orphaned-state cleanup refused the managed identity: $([string]$managed.Mode) / $([string]$managed.State) / $([string]$managed.Source)."
+    }
+
+    $artifacts = Get-ManagedArtifactSnapshot
+    if ([bool]$artifacts.OriginalProfile -or
+        [bool]$artifacts.NormalizationCompensation -or
+        [bool]$artifacts.ExperimentalState -or
+        [bool]$artifacts.IntelStartupBackup) {
+        throw 'Orphaned-state cleanup found recovery-bearing VRR metadata and will not discard it.'
+    }
+    if (Test-Path -LiteralPath $managedModeStatePath -PathType Leaf) {
+        throw 'Orphaned-state cleanup found a managed-mode record and will not infer its missing original backup.'
+    }
+    if (Test-Path -LiteralPath $experimentalTrialStatePath -PathType Leaf) {
+        throw 'Orphaned-state cleanup found a guarded-trial state and will not discard it.'
+    }
+    if (Test-Path -LiteralPath $protectedRuntimeRoot) {
+        throw 'Orphaned-state cleanup found a protected guarded-trial runtime and will not discard it.'
+    }
+
+    $startupState = Get-StartupReapplyState
+    if ($startupState -notin @('TASK_INVALID', 'TASK_WITHOUT_FILES')) {
+        throw "Orphaned-state cleanup expected one stale startup task; current state is $startupState."
+    }
+    $startupTask = Get-ClawLabScheduledTaskRecord -TaskName $startupTaskName
+    if ($null -eq $startupTask -or
+        -not (Test-ClawLabScheduledTaskOwned -Record $startupTask -Spec (Get-VrrStartupTaskSpec))) {
+        throw 'The stale startup task is not provably owned by ClawLab and was not removed.'
+    }
+    if ($null -ne (Get-ClawLabScheduledTaskRecord -TaskName $cursorRefreshTaskName) -or
+        $null -ne (Get-ClawLabScheduledTaskRecord -TaskName $experimentalTrialTaskName)) {
+        throw 'Orphaned-state cleanup found another managed task and requires explicit recovery.'
+    }
+    if ((Get-CursorRefreshHelperState) -ne 'NOT_INSTALLED') {
+        throw 'Orphaned-state cleanup found a desktop helper state and requires explicit recovery.'
+    }
+
+    $intelStartupState = Get-IntelStartupOrderState
+    if ($intelStartupState -notin @('INTEL_DEFAULT', 'MISSING_WITHOUT_BACKUP')) {
+        throw "Orphaned-state cleanup found an unsafe Intel Graphics Software startup state: $intelStartupState."
+    }
+
+    $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+        -PanelKey ([string]$Panel.Definition.Key) `
+        -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+        -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+        -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+    if (-not (Test-ClawLabKnownUnmanagedFactoryProfile `
+            -PanelKey ([string]$Panel.Definition.Key) -TelemetryState $telemetryState `
+            -ProfileId ([int]$Snapshot.ProfileId) `
+            -MinimumHz ([float]$Snapshot.ActiveMinimumHz) `
+            -MaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+            -MaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+            -MaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs))) {
+        throw "Orphaned-state cleanup could not prove the exact unmanaged Intel factory profile: $($Snapshot.ProfileName) $($Snapshot.ActiveMinimumHz)-$($Snapshot.ActiveMaximumHz) Hz, timings $($Snapshot.ActiveMaxIncreaseUs)/$($Snapshot.ActiveMaxDecreaseUs) us."
+    }
+
+    $displayMode = Get-CurrentDisplayMode
+    if ([int]$displayMode.Width -ne [int]$Panel.Definition.Width -or
+        [int]$displayMode.Height -ne [int]$Panel.Definition.Height -or
+        [int]$displayMode.RefreshHz -ne 120) {
+        throw "Orphaned-state cleanup requires the validated native 120 Hz mode; current mode is $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz."
+    }
+
+    return [pscustomobject]@{
+        ManagedMode = [string]$managed.Mode
+        StartupState = $startupState
+        IntelStartupState = $intelStartupState
+        FactoryProfile = [string]$Snapshot.ProfileName
+        FactoryRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.ActiveMinimumHz, $Snapshot.ActiveMaximumHz
+    }
+}
+
+function Get-VerifiedManagedArcSyncSnapshot {
+    param(
+        [Parameter(Mandatory)][object]$Target,
+        [Parameter(Mandatory)][string]$PanelKey,
+        [Parameter(Mandatory)][string]$Mode,
+        [Parameter(Mandatory)][string]$Policy,
+        [Parameter(Mandatory)][float]$ExpectedMinimumHz,
+        [Parameter(Mandatory)][float]$ExpectedMaximumHz,
+        [switch]$AllowExcellentWrite
+    )
+
+    $snapshot = $Target
+    if (Test-ManagedArcSyncSnapshot -Snapshot $snapshot -PanelKey $PanelKey -Mode $Mode `
+            -Policy $Policy -ExpectedMinimumHz $ExpectedMinimumHz -ExpectedMaximumHz $ExpectedMaximumHz) {
+        return $snapshot
+    }
+    if ($Policy -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120') {
+        throw "The exact TMA2027 CUSTOM 30-120 profile drifted and was not rewritten automatically: $($snapshot.ProfileName), $($snapshot.ActiveMinimumHz)-$($snapshot.ActiveMaximumHz) Hz, timings $($snapshot.ActiveMaxIncreaseUs)/$($snapshot.ActiveMaxDecreaseUs) us. Restore or reinstall after collecting diagnostics."
+    }
+    if (-not $AllowExcellentWrite) {
+        throw "Intel EXCELLENT is not active at $ExpectedMinimumHz-$ExpectedMaximumHz Hz. No profile write was requested."
+    }
+
+    Invoke-SetProfile -Target $snapshot -ProfileId $profileExcellent
+    for ($attempt = 1; $attempt -le 10; $attempt++) {
+        Start-Sleep -Milliseconds 500
+        $snapshot = Get-TargetSnapshot -Attempts 3
+        if (Test-ManagedArcSyncSnapshot -Snapshot $snapshot -PanelKey $PanelKey -Mode $Mode `
+                -Policy $Policy -ExpectedMinimumHz $ExpectedMinimumHz -ExpectedMaximumHz $ExpectedMaximumHz) {
+            return $snapshot
+        }
+    }
+    throw "Intel profile verification failed: expected EXCELLENT $ExpectedMinimumHz-$ExpectedMaximumHz Hz, got $($snapshot.ProfileName) $($snapshot.ActiveMinimumHz)-$($snapshot.ActiveMaximumHz) Hz."
+}
+
+function Assert-KnownTma2027CustomBaselineEnvironment {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$RegistryContext,
+        [Parameter(Mandatory)][object]$Snapshot
+    )
+
+    if ([string]$Panel.Definition.Key -ne 'CLAW_A1M_CLAW_7_AI_PLUS' -or
+        [string]$RegistryContext.PhysicalEdidSha256 -ne [string]$Panel.Definition.PhysicalEdidSha256) {
+        throw 'The TMA2027 custom-baseline path requires the exact pinned physical panel EDID.'
+    }
+    $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+        -PanelKey ([string]$Panel.Definition.Key) `
+        -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+        -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+        -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+    if (-not (Test-ClawLabKnownTma2027Custom30Profile `
+            -PanelKey ([string]$Panel.Definition.Key) -TelemetryState $telemetryState `
+            -ProfileId ([int]$Snapshot.ProfileId) `
+            -MinimumHz ([float]$Snapshot.ActiveMinimumHz) `
+            -MaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+            -MaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+            -MaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs))) {
+        throw 'The active Intel profile is no longer the exact TMA2027 OEM CUSTOM 30-120 baseline.'
+    }
+    $displayMode = Get-CurrentDisplayMode
+    if ($displayMode.Width -ne [int]$Panel.Definition.Width -or
+        $displayMode.Height -ne [int]$Panel.Definition.Height -or
+        $displayMode.RefreshHz -ne 120) {
+        throw "This TMA2027 driver state must be installed from the native $($Panel.Definition.Width)x$($Panel.Definition.Height) at 120 Hz Windows mode. Current mode is $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz. No setting was changed."
+    }
+
+    $driverInterfacePath = Join-Path $PSScriptRoot 'Intel-VRR-LFC-Driver-Interface.ps1'
+    if (-not (Test-Path -LiteralPath $driverInterfacePath -PathType Leaf)) {
+        throw 'The direct Intel VRR verification component is missing.'
+    }
+    $directResults = @(& $driverInterfacePath -Action Status)
+    $direct = if ($directResults.Count -gt 0) { $directResults[-1] } else { $null }
+    if ($null -eq $direct -or [uint32]$direct.NtStatus -ne 0 -or
+        [uint32]$direct.DisplayCount -ne 1 -or -not [bool]$direct.Supported -or
+        -not [bool]$direct.Enabled -or [uint32]$direct.MinimumHz -ne 48 -or
+        [uint32]$direct.MaximumHz -ne 120 -or
+        -not [bool]$direct.LowFpsSolutionEnabled -or
+        -not [bool]$direct.HighFpsSolutionEnabled) {
+        $details = if ($null -eq $direct) { 'no direct Intel state' } else { $direct | ConvertTo-Json -Compress }
+        throw "The exact TMA2027 CUSTOM baseline was not paired with a clean direct Intel 48-120 VRR/LFC state: $details"
+    }
+}
+
 function Resolve-FirstInstallProfileBaseline {
     param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$RegistryContext,
+        [Parameter(Mandatory)][object]$OverrideState,
+        [Parameter(Mandatory)][string]$DesiredMode,
         [Parameter(Mandatory)][object]$Transition,
         [Parameter(Mandatory)][object]$Snapshot
     )
 
-    if (Test-ClawLabFirstInstallProfileSafe `
-            -CurrentMode ([string]$Transition.Mode) `
-            -CurrentState ([string]$Transition.State) `
-            -ProfileId ([int]$Snapshot.ProfileId)) {
-        return $Snapshot
+    $telemetryState = Get-ClawLabArcSyncMonitorRangeState `
+        -PanelKey ([string]$Panel.Definition.Key) `
+        -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
+        -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+        -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+    $decision = Get-ClawLabFirstInstallBaselineDecision `
+        -PanelKey ([string]$Panel.Definition.Key) `
+        -CurrentMode ([string]$Transition.Mode) -CurrentState ([string]$Transition.State) `
+        -OverrideState ([string]$OverrideState.State) -DesiredMode $DesiredMode `
+        -TelemetryState $telemetryState -ProfileId ([int]$Snapshot.ProfileId) `
+        -MinimumHz ([float]$Snapshot.ActiveMinimumHz) -MaximumHz ([float]$Snapshot.ActiveMaximumHz) `
+        -MaxIncreaseUs ([uint32]$Snapshot.ActiveMaxIncreaseUs) `
+        -MaxDecreaseUs ([uint32]$Snapshot.ActiveMaxDecreaseUs)
+
+    if ($decision -eq 'MANAGED_REPAIR') {
+        $managed = Get-ManagedModeRecord
+        if ($null -eq $managed -or [string]$managed.Mode -ne $DesiredMode) {
+            throw 'The managed repair has no matching current-version policy record.'
+        }
+        return [pscustomobject]@{
+            Snapshot = $Snapshot
+            BaselinePolicy = [string](Get-OriginalProfile).BaselinePolicy
+            ManagedArcSyncPolicy = [string]$managed.ArcSyncPolicy
+            Decision = $decision
+        }
+    }
+    if ($decision -eq 'STANDARD_PROFILE') {
+        return [pscustomobject]@{
+            Snapshot = $Snapshot
+            BaselinePolicy = 'INTEL_STANDARD_BASELINE'
+            ManagedArcSyncPolicy = 'INTEL_EXCELLENT_REQUIRED'
+            Decision = $decision
+        }
+    }
+    if ($decision -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120') {
+        Confirm-AdministratorOrRelaunch
+        Assert-KnownTma2027CustomBaselineEnvironment -Panel $Panel -RegistryContext $RegistryContext -Snapshot $Snapshot
+        Write-Host 'Verified the exact A1M/Claw 7 AI+ OEM CUSTOM 30-120 baseline.' -ForegroundColor Green
+        Write-Host 'ClawLab will preserve this profile and will not call the rejected Intel RECOMMENDED/EXCELLENT setters.' -ForegroundColor Yellow
+        return [pscustomobject]@{
+            Snapshot = $Snapshot
+            BaselinePolicy = 'TMA2027_VERIFIED_CUSTOM_30_120'
+            ManagedArcSyncPolicy = 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120'
+            Decision = $decision
+        }
+    }
+    if ($decision -eq 'REFUSE_TMA2027_CUSTOM_FOR_MODE') {
+        throw 'This exact TMA2027 driver preserves CUSTOM 30-120 and rejects Intel EXCELLENT. Version 2.3.0 can safely preserve it only for the stable 30-120 profile; 48-120 and display overclocks remain blocked on this driver state. No setting was changed.'
+    }
+    if ($decision -eq 'REFUSE_UNSAFE_TMA2027_CUSTOM') {
+        throw "The A1M/Claw 7 AI+ exposes an unknown CUSTOM profile ($($Snapshot.ActiveMinimumHz)-$($Snapshot.ActiveMaximumHz) Hz, timings $($Snapshot.ActiveMaxIncreaseUs)/$($Snapshot.ActiveMaxDecreaseUs) us). It was not adopted or modified."
     }
 
     # RECOMMENDED and EXCELLENT are Intel driver API profiles; current Intel
@@ -2449,15 +3580,29 @@ function Resolve-FirstInstallProfileBaseline {
     $normalized = $Snapshot
     $normalizationVerified = $false
     $normalizationResults = [Collections.Generic.List[string]]::new()
+    $normalizationRecord = New-NormalizationCompensationRecord -Panel $Panel `
+        -Gpu $Gpu -Snapshot $Snapshot
     foreach ($candidate in @(
             [pscustomobject]@{ ProfileId = $profileRecommended; Name = 'RECOMMENDED' },
             [pscustomobject]@{ ProfileId = $profileExcellent; Name = 'EXCELLENT' }
         )) {
         try {
+            $normalizationRecord = Set-NormalizationCompensationPhase `
+                -Record $normalizationRecord -Phase MUTATION_ATTEMPTED `
+                -CandidateName ([string]$candidate.Name)
             Invoke-SetProfile -Target $normalized -ProfileId ([int]$candidate.ProfileId)
             Start-Sleep -Milliseconds 750
-            $normalized = Get-TargetSnapshot -Attempts 10
+            for ($readbackAttempt = 1; $readbackAttempt -le 10; $readbackAttempt++) {
+                Start-Sleep -Milliseconds 500
+                $normalized = Get-TargetSnapshot -Attempts 3
+                Assert-NormalizationCompensationIdentity -Record $normalizationRecord `
+                    -Panel $Panel -Gpu $Gpu -Target $normalized
+                if ([int]$normalized.ProfileId -eq [int]$candidate.ProfileId) { break }
+            }
             if ([int]$normalized.ProfileId -eq [int]$candidate.ProfileId) {
+                $normalizationRecord = Set-NormalizationCompensationPhase `
+                    -Record $normalizationRecord -Phase NORMALIZED_VERIFIED `
+                    -CandidateName ([string]$candidate.Name)
                 $normalizationVerified = $true
                 Write-Host "The Intel $($candidate.Name) first-install baseline is active and verified." -ForegroundColor Green
                 break
@@ -2468,11 +3613,31 @@ function Resolve-FirstInstallProfileBaseline {
             $normalizationResults.Add("$($candidate.Name) failed: $($_.Exception.Message)")
             try { $normalized = Get-TargetSnapshot -Attempts 10 } catch { $normalized = $Snapshot }
         }
+        try {
+            $normalized = Invoke-NormalizationCompensationRestore -Panel $Panel `
+                -Gpu $Gpu -CurrentTarget $normalized -RetainJournal
+            $normalizationRecord = Get-NormalizationCompensationRecord
+        }
+        catch {
+            throw "Intel $($candidate.Name) normalization failed and the exact original profile could not be recovered: $($_.Exception.Message) The compensation journal was retained."
+        }
     }
     if (-not $normalizationVerified) {
-        throw "Could not verify an automatic Intel RECOMMENDED or EXCELLENT baseline. Attempts: $($normalizationResults -join ' | '). No ClawLab original-profile backup was created."
+        try {
+            [void](Invoke-NormalizationCompensationRestore -Panel $Panel `
+                -Gpu $Gpu -CurrentTarget $normalized)
+        }
+        catch {
+            throw "Could not verify an automatic Intel RECOMMENDED or EXCELLENT baseline. Attempts: $($normalizationResults -join ' | '). Exact compensation also failed: $($_.Exception.Message)"
+        }
+        throw "Could not verify an automatic Intel RECOMMENDED or EXCELLENT baseline. Attempts: $($normalizationResults -join ' | '). The original unmanaged profile was restored and verified; no ClawLab original-profile backup was created."
     }
-    return $normalized
+    return [pscustomobject]@{
+        Snapshot = $normalized
+        BaselinePolicy = 'INTEL_STANDARD_BASELINE'
+        ManagedArcSyncPolicy = 'INTEL_EXCELLENT_REQUIRED'
+        Decision = 'STANDARD_PROFILE_NORMALIZED'
+    }
 }
 
 function Restore-SnapshotProfile {
@@ -2493,6 +3658,357 @@ function Restore-SnapshotProfile {
     }
 }
 
+function Test-NormalizationTargetIdentity {
+    param(
+        [Parameter(Mandatory)][object]$Snapshot,
+        [Parameter(Mandatory)][object]$SavedTarget
+    )
+
+    return [int]$Snapshot.AdapterIndex -eq [int]$SavedTarget.AdapterIndex -and
+        [int]$Snapshot.DisplayIndex -eq [int]$SavedTarget.DisplayIndex -and
+        (Test-ClawLabFrequencyEqual -Left ([float]$Snapshot.MonitorMinimumHz) `
+            -Right ([float]$SavedTarget.MonitorMinimumHz)) -and
+        (Test-ClawLabFrequencyEqual -Left ([float]$Snapshot.MonitorMaximumHz) `
+            -Right ([float]$SavedTarget.MonitorMaximumHz)) -and
+        [uint32]$Snapshot.MonitorMaxIncreaseUs -eq [uint32]$SavedTarget.MonitorMaxIncreaseUs -and
+        [uint32]$Snapshot.MonitorMaxDecreaseUs -eq [uint32]$SavedTarget.MonitorMaxDecreaseUs
+}
+
+function Test-NormalizationProfileExact {
+    param(
+        [Parameter(Mandatory)][object]$Snapshot,
+        [Parameter(Mandatory)][object]$SavedProfile
+    )
+
+    return [int]$Snapshot.ProfileId -eq [int]$SavedProfile.ProfileId -and
+        ([string]$Snapshot.ProfileName).Equals(
+            [string]$SavedProfile.ProfileName, [StringComparison]::OrdinalIgnoreCase) -and
+        (Test-ClawLabFrequencyEqual -Left ([float]$Snapshot.ActiveMinimumHz) `
+            -Right ([float]$SavedProfile.MinRefreshRateInHz)) -and
+        (Test-ClawLabFrequencyEqual -Left ([float]$Snapshot.ActiveMaximumHz) `
+            -Right ([float]$SavedProfile.MaxRefreshRateInHz)) -and
+        [uint32]$Snapshot.ActiveMaxIncreaseUs -eq [uint32]$SavedProfile.MaxFrameTimeIncreaseInUs -and
+        [uint32]$Snapshot.ActiveMaxDecreaseUs -eq [uint32]$SavedProfile.MaxFrameTimeDecreaseInUs
+}
+
+function Get-NormalizationCompensationRecord {
+    if (-not (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf)) {
+        return $null
+    }
+
+    $record = [IO.File]::ReadAllText(
+        $normalizationCompensationPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @(
+            'SchemaVersion', 'FixVersion', 'Phase', 'CreatedAt', 'UpdatedAt',
+            'Panel', 'Gpu', 'Target', 'OriginalProfile'
+        )) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The Intel normalization compensation journal is invalid: missing $property."
+        }
+    }
+    if ([int]$record.SchemaVersion -ne 1 -or
+        [string]$record.FixVersion -ne $fixVersion -or
+        [string]$record.Phase -notin @(
+            'PREPARED', 'MUTATION_ATTEMPTED', 'NORMALIZED_VERIFIED',
+            'RESTORE_ATTEMPTED', 'RESTORE_VERIFIED', 'BACKUP_VERIFIED'
+        )) {
+        throw 'The Intel normalization compensation journal has an unsupported identity or phase.'
+    }
+    foreach ($property in @(
+            'Key', 'Manufacturer', 'ProductCode', 'Name', 'InstanceName',
+            'PhysicalEdidSha256'
+        )) {
+        if ($property -notin $record.Panel.PSObject.Properties.Name) {
+            throw "The Intel normalization compensation panel identity is invalid: missing $property."
+        }
+    }
+    foreach ($property in @('Name', 'PnpDeviceId', 'DriverVersion')) {
+        if ($property -notin $record.Gpu.PSObject.Properties.Name) {
+            throw "The Intel normalization compensation GPU identity is invalid: missing $property."
+        }
+    }
+    foreach ($property in @(
+            'AdapterIndex', 'DisplayIndex', 'MonitorMinimumHz', 'MonitorMaximumHz',
+            'MonitorMaxIncreaseUs', 'MonitorMaxDecreaseUs'
+        )) {
+        if ($property -notin $record.Target.PSObject.Properties.Name) {
+            throw "The Intel normalization compensation target identity is invalid: missing $property."
+        }
+    }
+    foreach ($property in @(
+            'ProfileId', 'ProfileName', 'MinRefreshRateInHz', 'MaxRefreshRateInHz',
+            'MaxFrameTimeIncreaseInUs', 'MaxFrameTimeDecreaseInUs'
+        )) {
+        if ($property -notin $record.OriginalProfile.PSObject.Properties.Name) {
+            throw "The Intel normalization compensation snapshot is invalid: missing $property."
+        }
+    }
+    if ([string]$record.Panel.PhysicalEdidSha256 -notmatch '^[A-Fa-f0-9]{64}$' -or
+        [string]::IsNullOrWhiteSpace([string]$record.Panel.InstanceName) -or
+        [string]::IsNullOrWhiteSpace([string]$record.Gpu.PnpDeviceId) -or
+        [string]::IsNullOrWhiteSpace([string]$record.Gpu.DriverVersion) -or
+        [int]$record.Target.AdapterIndex -lt 0 -or
+        [int]$record.Target.DisplayIndex -lt 0 -or
+        [int]$record.OriginalProfile.ProfileId -lt 1 -or
+        [int]$record.OriginalProfile.ProfileId -gt 7 -or
+        [float]::IsNaN([float]$record.Target.MonitorMinimumHz) -or
+        [float]::IsNaN([float]$record.Target.MonitorMaximumHz) -or
+        [float]::IsNaN([float]$record.OriginalProfile.MinRefreshRateInHz) -or
+        [float]::IsNaN([float]$record.OriginalProfile.MaxRefreshRateInHz) -or
+        [float]$record.Target.MonitorMinimumHz -le 0 -or
+        [float]$record.Target.MonitorMaximumHz -lt [float]$record.Target.MonitorMinimumHz -or
+        [float]$record.OriginalProfile.MinRefreshRateInHz -lt 0 -or
+        [float]$record.OriginalProfile.MaxRefreshRateInHz -lt
+            [float]$record.OriginalProfile.MinRefreshRateInHz) {
+        throw 'The Intel normalization compensation journal contains invalid values.'
+    }
+    return $record
+}
+
+function Assert-NormalizationCompensationIdentity {
+    param(
+        [Parameter(Mandatory)][object]$Record,
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$Target
+    )
+
+    $panelMatches = [string]$Record.Panel.Key -eq [string]$Panel.Definition.Key -and
+        [string]$Record.Panel.Manufacturer -eq [string]$Panel.Manufacturer -and
+        [string]$Record.Panel.ProductCode -eq [string]$Panel.ProductCode -and
+        [string]$Record.Panel.Name -eq [string]$Panel.Name -and
+        [string]$Record.Panel.InstanceName -eq [string]$Panel.InstanceName -and
+        [string]$Record.Panel.PhysicalEdidSha256 -eq
+            [string]$Panel.Definition.PhysicalEdidSha256
+    $gpuMatches = ([string]$Record.Gpu.Name).Equals(
+            [string]$Gpu.Name, [StringComparison]::OrdinalIgnoreCase) -and
+        ([string]$Record.Gpu.PnpDeviceId).Equals(
+            [string]$Gpu.PNPDeviceID, [StringComparison]::OrdinalIgnoreCase) -and
+        ([string]$Record.Gpu.DriverVersion).Equals(
+            [string]$Gpu.DriverVersion, [StringComparison]::OrdinalIgnoreCase)
+    if (-not $panelMatches -or -not $gpuMatches -or
+        -not (Test-NormalizationTargetIdentity -Snapshot $Target -SavedTarget $Record.Target)) {
+        throw 'The Intel normalization compensation journal does not match the exact active panel, GPU, driver and Arc Sync target. It was retained without a profile write.'
+    }
+}
+
+function Set-NormalizationCompensationPhase {
+    param(
+        [Parameter(Mandatory)][object]$Record,
+        [Parameter(Mandatory)][ValidateSet(
+            'PREPARED', 'MUTATION_ATTEMPTED', 'NORMALIZED_VERIFIED',
+            'RESTORE_ATTEMPTED', 'RESTORE_VERIFIED', 'BACKUP_VERIFIED'
+        )][string]$Phase,
+        [AllowNull()][string]$CandidateName = $null
+    )
+
+    $Record | Add-Member -NotePropertyName Phase -NotePropertyValue $Phase -Force
+    $Record | Add-Member -NotePropertyName UpdatedAt `
+        -NotePropertyValue (Get-Date).ToString('o') -Force
+    if (-not [string]::IsNullOrWhiteSpace($CandidateName)) {
+        $Record | Add-Member -NotePropertyName CandidateName `
+            -NotePropertyValue $CandidateName -Force
+    }
+    Write-ClawLabJsonAtomically -LiteralPath $normalizationCompensationPath -Value $Record
+    $verified = Get-NormalizationCompensationRecord
+    if ($null -eq $verified -or [string]$verified.Phase -ne $Phase) {
+        throw "The Intel normalization compensation phase failed atomic readback: $Phase"
+    }
+    return $verified
+}
+
+function New-NormalizationCompensationRecord {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$Snapshot
+    )
+
+    if (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf) {
+        throw 'A previous Intel normalization compensation journal is still present. Run verified Restore before retrying.'
+    }
+    if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+        throw 'Intel normalization cannot begin after an original-profile backup already exists.'
+    }
+
+    $now = (Get-Date).ToString('o')
+    $record = [ordered]@{
+        SchemaVersion = 1
+        FixVersion = $fixVersion
+        Phase = 'PREPARED'
+        CreatedAt = $now
+        UpdatedAt = $now
+        Panel = [ordered]@{
+            Key = [string]$Panel.Definition.Key
+            Manufacturer = [string]$Panel.Manufacturer
+            ProductCode = [string]$Panel.ProductCode
+            Name = [string]$Panel.Name
+            InstanceName = [string]$Panel.InstanceName
+            PhysicalEdidSha256 = [string]$Panel.Definition.PhysicalEdidSha256
+        }
+        Gpu = [ordered]@{
+            Name = [string]$Gpu.Name
+            PnpDeviceId = [string]$Gpu.PNPDeviceID
+            DriverVersion = [string]$Gpu.DriverVersion
+        }
+        Target = [ordered]@{
+            AdapterIndex = [int]$Snapshot.AdapterIndex
+            DisplayIndex = [int]$Snapshot.DisplayIndex
+            MonitorMinimumHz = [float]$Snapshot.MonitorMinimumHz
+            MonitorMaximumHz = [float]$Snapshot.MonitorMaximumHz
+            MonitorMaxIncreaseUs = [uint32]$Snapshot.MonitorMaxIncreaseUs
+            MonitorMaxDecreaseUs = [uint32]$Snapshot.MonitorMaxDecreaseUs
+        }
+        OriginalProfile = [ordered]@{
+            ProfileId = [int]$Snapshot.ProfileId
+            ProfileName = [string]$Snapshot.ProfileName
+            MinRefreshRateInHz = [float]$Snapshot.ActiveMinimumHz
+            MaxRefreshRateInHz = [float]$Snapshot.ActiveMaximumHz
+            MaxFrameTimeIncreaseInUs = [uint32]$Snapshot.ActiveMaxIncreaseUs
+            MaxFrameTimeDecreaseInUs = [uint32]$Snapshot.ActiveMaxDecreaseUs
+        }
+    }
+    Write-ClawLabJsonAtomically -LiteralPath $normalizationCompensationPath -Value $record
+    $verified = Get-NormalizationCompensationRecord
+    Assert-NormalizationCompensationIdentity -Record $verified -Panel $Panel -Gpu $Gpu -Target $Snapshot
+    if (-not (Test-NormalizationProfileExact -Snapshot $Snapshot `
+            -SavedProfile $verified.OriginalProfile)) {
+        throw 'The Intel normalization compensation snapshot failed atomic readback verification.'
+    }
+    $script:normalizationCompensationContext = [pscustomobject]@{
+        Panel = $Panel
+        Gpu = $Gpu
+    }
+    return $verified
+}
+
+function Remove-NormalizationCompensationRecord {
+    Remove-FileIfPresent -LiteralPath $normalizationCompensationPath
+    if (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf) {
+        throw 'The verified Intel normalization compensation journal could not be removed.'
+    }
+    $script:normalizationCompensationContext = $null
+}
+
+function Invoke-NormalizationCompensationRestore {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$CurrentTarget,
+        [switch]$RetainJournal
+    )
+
+    $record = Get-NormalizationCompensationRecord
+    if ($null -eq $record) { return $CurrentTarget }
+    Assert-NormalizationCompensationIdentity -Record $record -Panel $Panel -Gpu $Gpu -Target $CurrentTarget
+    if (-not (Test-NormalizationProfileExact -Snapshot $CurrentTarget `
+            -SavedProfile $record.OriginalProfile)) {
+        $record = Set-NormalizationCompensationPhase -Record $record `
+            -Phase RESTORE_ATTEMPTED
+        Restore-SnapshotProfile -Target $CurrentTarget -Profile $record.OriginalProfile
+        $restored = $null
+        for ($attempt = 1; $attempt -le 10; $attempt++) {
+            Start-Sleep -Milliseconds 500
+            $restored = Get-TargetSnapshot -Attempts 3
+            Assert-NormalizationCompensationIdentity -Record $record -Panel $Panel -Gpu $Gpu -Target $restored
+            if (Test-NormalizationProfileExact -Snapshot $restored `
+                    -SavedProfile $record.OriginalProfile) {
+                break
+            }
+        }
+        if ($null -eq $restored -or
+            -not (Test-NormalizationProfileExact -Snapshot $restored `
+                -SavedProfile $record.OriginalProfile)) {
+            throw 'The original unmanaged Intel profile could not be restored exactly. The compensation journal was retained.'
+        }
+        $CurrentTarget = $restored
+    }
+    $record = Set-NormalizationCompensationPhase -Record $record -Phase RESTORE_VERIFIED
+    if ($RetainJournal) {
+        [void](Set-NormalizationCompensationPhase -Record $record -Phase PREPARED)
+    }
+    else {
+        Remove-NormalizationCompensationRecord
+    }
+    return $CurrentTarget
+}
+
+function Complete-NormalizationCompensationAfterBackup {
+    param(
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$CurrentTarget
+    )
+
+    $record = Get-NormalizationCompensationRecord
+    if ($null -eq $record) { return }
+    Assert-NormalizationCompensationIdentity -Record $record -Panel $Panel -Gpu $Gpu -Target $CurrentTarget
+    if ([string]$record.Phase -ne 'NORMALIZED_VERIFIED') {
+        throw "The normalization journal cannot commit from phase $($record.Phase)."
+    }
+    $original = Get-OriginalProfile
+    if ($null -eq $original -or
+        [string]$original.BaselinePolicy -ne 'INTEL_STANDARD_BASELINE' -or
+        -not (Test-NormalizationProfileExact -Snapshot $CurrentTarget -SavedProfile $original)) {
+        throw 'The normalized Intel profile has no exact validated original-profile backup. The compensation journal was retained.'
+    }
+    [void](Set-NormalizationCompensationPhase -Record $record -Phase BACKUP_VERIFIED)
+    Remove-NormalizationCompensationRecord
+}
+
+function Resolve-PendingNormalizationCompensation {
+    param(
+        [Parameter(Mandatory)][string]$RequestedAction,
+        [Parameter(Mandatory)][object]$Panel,
+        [Parameter(Mandatory)][object]$Gpu,
+        [Parameter(Mandatory)][object]$CurrentTarget
+    )
+
+    $record = Get-NormalizationCompensationRecord
+    if ($null -eq $record) {
+        return [pscustomobject]@{ Outcome = 'NONE'; Target = $CurrentTarget; RecoveredWithoutBackup = $false }
+    }
+    Assert-NormalizationCompensationIdentity -Record $record -Panel $Panel -Gpu $Gpu -Target $CurrentTarget
+    if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+        $saved = Get-OriginalProfile
+        if ([string]$record.Phase -eq 'NORMALIZED_VERIFIED' -and
+            (Test-NormalizationProfileExact -Snapshot $CurrentTarget -SavedProfile $saved)) {
+            Complete-NormalizationCompensationAfterBackup -Panel $Panel -Gpu $Gpu `
+                -CurrentTarget $CurrentTarget
+            return [pscustomobject]@{ Outcome = 'BACKUP_COMMIT_FINALIZED'; Target = $CurrentTarget; RecoveredWithoutBackup = $false }
+        }
+        if ($RequestedAction -notin @('Restore', 'FactoryReset')) {
+            throw 'A normalization compensation journal and original-profile backup require verified Restore before another operation.'
+        }
+        Restore-SnapshotProfile -Target $CurrentTarget -Profile $saved
+        $restoredBackup = $null
+        for ($attempt = 1; $attempt -le 10; $attempt++) {
+            Start-Sleep -Milliseconds 500
+            $restoredBackup = Get-TargetSnapshot -Attempts 3
+            Assert-NormalizationCompensationIdentity -Record $record -Panel $Panel -Gpu $Gpu -Target $restoredBackup
+            if (Test-NormalizationProfileExact -Snapshot $restoredBackup -SavedProfile $saved) { break }
+        }
+        if ($null -eq $restoredBackup -or
+            -not (Test-NormalizationProfileExact -Snapshot $restoredBackup -SavedProfile $saved)) {
+            throw 'The validated standard backup could not be restored while finalizing normalization compensation. The journal was retained.'
+        }
+        $record = Set-NormalizationCompensationPhase -Record $record -Phase NORMALIZED_VERIFIED
+        Complete-NormalizationCompensationAfterBackup -Panel $Panel -Gpu $Gpu `
+            -CurrentTarget $restoredBackup
+        return [pscustomobject]@{ Outcome = 'BACKUP_RESTORED_AND_COMMITTED'; Target = $restoredBackup; RecoveredWithoutBackup = $false }
+    }
+    if ($RequestedAction -notin @('Restore', 'FactoryReset')) {
+        throw 'An interrupted Intel profile normalization requires RECOVERY\RESTORE_ORIGINAL_VRR.bat before another install. The exact compensation journal was retained.'
+    }
+    $restoredOriginal = Invoke-NormalizationCompensationRestore -Panel $Panel -Gpu $Gpu `
+        -CurrentTarget $CurrentTarget
+    return [pscustomobject]@{
+        Outcome = 'UNMANAGED_ORIGINAL_RESTORED'
+        Target = $restoredOriginal
+        RecoveredWithoutBackup = $true
+    }
+}
+
 function Install-CustomEdidMode {
     param(
         [Parameter(Mandatory)][object]$Panel,
@@ -2501,7 +4017,8 @@ function Install-CustomEdidMode {
         [Parameter(Mandatory)][object[]]$ExperimentalEdids,
         [Parameter(Mandatory)][object]$OverrideState,
         [Parameter(Mandatory)][object]$Before,
-        [Parameter(Mandatory)][string]$DesiredState
+        [Parameter(Mandatory)][string]$DesiredState,
+        [switch]$StableSameModeRepair
     )
 
     if ($DesiredState -ne 'CLAWLAB_30_120' -and -not (Test-IsExperimentalOverclockMode -Mode $DesiredState)) {
@@ -2514,8 +4031,17 @@ function Install-CustomEdidMode {
     }
     $variant = $desired[0]
     $isOverclock = Test-IsExperimentalOverclockMode -Mode $DesiredState
-    $transition = Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState
-    $Before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $Before
+    $transition = if ($StableSameModeRepair) {
+        Assert-StableSameModeRepairAllowed -OverrideState $OverrideState `
+            -DesiredMode $DesiredState -Panel $Panel -Snapshot $Before
+    }
+    else {
+        Assert-ProfileTransitionAllowed -OverrideState $OverrideState -DesiredMode $DesiredState
+    }
+    $baselinePlan = Resolve-FirstInstallProfileBaseline -Panel $Panel -Gpu $Gpu -RegistryContext $RegistryContext `
+        -OverrideState $OverrideState -DesiredMode $DesiredState -Transition $transition -Snapshot $Before
+    $Before = $baselinePlan.Snapshot
+    $arcSyncPolicy = [string]$baselinePlan.ManagedArcSyncPolicy
 
     if ($OverrideState.State -eq 'UNKNOWN_OVERRIDE') {
         throw 'An unknown EDID override is installed. Remove it with its original tool before using a ClawLab custom range.'
@@ -2525,8 +4051,6 @@ function Install-CustomEdidMode {
     }
 
     Confirm-AdministratorOrRelaunch
-    Save-OriginalProfile -Snapshot $Before -Panel $Panel -Gpu $Gpu
-
     if ($OverrideState.State -eq 'NONE') {
         if (Test-Path -LiteralPath $experimentalStatePath -PathType Leaf) {
             throw 'A stale custom-range state file exists without its EDID override. Run RECOVERY\RESTORE_ORIGINAL_VRR.bat before retrying.'
@@ -2540,18 +4064,25 @@ function Install-CustomEdidMode {
                 -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz)) {
             throw "Custom-range installation must start from the native 48-120 Hz EDID, but the driver reports $($Before.MonitorMinimumHz)-$($Before.MonitorMaximumHz) Hz."
         }
+    }
+    Save-OriginalProfile -Snapshot $Before -Panel $Panel -Gpu $Gpu `
+        -BaselinePolicy ([string]$baselinePlan.BaselinePolicy)
 
-        Invoke-SetProfile -Target $Before -ProfileId $profileExcellent
-        $official = Get-TargetSnapshot -Attempts 10
-        if ($official.ProfileId -ne $profileExcellent -or
-            [Math]::Abs($official.ActiveMinimumHz - $targetMinimumHz) -gt 0.1 -or
-            [Math]::Abs($official.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
-            throw 'Could not establish the verified official 48-120 Hz baseline before applying the custom EDID.'
+    if ($OverrideState.State -eq 'NONE') {
+        if ($arcSyncPolicy -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120') {
+            $official = Get-VerifiedManagedArcSyncSnapshot -Target $Before `
+                -PanelKey ([string]$Panel.Definition.Key) -Mode $DesiredState -Policy $arcSyncPolicy `
+                -ExpectedMinimumHz 30 -ExpectedMaximumHz 120
+        }
+        else {
+            $official = Get-VerifiedManagedArcSyncSnapshot -Target $Before `
+                -PanelKey ([string]$Panel.Definition.Key) -Mode 'OFFICIAL_48_120' -Policy $arcSyncPolicy `
+                -ExpectedMinimumHz 48 -ExpectedMaximumHz 120 -AllowExcellentWrite
         }
 
         [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
         $experimentalState = [ordered]@{
-            SchemaVersion = 3
+            SchemaVersion = 4
             FixVersion = $fixVersion
             InstalledAt = (Get-Date).ToString('o')
             Mode = $variant.State
@@ -2566,12 +4097,10 @@ function Install-CustomEdidMode {
             MaximumHz = $variant.MaximumHz
             Classification = if ($isOverclock) { [string](Get-ExperimentalOverclockMode -Mode $DesiredState).Stability } else { 'STABLE' }
             RequiresGuardedTrial = $isOverclock
+            ArcSyncPolicy = $arcSyncPolicy
+            OriginalBaselinePolicy = [string]$baselinePlan.BaselinePolicy
         }
-        [IO.File]::WriteAllText(
-            $experimentalStatePath,
-            ($experimentalState | ConvertTo-Json),
-            [Text.UTF8Encoding]::new($false)
-        )
+        Write-ClawLabJsonAtomically -LiteralPath $experimentalStatePath -Value $experimentalState
 
         try {
             New-Item -Path $RegistryContext.OverridePath -Force | Out-Null
@@ -2583,7 +4112,8 @@ function Install-CustomEdidMode {
             if ($writtenState.State -ne $DesiredState) {
                 throw 'The custom EDID registry write did not verify.'
             }
-            Set-ManagedModeRecord -Mode $DesiredState
+            Set-ManagedModeRecord -Mode $DesiredState -ArcSyncPolicy $arcSyncPolicy `
+                -PanelKey ([string]$Panel.Definition.Key)
             if ($isOverclock) {
                 $trialSchedulerPath = Join-Path $PSScriptRoot 'Experimental-Overclock-VRR-Trial.ps1'
                 if (-not (Test-Path -LiteralPath $trialSchedulerPath -PathType Leaf)) {
@@ -2640,8 +4170,10 @@ function Install-CustomEdidMode {
                             $installedScriptPath,
                             $installedEdidNormalizationModulePath,
                             $installedArcSyncRangePolicyModulePath,
+                            $installedScheduledTaskPersistenceModulePath,
                             $installedLauncherPath,
                             $installedCursorRefreshHelperPath,
+                            $cursorRefreshHelperStatePath,
                             (Join-Path $stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'),
                             (Join-Path $stateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'),
                             (Join-Path $stateRoot 'Lfc-Backup-Identity.ps1'),
@@ -2698,15 +4230,13 @@ function Install-CustomEdidMode {
             -ExpectedMinimumHz ([float]$variant.MinimumHz) -ExpectedMaximumHz ([float]$variant.MaximumHz) `
             -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
             -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz) {
-        Invoke-SetProfile -Target $Before -ProfileId $profileExcellent
-        $after = Get-TargetSnapshot -Attempts 10
-        if ($after.ProfileId -ne $profileExcellent -or
-            [Math]::Abs($after.ActiveMinimumHz - $variant.MinimumHz) -gt 0.1 -or
-            [Math]::Abs($after.ActiveMaximumHz - $variant.MaximumHz) -gt 0.1) {
-            throw "Custom-range driver verification failed: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
-        }
+        $after = Get-VerifiedManagedArcSyncSnapshot -Target $Before `
+            -PanelKey ([string]$Panel.Definition.Key) -Mode $DesiredState -Policy $arcSyncPolicy `
+            -ExpectedMinimumHz ([float]$variant.MinimumHz) -ExpectedMaximumHz ([float]$variant.MaximumHz) `
+            -AllowExcellentWrite
         Install-StartupReapply
-        Set-ManagedModeRecord -Mode $DesiredState
+        Set-ManagedModeRecord -Mode $DesiredState -ArcSyncPolicy $arcSyncPolicy `
+            -PanelKey ([string]$Panel.Definition.Key)
         $modeLabel = if ($DesiredState -eq 'CLAWLAB_30_120') { 'ClawLab default' } else { 'Experimental' }
         Write-Host "$modeLabel $($variant.MinimumHz)-$($variant.MaximumHz) Hz mode is active and verified by the Intel driver." -ForegroundColor Yellow
         $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $after -OverrideState $OverrideState
@@ -2714,7 +4244,8 @@ function Install-CustomEdidMode {
     }
 
     Install-StartupReapply
-    Set-ManagedModeRecord -Mode $DesiredState
+    Set-ManagedModeRecord -Mode $DesiredState -ArcSyncPolicy $arcSyncPolicy `
+        -PanelKey ([string]$Panel.Definition.Key)
     Write-Host 'The custom EDID override is present but has not been loaded by Windows yet.' -ForegroundColor Yellow
     Write-Host 'Restart the PC, then run CHECK_STATUS.bat.' -ForegroundColor Yellow
     $status = Get-StatusObject -Panel $Panel -Gpu $Gpu -Snapshot $Before -OverrideState $OverrideState
@@ -2730,18 +4261,22 @@ function Get-StatusObject {
         [Parameter(Mandatory)][object]$OverrideState
     )
 
-    $officialRangeActive = (
-        $Snapshot.ProfileId -eq $profileExcellent -and
-        [Math]::Abs($Snapshot.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
-        [Math]::Abs($Snapshot.ActiveMaximumHz - $targetMaximumHz) -le 0.1
-    )
+    $managedRecord = Get-ManagedModeRecord
+    $currentArcSyncPolicy = if ($null -ne $managedRecord -and [string]$managedRecord.FixVersion -eq $fixVersion) {
+        [string]$managedRecord.ArcSyncPolicy
+    }
+    else {
+        'INTEL_EXCELLENT_REQUIRED'
+    }
+    $officialRangeActive = Test-ManagedArcSyncSnapshot -Snapshot $Snapshot `
+        -PanelKey ([string]$Panel.Definition.Key) -Mode 'OFFICIAL_48_120' `
+        -Policy $currentArcSyncPolicy -ExpectedMinimumHz 48 -ExpectedMaximumHz 120
     $knownExperimentalOverride = $OverrideState.State -in (@('CLAWLAB_30_120') + @($experimentalOverclockModes.Keys))
-    $experimentalRangeActive = (
-        $knownExperimentalOverride -and
-        $Snapshot.ProfileId -eq $profileExcellent -and
-        [Math]::Abs($Snapshot.ActiveMinimumHz - [float]$OverrideState.MinimumHz) -le 0.1 -and
-        [Math]::Abs($Snapshot.ActiveMaximumHz - [float]$OverrideState.MaximumHz) -le 0.1
-    )
+    $experimentalRangeActive = $knownExperimentalOverride -and
+        (Test-ManagedArcSyncSnapshot -Snapshot $Snapshot `
+            -PanelKey ([string]$Panel.Definition.Key) -Mode ([string]$OverrideState.State) `
+            -Policy $currentArcSyncPolicy -ExpectedMinimumHz ([float]$OverrideState.MinimumHz) `
+            -ExpectedMaximumHz ([float]$OverrideState.MaximumHz))
 
     $state = if ($experimentalRangeActive) {
         if ($OverrideState.State -eq 'CLAWLAB_30_120') {
@@ -2774,10 +4309,21 @@ function Get-StatusObject {
     $displayMode = Get-CurrentDisplayMode
     $managedMode = Get-EffectiveManagedMode -OverrideState $OverrideState
 
+    $telemetryExpectedMinimumHz = -1.0
+    $telemetryExpectedMaximumHz = -1.0
+    if ($null -ne $managedRecord -and
+        [string]$managedRecord.FixVersion -eq $fixVersion -and
+        [string]$managedRecord.PanelKey -eq [string]$Panel.Definition.Key) {
+        $telemetryExpectedRange = Get-ManagedModeExpectedRange -Mode ([string]$managedRecord.Mode)
+        $telemetryExpectedMinimumHz = [float]$telemetryExpectedRange.MinimumHz
+        $telemetryExpectedMaximumHz = [float]$telemetryExpectedRange.MaximumHz
+    }
     $monitorTelemetryState = Get-ClawLabArcSyncMonitorRangeState `
         -PanelKey ([string]$Panel.Definition.Key) `
         -MonitorMinimumHz ([float]$Snapshot.MonitorMinimumHz) `
         -MonitorMaximumHz ([float]$Snapshot.MonitorMaximumHz) `
+        -ExpectedMinimumHz $telemetryExpectedMinimumHz `
+        -ExpectedMaximumHz $telemetryExpectedMaximumHz `
         -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
         -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
 
@@ -2791,8 +4337,15 @@ function Get-StatusObject {
         MonitorSupportedRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.MonitorMinimumHz, $Snapshot.MonitorMaximumHz
         PhysicalPanelRange = '{0:0.#}-{1:0.#} Hz' -f $targetMinimumHz, $targetMaximumHz
         ArcSyncMonitorTelemetry = $monitorTelemetryState
+        ArcSyncPolicy = if ($null -eq $managedRecord) { 'UNMANAGED' } else { $currentArcSyncPolicy }
+        ArcSyncVerification = if ($officialRangeActive -or $experimentalRangeActive) {
+            if ($currentArcSyncPolicy -eq 'TMA2027_PRESERVE_EXACT_CUSTOM_30_120') { 'TMA2027_CUSTOM_EXACT' } else { 'EXCELLENT_EXACT' }
+        }
+        else { 'NOT_VERIFIED' }
         DriverProfile = $Snapshot.ProfileName
         DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $Snapshot.ActiveMinimumHz, $Snapshot.ActiveMaximumHz
+        DriverProfileMaxIncreaseUs = [uint32]$Snapshot.ActiveMaxIncreaseUs
+        DriverProfileMaxDecreaseUs = [uint32]$Snapshot.ActiveMaxDecreaseUs
         WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
         ManagedMode = $managedMode.Mode
         ProfileSwitchGuard = $managedMode.State
@@ -2804,7 +4357,13 @@ function Get-StatusObject {
         EdidOverride = $OverrideState.State
         PhysicalEdidRead = $script:activeEdidNormalization
         PhysicalEdidSourceLength = $script:activeEdidSourceLength
-        RecoveryRequired = $false
+        NormalizationCompensation = if (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf) {
+            'RECOVERY_REQUIRED'
+        }
+        else {
+            'NONE'
+        }
+        RecoveryRequired = Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf
         RestartRequired = $knownExperimentalOverride -and -not $experimentalRangeActive
         RegistryModified = (
             $knownExperimentalOverride -or
@@ -2870,8 +4429,23 @@ try {
         exit 0
     }
 
+    if ($Action -eq 'ApplyStartup' -and $StartupSource -eq 'VrrTask' -and
+        (Test-LfcStartupOrchestratorReady)) {
+        # Keep the desktop helper responsive immediately after sign-in without
+        # performing any driver write. The delayed, verified LFC orchestrator
+        # remains the sole owner of the ordered VRR -> LFC reapply transaction.
+        [void](Invoke-CursorRefreshHelperStartupBestEffort -Operation Start)
+        $helperSuffix = if ([string]::IsNullOrWhiteSpace([string]$script:cursorRefreshLaunchWarning)) {
+            'Desktop helper started; '
+        }
+        else {
+            'Desktop helper unavailable; '
+        }
+        Write-StartupResult -Success $true -Message ($helperSuffix + 'driver reapply deferred to the verified LFC startup orchestrator, which applies VRR first and LFC second.')
+        exit 0
+    }
     if ($Action -eq 'ApplyStartup') {
-        Enter-StartupApplyMutex
+        Enter-StartupTransactionLocks -Source $StartupSource
     }
     $panel = Get-ValidatedPanel
     $gpu = Get-IntelGpu
@@ -2880,14 +4454,14 @@ try {
         # current interactive desktop. Start it before the slower Intel driver
         # stabilization path. The final verified path recreates its DWM surface
         # once after Intel/display initialization has settled.
-        Start-CursorRefreshHelper
+        [void](Invoke-CursorRefreshHelperStartupBestEffort -Operation Start)
     }
     $registryContext = Get-PanelRegistryContext -Panel $panel
     if ($Action -in @(
-            'Install48', 'Install30',
+            'Install48', 'Install30', 'Repair48', 'Repair30',
             'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192',
             'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192',
-            'ApplyExperimentalTrial', 'ConfirmExperimentalTrial', 'ApplyStartup'
+            'ApplyExperimentalTrial', 'VerifyExperimentalTrial', 'ConfirmExperimentalTrial', 'ApplyStartup'
         )) {
         Assert-NoThirdPartyEdidOverrideValues -RegistryContext $registryContext
     }
@@ -2898,13 +4472,36 @@ try {
     $snapshotAttempts = if ($Action -eq 'ApplyStartup') { 180 } else { 5 }
     $before = Get-TargetSnapshot -Attempts $snapshotAttempts
 
+    if ($Action -notin @('Status', 'UpdateCursorRefresh') -and
+        (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf)) {
+        $normalizationResolution = Resolve-PendingNormalizationCompensation `
+            -RequestedAction $Action -Panel $panel -Gpu $gpu -CurrentTarget $before
+        $before = $normalizationResolution.Target
+        if ([bool]$normalizationResolution.RecoveredWithoutBackup) {
+            $recoveryStatus = Get-StatusObject -Panel $panel -Gpu $gpu `
+                -Snapshot $before -OverrideState $overrideState
+            $recoveryStatus | Add-Member -NotePropertyName NormalizationCompensationOutcome `
+                -NotePropertyValue ([string]$normalizationResolution.Outcome)
+            $recoveryStatus
+            exit 0
+        }
+    }
+
     switch ($Action) {
         'Status' {
             Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
         }
 
+        'UpdateCursorRefresh' {
+            Confirm-AdministratorOrRelaunch
+            Update-CursorRefreshHelperOnly -Panel $panel -Snapshot $before `
+                -OverrideState $overrideState
+        }
+
         'ApplyExperimentalTrial' {
-            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel -OverrideState $overrideState
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel `
+                -OverrideState $overrideState `
+                -RequiredLifecycleStates @('ATTEMPT_CONSUMED')
             $mode = $context.Mode
             if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
                     -PanelKey ([string]$panel.Definition.Key) `
@@ -2935,8 +4532,38 @@ try {
             }
         }
 
+        'VerifyExperimentalTrial' {
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel `
+                -OverrideState $overrideState `
+                -RequiredLifecycleStates @('ATTEMPT_CONSUMED')
+            $mode = $context.Mode
+            $displayMode = Get-CurrentDisplayMode
+            if ($displayMode.Width -ne [int]$panel.Definition.Width -or
+                $displayMode.Height -ne [int]$panel.Definition.Height -or
+                $displayMode.RefreshHz -ne [int]$mode.MaximumHz) {
+                throw "The guarded trial did not remain at $($panel.Definition.Width)x$($panel.Definition.Height) @ $($mode.MaximumHz) Hz for the complete observation."
+            }
+            $after = Get-TargetSnapshot -Attempts 10
+            if ($after.ProfileId -ne $profileExcellent -or
+                [Math]::Abs($after.ActiveMinimumHz - [float]$mode.MinimumHz) -gt 0.1 -or
+                [Math]::Abs($after.ActiveMaximumHz - [float]$mode.MaximumHz) -gt 0.1) {
+                throw "The guarded trial did not retain Intel EXCELLENT at $($mode.MinimumHz)-$($mode.MaximumHz) Hz for the complete observation."
+            }
+            [pscustomobject]@{
+                State = 'EXPERIMENTAL_OVERCLOCK_TRIAL_VERIFIED'
+                Mode = [string]$context.Trial.Mode
+                WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
+                DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $after.ActiveMinimumHz, $after.ActiveMaximumHz
+            }
+        }
+
         'SetSafe120ForTrial' {
-            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel -OverrideState $overrideState
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel `
+                -OverrideState $overrideState `
+                -RequiredLifecycleStates @(
+                    'RUNNING', 'ATTEMPT_CONSUMED', 'AWAITING_CONFIRMATION',
+                    'CONFIRMING', 'PERSISTENCE_APPLIED', 'RECOVERY_REQUIRED'
+                )
             $safeMode = Set-Safe120DisplayMode
             [pscustomobject]@{
                 State = 'EXPERIMENTAL_OVERCLOCK_TRIAL_SAFE_120'
@@ -2947,7 +4574,9 @@ try {
 
         'ConfirmExperimentalTrial' {
             Confirm-AdministratorOrRelaunch
-            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel -OverrideState $overrideState -RequireUserConfirmation
+            $context = Assert-ExperimentalOverclockTrialContext -Panel $panel `
+                -OverrideState $overrideState -RequireUserConfirmation `
+                -RequiredLifecycleStates @('CONFIRMING')
             $mode = $context.Mode
             $displayMode = Set-VerifiedDisplayRefresh -RefreshHz ([int]$mode.MaximumHz)
             $target = Get-TargetSnapshot -Attempts 10
@@ -2960,24 +4589,55 @@ try {
                 throw "The confirmed overclock could not verify Intel EXCELLENT at $($mode.MinimumHz)-$($mode.MaximumHz) Hz."
             }
             Set-ManagedModeRecord -Mode ([string]$context.Trial.Mode)
-            Install-StartupReapply
+            Install-StartupReapply -PreserveExperimentalRecovery
             $protectedLfcToolPath = Join-Path $PSScriptRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
             if (-not (Test-Path -LiteralPath $protectedLfcToolPath -PathType Leaf)) {
                 throw 'The protected Intel LFC component is missing.'
             }
             $lfcResults = @(& $protectedLfcToolPath -Action Apply)
             $lfcResult = if ($lfcResults.Count -gt 0) { $lfcResults[-1] } else { $null }
-            if ($null -eq $lfcResult -or -not [bool]$lfcResult.LfcFixActive) {
-                throw 'The protected Intel LFC component did not verify an active correction.'
+            if ($null -eq $lfcResult -or
+                -not [bool]$lfcResult.LfcFixActive -or
+                -not [bool]$lfcResult.LfcTransition.BackupPresent -or
+                [string]$lfcResult.StartupPersistence -ne 'INSTALLED_ONE_SHOT_AT_LOGON' -or
+                [string]$lfcResult.ManagedVrrMode -ne [string]$context.Trial.Mode) {
+                throw 'The protected Intel LFC component did not verify an active, backed and persistent correction.'
             }
-            try { Remove-ProtectedExperimentalRuntime }
-            catch { Write-Warning "Protected trial-runtime cleanup will be retried by Restore: $($_.Exception.Message)" }
+            $vrrStartupState = Get-StartupReapplyState
+            if ($vrrStartupState -in @('NOT_INSTALLED', 'TASK_INVALID', 'TASK_WITHOUT_FILES')) {
+                throw "The confirmed overclock startup task is not valid: $vrrStartupState"
+            }
+
+            # The one-time guarded-trial task deliberately remains registered
+            # until Complete-ExperimentalOverclockTrialCommit records durable
+            # commit evidence and consumes it. Consequently, the managed-mode
+            # resolver must still report EXPERIMENTAL_TRIAL_PENDING here; asking
+            # for CONSISTENT before task consumption creates an impossible
+            # circular dependency and rolls back an otherwise valid profile.
+            # Persist the fact that every long-lived VRR/LFC component was
+            # independently verified before accepting that exact transition.
+            $context.Trial | Add-Member -NotePropertyName LifecycleState `
+                -NotePropertyValue 'PERSISTENCE_APPLIED' -Force
+            $context.Trial | Add-Member -NotePropertyName LifecycleUpdatedAt `
+                -NotePropertyValue (Get-Date).ToString('o') -Force
+            $context.Trial | Add-Member -NotePropertyName PersistenceAppliedAt `
+                -NotePropertyValue (Get-Date).ToString('o') -Force
+            Write-ClawLabJsonAtomically -LiteralPath $experimentalTrialStatePath `
+                -Value $context.Trial
+
+            $confirmedManaged = Get-EffectiveManagedMode -OverrideState $overrideState
+            if ([string]$confirmedManaged.Mode -ne [string]$context.Trial.Mode -or
+                [string]$confirmedManaged.State -ne 'EXPERIMENTAL_TRIAL_PENDING') {
+                throw "The confirmed overclock is not in the verified pre-commit trial state: $($confirmedManaged.Mode) / $($confirmedManaged.State)"
+            }
+            $cleanupState = Complete-ExperimentalOverclockTrialCommit -Trial $context.Trial
             [pscustomobject]@{
                 State = 'EXPERIMENTAL_OVERCLOCK_CONFIRMED'
                 Mode = [string]$context.Trial.Mode
                 WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $displayMode.Width, $displayMode.Height, $displayMode.RefreshHz
                 DriverActiveRange = '{0:0.#}-{1:0.#} Hz' -f $after.ActiveMinimumHz, $after.ActiveMaximumHz
                 LfcFixActive = $true
+                TrialCleanup = $cleanupState
             }
         }
 
@@ -2992,6 +4652,11 @@ try {
             }
             $expectedMinimumHz = [float]$overrideState.MinimumHz
             $expectedMaximumHz = [float]$overrideState.MaximumHz
+            $managedRecord = Get-ManagedModeRecord
+            if ($null -eq $managedRecord -or [string]$managedRecord.FixVersion -ne $fixVersion) {
+                throw 'Startup reapply requires the exact current-version managed profile record.'
+            }
+            $arcSyncPolicy = [string]$managedRecord.ArcSyncPolicy
             if (-not (Test-ClawLabArcSyncMonitorRangeCompatible `
                     -PanelKey ([string]$panel.Definition.Key) `
                     -MonitorMinimumHz ([float]$before.MonitorMinimumHz) `
@@ -3015,38 +4680,50 @@ try {
             Start-ManagedIntelGraphicsSoftware
             Start-Sleep -Seconds 2
 
-            $after = $null
-            for ($profileAttempt = 1; $profileAttempt -le 3; $profileAttempt++) {
-                $target = Get-TargetSnapshot -Attempts 10
-                Invoke-SetProfile -Target $target -ProfileId $profileExcellent
-                Start-Sleep -Seconds 1
-                $after = Get-TargetSnapshot -Attempts 10
-                if ($after.ProfileId -eq $profileExcellent -and
-                    [Math]::Abs($after.ActiveMinimumHz - $expectedMinimumHz) -le 0.1 -and
-                    [Math]::Abs($after.ActiveMaximumHz - $expectedMaximumHz) -le 0.1) {
-                    break
-                }
-                if ($profileAttempt -lt 3) { Start-Sleep -Seconds 1 }
-            }
-            if ($after.ProfileId -ne $profileExcellent -or
-                [Math]::Abs($after.ActiveMinimumHz - $expectedMinimumHz) -gt 0.1 -or
-                [Math]::Abs($after.ActiveMaximumHz - $expectedMaximumHz) -gt 0.1) {
-                throw "Startup profile verification failed after display stabilization: $($after.ProfileName), $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
-            }
+            $target = Get-TargetSnapshot -Attempts 10
+            $after = Get-VerifiedManagedArcSyncSnapshot -Target $target `
+                -PanelKey ([string]$panel.Definition.Key) -Mode ([string]$managedRecord.Mode) `
+                -Policy $arcSyncPolicy -ExpectedMinimumHz $expectedMinimumHz `
+                -ExpectedMaximumHz $expectedMaximumHz -AllowExcellentWrite
             $displaySuffix = ''
             if ($null -ne $displayMode) {
                 $displaySuffix = ", $($displayMode.Width)x$($displayMode.Height) at $($displayMode.RefreshHz) Hz"
             }
             $identitySuffix = if ($script:intelStartupIdentityRenewed) { ', signed Intel Graphics Software update trusted' } else { '' }
-            Restart-CursorRefreshHelper
-            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz, event-driven cursor refresh active" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz) + $displaySuffix + $identitySuffix)
-            Exit-StartupApplyMutex
+            $intelUiSuffix = if ([string]::IsNullOrWhiteSpace([string]$script:intelGraphicsLaunchWarning)) {
+                ''
+            }
+            else {
+                ', Intel Graphics Software launch cancelled; VRR verified independently'
+            }
+            # Intel/display initialization can invalidate a surface created at
+            # the beginning of sign-in. Ask the native process to recreate its
+            # DXGI swap chain in place after final Arc Sync verification. This
+            # avoids a process gap and never rewrites the managed VRR profile.
+            [void](Invoke-CursorRefreshHelperStartupBestEffort -Operation Resync)
+            $cursorStatus = if ([string]::IsNullOrWhiteSpace([string]$script:cursorRefreshLaunchWarning)) {
+                'event-driven cursor refresh active'
+            }
+            else {
+                'optional cursor refresh unavailable; core VRR/LFC startup continued'
+            }
+            Write-StartupResult -Success $true -Message (("{0}, {1}-{2} Hz, {3}" -f $after.ProfileName, $after.ActiveMinimumHz, $after.ActiveMaximumHz, $cursorStatus) + $displaySuffix + $identitySuffix + $intelUiSuffix)
+            Exit-StartupTransactionLocks
             exit 0
         }
 
-        'Install48' {
-            $transition = Assert-ProfileTransitionAllowed -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120'
-            $before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $before
+        { $_ -in @('Install48', 'Repair48') } {
+            $transition = if ($Action -eq 'Repair48') {
+                Assert-StableSameModeRepairAllowed -OverrideState $overrideState `
+                    -DesiredMode 'OFFICIAL_48_120' -Panel $panel -Snapshot $before
+            }
+            else {
+                Assert-ProfileTransitionAllowed -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120'
+            }
+            $baselinePlan = Resolve-FirstInstallProfileBaseline -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
+                -OverrideState $overrideState -DesiredMode 'OFFICIAL_48_120' `
+                -Transition $transition -Snapshot $before
+            $before = $baselinePlan.Snapshot
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. Remove it with its original tool before using official mode.'
             }
@@ -3064,25 +4741,26 @@ try {
             }
 
             Confirm-AdministratorOrRelaunch
-            Save-OriginalProfile -Snapshot $before -Panel $panel -Gpu $gpu
-            if ($before.ProfileId -eq $profileExcellent -and
-                [Math]::Abs($before.ActiveMinimumHz - $targetMinimumHz) -le 0.1 -and
-                [Math]::Abs($before.ActiveMaximumHz - $targetMaximumHz) -le 0.1) {
+            Save-OriginalProfile -Snapshot $before -Panel $panel -Gpu $gpu `
+                -BaselinePolicy ([string]$baselinePlan.BaselinePolicy)
+            if (Test-ManagedArcSyncSnapshot -Snapshot $before `
+                    -PanelKey ([string]$panel.Definition.Key) -Mode 'OFFICIAL_48_120' `
+                    -Policy ([string]$baselinePlan.ManagedArcSyncPolicy) `
+                    -ExpectedMinimumHz 48 -ExpectedMaximumHz 120) {
                 Install-StartupReapply
-                Set-ManagedModeRecord -Mode 'OFFICIAL_48_120'
+                Set-ManagedModeRecord -Mode 'OFFICIAL_48_120' `
+                    -ArcSyncPolicy ([string]$baselinePlan.ManagedArcSyncPolicy) `
+                    -PanelKey ([string]$panel.Definition.Key)
                 Write-Host 'Official Intel Arc Sync 48-120 Hz mode is already active.' -ForegroundColor Green
                 Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $before -OverrideState $overrideState
                 break
             }
 
             try {
-                Invoke-SetProfile -Target $before -ProfileId $profileExcellent
-                $after = Get-TargetSnapshot -Attempts 10
-                if ($after.ProfileId -ne $profileExcellent -or
-                    [Math]::Abs($after.ActiveMinimumHz - $targetMinimumHz) -gt 0.1 -or
-                    [Math]::Abs($after.ActiveMaximumHz - $targetMaximumHz) -gt 0.1) {
-                    throw "Driver verification failed: profile $($after.ProfileName), range $($after.ActiveMinimumHz)-$($after.ActiveMaximumHz) Hz."
-                }
+                $after = Get-VerifiedManagedArcSyncSnapshot -Target $before `
+                    -PanelKey ([string]$panel.Definition.Key) -Mode 'OFFICIAL_48_120' `
+                    -Policy ([string]$baselinePlan.ManagedArcSyncPolicy) `
+                    -ExpectedMinimumHz 48 -ExpectedMaximumHz 120 -AllowExcellentWrite
             }
             catch {
                 try {
@@ -3095,16 +4773,18 @@ try {
             }
 
             Install-StartupReapply
-            Set-ManagedModeRecord -Mode 'OFFICIAL_48_120'
+            Set-ManagedModeRecord -Mode 'OFFICIAL_48_120' `
+                -ArcSyncPolicy ([string]$baselinePlan.ManagedArcSyncPolicy) `
+                -PanelKey ([string]$panel.Definition.Key)
             Write-Host 'Official Intel Arc Sync 48-120 Hz mode is active and verified.' -ForegroundColor Green
             Write-Host 'Automatic reapply is installed for future Windows sign-ins.' -ForegroundColor Green
             Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState
         }
 
-        'Install30' {
+        { $_ -in @('Install30', 'Repair30') } {
             Install-CustomEdidMode -Panel $panel -Gpu $gpu -RegistryContext $registryContext `
                 -ExperimentalEdids $experimentalEdids -OverrideState $overrideState -Before $before `
-                -DesiredState 'CLAWLAB_30_120'
+                -DesiredState 'CLAWLAB_30_120' -StableSameModeRepair:($Action -eq 'Repair30')
         }
 
         'Install48_144' {
@@ -3155,10 +4835,66 @@ try {
                 -DesiredState 'CLAWLAB_30_192'
         }
 
+        'RecoverOrphanedDefaultState' {
+            # This private recovery path never writes an Intel profile, display
+            # mode or EDID. It is allowed only when fresh readback proves the
+            # exact known factory profile and the sole active managed component
+            # is one owned but invalid legacy ClawLab startup task.
+            $cleanupProof = Assert-OrphanedDefaultVrrShellCleanupAllowed `
+                -Panel $panel -Snapshot $before -OverrideState $overrideState
+            Confirm-AdministratorOrRelaunch
+            Remove-StartupReapply
+
+            $afterOverride = Get-EdidOverrideState -RegistryContext $registryContext `
+                -ExperimentalEdids $experimentalEdids
+            $afterManaged = Get-EffectiveManagedMode -OverrideState $afterOverride
+            if ([string]$afterOverride.State -ne 'NONE' -or
+                [string]$afterManaged.Mode -ne 'NONE' -or
+                [string]$afterManaged.State -ne 'CLEAN' -or
+                (Get-StartupReapplyState) -ne 'NOT_INSTALLED' -or
+                (Get-CursorRefreshHelperState) -ne 'NOT_INSTALLED') {
+                throw 'The orphaned ClawLab startup shell was not removed completely.'
+            }
+
+            $after = Get-TargetSnapshot -Attempts 10
+            $afterTelemetry = Get-ClawLabArcSyncMonitorRangeState `
+                -PanelKey ([string]$panel.Definition.Key) `
+                -MonitorMinimumHz ([float]$after.MonitorMinimumHz) `
+                -MonitorMaximumHz ([float]$after.MonitorMaximumHz) `
+                -PhysicalMinimumHz $targetMinimumHz -CustomMinimumHz $experimentalMinimumHz `
+                -SupportedMaximumHz $targetMaximumHz -LegacyRecoveryMaximumHz $experimentalMaximumHz
+            if (-not (Test-ClawLabKnownUnmanagedFactoryProfile `
+                    -PanelKey ([string]$panel.Definition.Key) -TelemetryState $afterTelemetry `
+                    -ProfileId ([int]$after.ProfileId) `
+                    -MinimumHz ([float]$after.ActiveMinimumHz) `
+                    -MaximumHz ([float]$after.ActiveMaximumHz) `
+                    -MaxIncreaseUs ([uint32]$after.ActiveMaxIncreaseUs) `
+                    -MaxDecreaseUs ([uint32]$after.ActiveMaxDecreaseUs))) {
+                throw 'The Intel factory profile changed while the orphaned ClawLab task was being removed.'
+            }
+
+            Write-Host 'The orphaned legacy ClawLab startup shell was removed without changing the verified Intel factory profile.' -ForegroundColor Green
+            $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after `
+                -OverrideState $afterOverride
+            $status | Add-Member -NotePropertyName RecoveryOutcome `
+                -NotePropertyValue 'ORPHANED_DEFAULT_VRR_SHELL_CLEANED_NO_DISPLAY_WRITE'
+            $status | Add-Member -NotePropertyName PreviousStartupState `
+                -NotePropertyValue ([string]$cleanupProof.StartupState)
+            $status
+        }
+
         'FactoryReset' {
             $recoveryOverride = Get-ClawLabRecoveryOverrideState -RegistryContext $registryContext
             if ($recoveryOverride.State -eq 'UNKNOWN_THIRD_PARTY') {
                 throw 'Factory reset found an unknown EDID override block. It was not created by ClawLab and will not be removed.'
+            }
+
+            # Refuse an unknown TMA2027 CUSTOM state before changing even the
+            # Windows display mode. Only the exact collected OEM signature is
+            # eligible for the no-write preservation path.
+            $factoryInitialDecision = Get-FactoryResetDecisionForSnapshot -Panel $panel -Snapshot $before
+            if ($factoryInitialDecision -eq 'REFUSE_UNSAFE_TMA2027_CUSTOM') {
+                throw "Factory reset found an unknown TMA2027 CUSTOM profile ($($before.ActiveMinimumHz)-$($before.ActiveMaximumHz) Hz, timings $($before.ActiveMaxIncreaseUs)/$($before.ActiveMaxDecreaseUs) us). No display setting, Intel profile, EDID override, managed task or managed configuration was changed."
             }
 
             # Resolve and validate a signed Intel startup command before making
@@ -3169,12 +4905,40 @@ try {
             $safeMode = Set-Safe120DisplayMode
             Start-Sleep -Seconds 2
             $factoryTarget = Get-TargetSnapshot -Attempts 10
-            Invoke-SetProfile -Target $factoryTarget -ProfileId $profileRecommended
-            Start-Sleep -Seconds 1
-            $factoryProfile = Get-TargetSnapshot -Attempts 10
-            if ($factoryProfile.ProfileId -ne $profileRecommended) {
-                throw "Factory reset could not verify Intel RECOMMENDED mode; current profile is $($factoryProfile.ProfileName)."
+            $factoryDecision = Get-FactoryResetDecisionForSnapshot -Panel $panel -Snapshot $factoryTarget
+            if ($factoryDecision -ne $factoryInitialDecision) {
+                throw "Factory reset stopped because the Intel profile changed during display stabilization ($factoryInitialDecision -> $factoryDecision). No EDID override, managed task or managed configuration was removed."
             }
+
+            switch ($factoryDecision) {
+                'PRESERVE_TMA2027_OEM_CUSTOM_30_120' {
+                    Assert-KnownTma2027CustomBaselineEnvironment -Panel $panel `
+                        -RegistryContext $registryContext -Snapshot $factoryTarget
+                    $factoryProfile = $factoryTarget
+                    $factoryProfileOutcome = 'TMA2027_VERIFIED_CUSTOM_30_120_PRESERVED_NO_SETTER'
+                }
+                'SET_INTEL_RECOMMENDED' {
+                    Invoke-SetProfile -Target $factoryTarget -ProfileId $profileRecommended
+                    $factoryProfile = $null
+                    for ($profileAttempt = 1; $profileAttempt -le 10; $profileAttempt++) {
+                        Start-Sleep -Milliseconds 500
+                        $factoryProfile = Get-TargetSnapshot -Attempts 3
+                        if ([int]$factoryProfile.ProfileId -eq $profileRecommended) {
+                            break
+                        }
+                    }
+                    if ($null -eq $factoryProfile -or [int]$factoryProfile.ProfileId -ne $profileRecommended) {
+                        $actualProfile = if ($null -eq $factoryProfile) { 'unavailable' } else { [string]$factoryProfile.ProfileName }
+                        throw "Factory reset could not verify Intel RECOMMENDED mode; current profile is $actualProfile. No EDID override, managed task or managed configuration was removed."
+                    }
+                    $factoryProfileOutcome = 'INTEL_RECOMMENDED_VERIFIED'
+                }
+                default {
+                    throw "Factory reset received an unsupported profile decision: $factoryDecision. Nothing was removed."
+                }
+            }
+
+            $preserveTmaFactoryBaseline = $factoryDecision -eq 'PRESERVE_TMA2027_OEM_CUSTOM_30_120'
 
             if ($recoveryOverride.State -eq 'CLAWLAB_RECOVERABLE') {
                 if ($recoveryOverride.Block0Present) {
@@ -3197,13 +4961,19 @@ try {
             Remove-FileIfPresent -LiteralPath $intelStartupBackupPath
 
             Write-Host 'ClawLab VRR factory reset completed.' -ForegroundColor Green
-            Write-Host ("Windows is at {0}x{1} 120 Hz and Intel RECOMMENDED is selected." -f $safeMode.Width, $safeMode.Height) -ForegroundColor Green
+            if ($preserveTmaFactoryBaseline) {
+                Write-Host ("Windows is at {0}x{1} 120 Hz and the exact verified TMA2027 OEM CUSTOM 30-120 baseline was preserved." -f $safeMode.Width, $safeMode.Height) -ForegroundColor Green
+            }
+            else {
+                Write-Host ("Windows is at {0}x{1} 120 Hz and Intel RECOMMENDED is selected." -f $safeMode.Width, $safeMode.Height) -ForegroundColor Green
+            }
             Write-Host 'Restart the PC to unload any previously active EDID override and restore the physical 48-120 Hz panel data.' -ForegroundColor Yellow
             [pscustomobject]@{
                 FixVersion = $fixVersion
                 State = 'FACTORY_RESET_COMPLETE_RESTART_REQUIRED'
                 WindowsDisplayMode = '{0}x{1} @ {2} Hz' -f $safeMode.Width, $safeMode.Height, $safeMode.RefreshHz
                 DriverProfile = $factoryProfile.ProfileName
+                DriverProfileOutcome = $factoryProfileOutcome
                 EdidOverride = $overrideState.State
                 StartupReapply = Get-StartupReapplyState
                 IntelGraphicsStartup = Get-IntelStartupOrderState
@@ -3211,7 +4981,7 @@ try {
             }
         }
 
-        'Restore' {
+        { $_ -in @('Restore', 'RestoreGuardedTrial') } {
             $original = Get-OriginalProfile
             if ($null -eq $original) {
                 throw 'No saved original profile is available. No display setting was changed.'
@@ -3220,32 +4990,69 @@ try {
             if ($overrideState.State -eq 'UNKNOWN_OVERRIDE') {
                 throw 'An unknown EDID override is installed. It was not created by this package and will not be removed.'
             }
+            $restoreSnapshotMatches = Test-SnapshotMatchesSavedProfile -Snapshot $before -Profile $original
+            $restoreProfileDecision = Get-ClawLabSavedProfileRestoreDecision `
+                -BaselinePolicy ([string]$original.BaselinePolicy) `
+                -SnapshotMatches $restoreSnapshotMatches
+            if ($restoreProfileDecision -eq 'REFUSE_TMA2027_DRIFT_NO_WRITE') {
+                throw "The saved TMA2027 OEM CUSTOM 30-120 baseline has drifted: current $($before.ProfileName) $($before.ActiveMinimumHz)-$($before.ActiveMaximumHz) Hz, timings $($before.ActiveMaxIncreaseUs)/$($before.ActiveMaxDecreaseUs) us. ClawLab did not call an Intel profile setter and did not remove any EDID override, managed task or managed configuration. Collect diagnostics before recovery."
+            }
+            if ($restoreProfileDecision -eq 'REFUSE_UNKNOWN_BASELINE_POLICY') {
+                throw "The saved original profile has an unsupported baseline policy: $($original.BaselinePolicy). Nothing was changed."
+            }
             $knownExperimentalOverride = $overrideState.State -in (@('CLAWLAB_30_120') + @($experimentalOverclockModes.Keys))
             if (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf) {
                 $startupOrderState = Get-IntelStartupOrderState
-                if ($startupOrderState -notin @('CLAWLAB_ORDERED', 'ORIGINAL_STILL_PRESENT', 'MANAGED_COMMAND_REAPPEARED')) {
+                if ($startupOrderState -notin @(
+                        'CLAWLAB_ORDERED',
+                        'ORIGINAL_STILL_PRESENT',
+                        'MANAGED_COMMAND_REAPPEARED',
+                        'SIGNED_INTEL_ENTRY_UPDATED'
+                    )) {
                     throw "Intel Graphics Software startup state is unsafe to restore: $startupOrderState. Nothing was changed."
                 }
             }
             if ($knownExperimentalOverride -or
+                $restoreProfileDecision -eq 'PRESERVE_TMA2027_NO_WRITE' -or
                 (Test-Path -LiteralPath $intelStartupBackupPath -PathType Leaf)) {
                 Confirm-AdministratorOrRelaunch
             }
 
-            if (Test-IsExperimentalOverclockMode -Mode ([string]$overrideState.State)) {
+            if ((Test-IsExperimentalOverclockMode -Mode ([string]$overrideState.State)) -or
+                $restoreProfileDecision -eq 'PRESERVE_TMA2027_NO_WRITE') {
                 # Leave the experimental fixed high-refresh timing before
-                # removing its EDID blocks. This gives rollback a visibly safe
-                # 120 Hz mode even before the required restart.
+                # removing its EDID blocks. The exact TMA2027 preservation path
+                # also requires native 120 Hz before its direct-state proof.
                 [void](Set-Safe120DisplayMode)
                 Start-Sleep -Seconds 2
                 $before = Get-TargetSnapshot -Attempts 10
             }
 
-            if (Test-SnapshotMatchesSavedProfile -Snapshot $before -Profile $original) {
-                Write-Host 'The saved original Intel Arc Sync profile is already active; the redundant driver write was skipped.' -ForegroundColor Green
-            }
-            else {
-                Restore-SnapshotProfile -Target $before -Profile $original
+            $restoreSnapshotMatches = Test-SnapshotMatchesSavedProfile -Snapshot $before -Profile $original
+            $restoreProfileDecision = Get-ClawLabSavedProfileRestoreDecision `
+                -BaselinePolicy ([string]$original.BaselinePolicy) `
+                -SnapshotMatches $restoreSnapshotMatches
+            switch ($restoreProfileDecision) {
+                'PRESERVE_TMA2027_NO_WRITE' {
+                    Assert-KnownTma2027CustomBaselineEnvironment -Panel $panel `
+                        -RegistryContext $registryContext -Snapshot $before
+                    $restoreProfileOutcome = 'TMA2027_VERIFIED_CUSTOM_30_120_PRESERVED_NO_SETTER'
+                    Write-Host 'The exact saved TMA2027 OEM CUSTOM 30-120 baseline is active and was preserved without calling an Intel profile setter.' -ForegroundColor Green
+                }
+                'SKIP_ALREADY_MATCHING' {
+                    $restoreProfileOutcome = 'SAVED_INTEL_STANDARD_BASELINE_ALREADY_ACTIVE'
+                    Write-Host 'The saved original Intel Arc Sync profile is already active; the redundant driver write was skipped.' -ForegroundColor Green
+                }
+                'WRITE_SAVED_STANDARD_PROFILE' {
+                    Restore-SnapshotProfile -Target $before -Profile $original
+                    $restoreProfileOutcome = 'SAVED_INTEL_STANDARD_BASELINE_RESTORED'
+                }
+                'REFUSE_TMA2027_DRIFT_NO_WRITE' {
+                    throw "The TMA2027 OEM CUSTOM baseline changed during display stabilization. No Intel profile setter was called and no EDID override, managed task or managed configuration was removed."
+                }
+                default {
+                    throw "Original-profile restore received an unsupported decision: $restoreProfileDecision. Nothing was removed."
+                }
             }
             $after = Get-TargetSnapshot -Attempts 10
             if (-not (Test-SnapshotMatchesSavedProfile -Snapshot $after -Profile $original)) {
@@ -3262,42 +5069,120 @@ try {
                     throw 'The ClawLab custom EDID override could not be removed completely.'
                 }
             }
+            if ($Action -eq 'RestoreGuardedTrial') {
+                # PrepareRestore already restored the original flags while
+                # retaining the LFC backup. Commit only after the saved Intel
+                # profile and EDID removal above have both verified. Commit is
+                # an atomic backup -> tombstone rename, so a crash remains
+                # recoverable. Finalize then converts that tombstone into a
+                # durable provenance marker before any runtime cleanup.
+                $guardedLfcToolPath = Join-Path $PSScriptRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
+                if (-not (Test-Path -LiteralPath $guardedLfcToolPath -PathType Leaf)) {
+                    throw 'The guarded-trial LFC commit payload is missing after VRR restore verification.'
+                }
+                $commitResults = @(& $guardedLfcToolPath -Action CommitRestore)
+                $commitResult = if ($commitResults.Count -gt 0) { $commitResults[-1] } else { $null }
+                $commitProofPresent = $null -ne $commitResult -and
+                    ([bool]$commitResult.RestoreTombstonePresent -or
+                        [bool]$commitResult.RestoreFinalizedPresent)
+                if ($null -eq $commitResult -or
+                    [bool]$commitResult.LfcTransition.BackupPresent -or
+                    [string]$commitResult.LfcTransition.State -notin @(
+                        'ORIGINAL_LFC_RESTORE_COMMITTED_PENDING_FINALIZE',
+                        'ORIGINAL_LFC_RESTORE_FINALIZED',
+                        'ORIGINAL_LFC_RESTORE_ALREADY_COMMITTED'
+                    ) -or -not $commitProofPresent) {
+                    throw 'The guarded-trial Intel LFC restore commit did not verify after VRR restoration.'
+                }
+                $finalizeResults = @(& $guardedLfcToolPath -Action FinalizeRestore)
+                $finalizeResult = if ($finalizeResults.Count -gt 0) { $finalizeResults[-1] } else { $null }
+                if ($null -eq $finalizeResult -or
+                    [bool]$finalizeResult.LfcTransition.BackupPresent -or
+                    [bool]$finalizeResult.RestoreTombstonePresent -or
+                    -not [bool]$finalizeResult.RestoreFinalizedPresent -or
+                    [string]$finalizeResult.LfcTransition.State -notin @(
+                        'ORIGINAL_LFC_RESTORE_FINALIZED',
+                        'ORIGINAL_LFC_RESTORE_ALREADY_FINALIZED'
+                    )) {
+                    throw 'The guarded-trial Intel LFC restore finalization did not retain verified provenance.'
+                }
+            }
             Remove-StartupReapply
             Restore-IntelStartupOrder
             Remove-FileIfPresent -LiteralPath $backupPath
             Remove-FileIfPresent -LiteralPath $experimentalStatePath
             Remove-FileIfPresent -LiteralPath $managedModeStatePath
-            Write-Host "Restored the original Intel Arc Sync profile: $($after.ProfileName)." -ForegroundColor Green
+            if ([string]$original.BaselinePolicy -eq 'TMA2027_VERIFIED_CUSTOM_30_120') {
+                Write-Host "Preserved the exact original TMA2027 OEM Intel Arc Sync profile without a setter: $($after.ProfileName)." -ForegroundColor Green
+            }
+            else {
+                Write-Host "Restored the original Intel Arc Sync profile: $($after.ProfileName)." -ForegroundColor Green
+            }
             Write-Host 'Restart the PC to make Windows reload the physical panel EDID.' -ForegroundColor Yellow
             $status = Get-StatusObject -Panel $panel -Gpu $gpu -Snapshot $after -OverrideState $overrideState
             $status.RestartRequired = $true
+            $status | Add-Member -NotePropertyName RestoreProfileOutcome `
+                -NotePropertyValue $restoreProfileOutcome
             $status
         }
     }
 }
 catch {
+    $caughtError = $_
+    $normalizationRecoveryFailure = $null
     if ($Action -eq 'ApplyStartup') {
-        try { Write-StartupResult -Success $false -Message $_.Exception.Message } catch {}
+        try { Write-StartupResult -Success $false -Message $caughtError.Exception.Message } catch {}
         try { Start-ManagedIntelGraphicsSoftware } catch {}
-        try { Exit-StartupApplyMutex } catch {}
+        try { Exit-StartupTransactionLocks } catch {}
     }
     else {
+        if ($null -ne $script:normalizationCompensationContext -and
+            (Test-Path -LiteralPath $normalizationCompensationPath -PathType Leaf)) {
+            try {
+                $compensationTarget = Get-TargetSnapshot -Attempts 10
+                if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+                    Complete-NormalizationCompensationAfterBackup `
+                        -Panel $script:normalizationCompensationContext.Panel `
+                        -Gpu $script:normalizationCompensationContext.Gpu `
+                        -CurrentTarget $compensationTarget
+                }
+                else {
+                    [void](Invoke-NormalizationCompensationRestore `
+                        -Panel $script:normalizationCompensationContext.Panel `
+                        -Gpu $script:normalizationCompensationContext.Gpu `
+                        -CurrentTarget $compensationTarget)
+                }
+            }
+            catch {
+                $normalizationRecoveryFailure = [string]$_.Exception.Message
+            }
+        }
         try {
             [IO.Directory]::CreateDirectory($stateRoot) | Out-Null
+            $failureMessage = [string]$caughtError.Exception.Message
+            if (-not [string]::IsNullOrWhiteSpace($normalizationRecoveryFailure)) {
+                $failureMessage += " | Intel normalization compensation remains pending: $normalizationRecoveryFailure"
+            }
             $errorRecord = @(
                 "Timestamp: $((Get-Date).ToString('o'))"
                 "FixVersion: $fixVersion"
                 "Action: $Action"
-                "Message: $($_.Exception.Message)"
-                "Category: $($_.CategoryInfo.Category)"
-                "ScriptStackTrace: $($_.ScriptStackTrace)"
+                "Message: $failureMessage"
+                "Category: $($caughtError.CategoryInfo.Category)"
+                "ScriptStackTrace: $($caughtError.ScriptStackTrace)"
             )
             [IO.File]::WriteAllLines($lastErrorPath, $errorRecord, [Text.UTF8Encoding]::new($false))
         }
         catch {}
     }
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR: $($caughtError.Exception.Message)" -ForegroundColor Red
+    if (-not [string]::IsNullOrWhiteSpace($normalizationRecoveryFailure)) {
+        Write-Host "ERROR: Intel normalization compensation remains pending: $normalizationRecoveryFailure" -ForegroundColor Red
+    }
     # Preserve a non-zero exit for direct -File execution while still allowing
     # Health/diagnostic callers that invoke this script to catch the failure.
-    throw
+    if (-not [string]::IsNullOrWhiteSpace($normalizationRecoveryFailure)) {
+        throw "$($caughtError.Exception.Message) Intel normalization compensation remains pending: $normalizationRecoveryFailure"
+    }
+    throw $caughtError
 }

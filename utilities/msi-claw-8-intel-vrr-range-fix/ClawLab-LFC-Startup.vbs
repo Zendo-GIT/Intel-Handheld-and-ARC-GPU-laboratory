@@ -6,6 +6,7 @@ Dim scriptDirectory
 Dim powerShellPath
 Dim toolPath
 Dim command
+Dim exitCode
 
 Set shell = CreateObject("WScript.Shell")
 Set fileSystem = CreateObject("Scripting.FileSystemObject")
@@ -14,4 +15,5 @@ powerShellPath = shell.ExpandEnvironmentStrings("%SystemRoot%\System32\WindowsPo
 toolPath = fileSystem.BuildPath(scriptDirectory, "MSI-Claw-Intel-LFC-Fix.ps1")
 command = Chr(34) & powerShellPath & Chr(34) & " -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " & Chr(34) & toolPath & Chr(34) & " -Action ApplyStartup"
 
-shell.Run command, 0, True
+exitCode = shell.Run(command, 0, True)
+WScript.Quit exitCode

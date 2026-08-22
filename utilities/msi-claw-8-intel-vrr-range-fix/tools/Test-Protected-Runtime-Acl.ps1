@@ -4,7 +4,12 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$trialPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'Experimental-Overclock-VRR-Trial.ps1'
+$root = Split-Path $PSScriptRoot -Parent
+$runtimeRoot = if (Test-Path -LiteralPath (Join-Path $root 'scripts\Experimental-Overclock-VRR-Trial.ps1') -PathType Leaf) {
+    Join-Path $root 'scripts'
+}
+else { $root }
+$trialPath = Join-Path $runtimeRoot 'Experimental-Overclock-VRR-Trial.ps1'
 $tokens = $null
 $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -29,6 +34,24 @@ if ($definition.Count -ne 1) {
     throw "Expected one New-ProtectedRuntimeAcl definition; found $($definition.Count)."
 }
 Invoke-Expression $definition[0].Extent.Text
+
+$verificationDefinition = @(
+    $ast.FindAll(
+        {
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Assert-ProtectedRuntimeDirectoryAcl'
+        },
+        $true
+    )
+)
+if ($verificationDefinition.Count -ne 1) {
+    throw "Expected one Assert-ProtectedRuntimeDirectoryAcl definition; found $($verificationDefinition.Count)."
+}
+$verificationText = $verificationDefinition[0].Extent.Text
+if ($verificationText -notmatch '(?s)AccessControlSections\]::Access\s+-bor\s+\[Security\.AccessControl\.AccessControlSections\]::Owner') {
+    throw 'Protected-runtime ACL verification does not load both Access and Owner sections.'
+}
 
 $first = New-ProtectedRuntimeAcl
 $second = New-ProtectedRuntimeAcl
@@ -72,4 +95,5 @@ foreach ($acl in @($first, $second)) {
     DistinctAclObjects = $true
     StandardUserReadExecute = $true
     StandardUserWrite = $false
+    OwnerSectionLoaded = $true
 }

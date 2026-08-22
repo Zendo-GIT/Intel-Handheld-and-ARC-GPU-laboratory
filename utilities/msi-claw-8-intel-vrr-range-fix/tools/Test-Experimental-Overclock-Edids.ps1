@@ -138,5 +138,5 @@ foreach ($minimum in @(48, 30)) {
     Result = 'PASS'
     ProfilesVerified = 16
     PanelsVerified = 'CSW0801, TMA2027'
-    Unsupported24HzProfiles = 0
+    UnsupportedTelemetryOnlyProfiles = 0
 }

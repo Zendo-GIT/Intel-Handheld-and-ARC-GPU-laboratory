@@ -13,8 +13,8 @@ using System.Windows.Threading;
 [assembly: AssemblyDescription("Event-driven MSI Claw desktop cursor refresh helper")]
 [assembly: AssemblyCompany("ClawLab")]
 [assembly: AssemblyProduct("MSI Claw Intel VRR Range Fix")]
-[assembly: AssemblyVersion("2.2.1.0")]
-[assembly: AssemblyFileVersion("2.2.1.0")]
+[assembly: AssemblyVersion("2.3.0.0")]
+[assembly: AssemblyFileVersion("2.3.0.0")]
 
 namespace ClawLab.CursorRefresh
 {
@@ -25,45 +25,98 @@ namespace ClawLab.CursorRefresh
         [STAThread]
         private static int Main(string[] args)
         {
+            TryPromoteProcessPriority();
+            int testSeconds = 0;
+            bool visibleTest = false;
+            bool continuousTest = false;
+            foreach (string argument in args)
+            {
+                if (argument.StartsWith("--test-seconds=", StringComparison.OrdinalIgnoreCase))
+                {
+                    int.TryParse(argument.Substring("--test-seconds=".Length), out testSeconds);
+                    testSeconds = Math.Max(5, Math.Min(300, testSeconds));
+                }
+                else if (string.Equals(argument, "--visible-test", StringComparison.OrdinalIgnoreCase))
+                {
+                    visibleTest = true;
+                }
+                else if (string.Equals(argument, "--continuous-test", StringComparison.OrdinalIgnoreCase))
+                {
+                    continuousTest = true;
+                }
+            }
+
+            bool testInstance = testSeconds > 0;
+            string mutexName = testInstance
+                ? MutexName + ".Test." + Process.GetCurrentProcess().Id
+                : MutexName;
             bool createdNew;
-            using (var mutex = new Mutex(true, MutexName, out createdNew))
+            using (var mutex = new Mutex(true, mutexName, out createdNew))
             {
                 if (!createdNew)
                     return 2;
 
-                int testSeconds = 0;
-                bool visibleTest = false;
-                bool continuousTest = false;
-                foreach (string argument in args)
+                CursorRefreshControl.Initialize(testInstance);
+                try
                 {
-                    if (argument.StartsWith("--test-seconds=", StringComparison.OrdinalIgnoreCase))
+                    WaitForInteractiveDesktop();
+                    try
                     {
-                        int.TryParse(argument.Substring("--test-seconds=".Length), out testSeconds);
-                        testSeconds = Math.Max(5, Math.Min(300, testSeconds));
+                        int nativeResult = NativeDxgiRefreshEngine.Run(
+                            testSeconds,
+                            visibleTest,
+                            continuousTest);
+                        GC.KeepAlive(mutex);
+                        return nativeResult;
                     }
-                    else if (string.Equals(argument, "--visible-test", StringComparison.OrdinalIgnoreCase))
+                    catch (Exception nativeFailure)
                     {
-                        visibleTest = true;
-                    }
-                    else if (string.Equals(argument, "--continuous-test", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continuousTest = true;
+                        CursorRefreshControl.WriteRuntimeState(
+                            "WPF_FALLBACK",
+                            nativeFailure.Message,
+                            0,
+                            0,
+                            0,
+                            0);
+                        var application = new Application
+                        {
+                            ShutdownMode = ShutdownMode.OnMainWindowClose
+                        };
+                        var surface = new RefreshSurface(
+                            testSeconds,
+                            visibleTest,
+                            continuousTest,
+                            nativeFailure.Message);
+                        application.Run(surface);
+                        GC.KeepAlive(mutex);
+                        return 0;
                     }
                 }
-
-                WaitForInteractiveDesktop();
-                var application = new Application
+                finally
                 {
-                    ShutdownMode = ShutdownMode.OnMainWindowClose
-                };
-                var surface = new RefreshSurface(testSeconds, visibleTest, continuousTest);
-                application.Run(surface);
-                GC.KeepAlive(mutex);
-                return 0;
+                    CursorRefreshControl.Dispose();
+                }
             }
         }
 
-        private static void WaitForInteractiveDesktop()
+        private static void TryPromoteProcessPriority()
+        {
+            try
+            {
+                // Task Scheduler priority 2 starts the helper as AboveNormal.
+                // Reassert it in-process as a defense against alternate startup
+                // paths while retaining a limited, non-administrator token.
+                Process.GetCurrentProcess().PriorityClass =
+                    ProcessPriorityClass.AboveNormal;
+            }
+            catch
+            {
+                // A priority-policy restriction must not prevent the helper
+                // from starting; task-level priority remains the primary path.
+            }
+        }
+
+        internal static void WaitForInteractiveDesktop()
         {
             // The sign-in launcher intentionally starts this process before
             // PowerShell/WMI. Do not create the DWM surface until the user's
@@ -99,16 +152,20 @@ namespace ClawLab.CursorRefresh
         private const int CursorShowing = 0x00000001;
 
         private static readonly long TailTicks = Stopwatch.Frequency * 1500L / 1000L;
+        private static readonly long StartupWarmupTicks = Stopwatch.Frequency * 30000L / 1000L;
         private static readonly Brush NearBlackBrush = CreateNearBlackBrush();
 
         private readonly DispatcherTimer animationTimer;
         private readonly DispatcherTimer testTimer;
+        private readonly DispatcherTimer controlTimer;
         private readonly bool visibleTest;
         private readonly bool continuousTest;
+        private readonly string nativeFailure;
         private long activityUntil;
         private bool toggle;
         private bool timerResolutionActive;
         private bool deepIdle;
+        private bool startupWarmupActive;
         private long rawInputEvents;
         private long animationTicks;
         private long suppressedInputEvents;
@@ -118,10 +175,15 @@ namespace ClawLab.CursorRefresh
         private long workingSetTrimAttempts;
         private HwndSource source;
 
-        internal RefreshSurface(int testSeconds, bool visibleTest, bool continuousTest)
+        internal RefreshSurface(
+            int testSeconds,
+            bool visibleTest,
+            bool continuousTest,
+            string nativeFailure)
         {
             this.visibleTest = visibleTest;
             this.continuousTest = continuousTest;
+            this.nativeFailure = nativeFailure ?? string.Empty;
 
             Title = "ClawLab Cursor Refresh Helper";
             Width = visibleTest ? 16 : 2;
@@ -146,6 +208,15 @@ namespace ClawLab.CursorRefresh
                 Interval = TimeSpan.FromMilliseconds(8)
             };
             animationTimer.Tick += Animate;
+
+            // This timer exists only in the compatibility fallback. The
+            // primary Win32/DXGI engine waits directly on named kernel events
+            // and therefore performs no control-channel polling.
+            controlTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            controlTimer.Tick += CheckControlEvents;
 
             if (testSeconds > 0)
             {
@@ -176,6 +247,15 @@ namespace ClawLab.CursorRefresh
                 throw new InvalidOperationException("The WPF HWND source could not be created.");
             source.AddHook(WindowProcedure);
             RegisterForRawMouseInput(handle);
+            CursorRefreshControl.WriteRuntimeState(
+                "WPF_FALLBACK",
+                nativeFailure,
+                0,
+                0,
+                0,
+                0);
+            CursorRefreshControl.SignalReady();
+            controlTimer.Start();
 
             if (continuousTest)
             {
@@ -185,10 +265,26 @@ namespace ClawLab.CursorRefresh
             }
             else
             {
-                EnterDeepIdle();
+                // Keep the tiny DWM surface active while the Windows shell,
+                // Steam and Intel Graphics Software finish their asynchronous
+                // sign-in initialization. A named in-process resynchronization
+                // after final Arc Sync verification starts the same bounded
+                // warm-up against the settled display pipeline without a gap.
+                BeginStartupWarmup();
             }
             if (testTimer != null)
                 testTimer.Start();
+        }
+
+        private void CheckControlEvents(object sender, EventArgs e)
+        {
+            if (CursorRefreshControl.IsShutdownRequested())
+            {
+                Close();
+                return;
+            }
+            if (CursorRefreshControl.ConsumeResyncRequest())
+                BeginStartupWarmup();
         }
 
         private IntPtr WindowProcedure(
@@ -208,11 +304,14 @@ namespace ClawLab.CursorRefresh
                 if (!IsSystemCursorVisible())
                 {
                     suppressedInputEvents++;
-                    EnterDeepIdle();
+                    if (!startupWarmupActive && !continuousTest)
+                        EnterDeepIdle();
                     return IntPtr.Zero;
                 }
 
-                activityUntil = Stopwatch.GetTimestamp() + TailTicks;
+                long mouseTailUntil = Stopwatch.GetTimestamp() + TailTicks;
+                if (mouseTailUntil > activityUntil)
+                    activityUntil = mouseTailUntil;
                 ExitDeepIdle();
                 if (!animationTimer.IsEnabled)
                 {
@@ -237,6 +336,7 @@ namespace ClawLab.CursorRefresh
         {
             if (!continuousTest && Stopwatch.GetTimestamp() > activityUntil)
             {
+                startupWarmupActive = false;
                 EnterDeepIdle();
                 return;
             }
@@ -263,8 +363,21 @@ namespace ClawLab.CursorRefresh
             }
         }
 
+        private void BeginStartupWarmup()
+        {
+            startupWarmupActive = true;
+            activityUntil = Stopwatch.GetTimestamp() + StartupWarmupTicks;
+            ExitDeepIdle();
+            if (!animationTimer.IsEnabled)
+            {
+                animationTimer.Start();
+                Animate(this, EventArgs.Empty);
+            }
+        }
+
         private void EnterDeepIdle()
         {
+            startupWarmupActive = false;
             animationTimer.Stop();
             activityUntil = 0;
             toggle = false;
@@ -293,6 +406,7 @@ namespace ClawLab.CursorRefresh
         private void OnClosed(object sender, EventArgs e)
         {
             animationTimer.Stop();
+            controlTimer.Stop();
             if (testTimer != null)
                 testTimer.Stop();
             if (source != null)
@@ -345,6 +459,7 @@ namespace ClawLab.CursorRefresh
                 string content =
                     "Utc=" + DateTime.UtcNow.ToString("O") + Environment.NewLine +
                     "Renderer=WPF" + Environment.NewLine +
+                    "NativeFailure=" + nativeFailure + Environment.NewLine +
                     "VisibleTest=" + visibleTest + Environment.NewLine +
                     "ContinuousTest=" + continuousTest + Environment.NewLine +
                     "RawInputEvents=" + rawInputEvents + Environment.NewLine +

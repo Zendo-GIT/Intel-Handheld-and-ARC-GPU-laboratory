@@ -58,14 +58,28 @@ Claw 7 AI+ returns the exact identity and EDID.
 
 Core Ultra 5 and Core Ultra 7 A1M diagnostics collected on Intel driver
 32.0.101.8974 expose this exact 128-byte block followed by 128 zero bytes in the
-Windows registry. Release 2.2.1 treats only that completely zero-filled tail as
+Windows registry. Release 2.3.0 treats only that completely zero-filled tail as
 non-semantic padding; the canonical block must still match the SHA-256 above.
 
 The same A1M diagnostics show a driver-interface split which must not be
-mistaken for an installable 24 Hz mode: Intel ControlLib monitor telemetry can
-report `24-120`, while the physical EDID and direct Intel driver interface stay
-at `48-120` and the active Intel Arc Sync profile separately reports `30-120`
-or `48-120`. Release 2.2.1 accepts this half-physical telemetry only for the
-exact pinned `TMA2027` panel. It never generates, stores or installs a 24 Hz
-profile. Claw 7 AI+ uses the same exact panel path; full per-model community
-installation confirmation remains separate from this immutable EDID evidence.
+mistaken for an installable low-floor mode. Intel ControlLib monitor telemetry
+can report `24-120` for the physical 48 Hz floor. A later field test also showed
+`15-120` after the managed 30-120 profile had loaded. The physical EDID and
+direct Intel driver interface remain at `48-120`, while the active Intel Arc
+Sync profile separately reports the real requested range. Release 2.3.0 accepts
+the half-physical value only for the exact pinned `TMA2027` panel. It accepts
+the half-managed value only when an exact current-version ClawLab 30 Hz record
+and matching active Intel profile already exist. It never generates, stores or
+installs a 15 or 24 Hz profile. Claw 7 AI+ uses the same exact panel path; full
+per-model community installation confirmation remains separate from this
+immutable EDID evidence.
+
+Some collected A1M drivers expose the exact OEM Arc Sync profile as CUSTOM
+30-120 with 8333/8333 microsecond timings, report the half-physical telemetry,
+silently retain CUSTOM after a RECOMMENDED request and reject EXCELLENT with
+Intel KMD result `0x40000017`. Release 2.3.0 contains a narrow no-setter
+fallback for this complete signature. It can be used only by the 30-120
+installer, with one active display and Windows already set to native
+1920x1080 at 120 Hz. Restore and factory cleanup preserve the same verified OEM
+profile without rewriting it. Any deviation remains unsupported and is refused
+before ClawLab changes state.

@@ -1,15 +1,47 @@
-# ClawLab Cursor Refresh Helper source
+# ClawLab Cursor Refresh Engine source
 
-This helper uses standard Windows Raw Input and DWM composition only. It does not hook or inject into applications, inspect game processes, modify game files, or change the Intel LFC configuration.
+The primary engine is implemented by
+`ClawLabCursorRefreshNativeDxgi.cs`. It owns a native 2×2 Win32 window in the
+extreme lower-right corner and presents through a D3D11/DXGI flip-model swap
+chain. It clears each backbuffer to alternating opaque black and near-black
+values before presenting, so DWM cannot coalesce the frames as unchanged.
+Background Raw Input wakes the surface for visible mouse activity. The engine
+presents during a bounded 30-second sign-in warm-up and for 1.5 seconds after
+the latest mouse packet.
 
-At sign-in, the process may be launched before the Windows shell. It waits for an interactive shell window and active DWM composition before creating its surface. The verified VRR startup path recreates it once after Intel/display initialization, preventing both delayed activation and an early ineffective surface.
+At idle, it stops presenting and blocks on kernel events. There is no polling
+loop and no active high-resolution timer request. Controller/game use naturally
+leaves the process in this deep-idle state because it produces no usable mouse
+packets. The engine does not inspect ClawTweaks, MSI Center M, Steam or any
+other profile manager.
 
-While raw mouse input is arriving, the helper animates a nearly transparent 2x2 pixel WPF/DWM surface. It keeps the surface active for 1.5 seconds after the latest mouse packet so short pauses do not cause unnecessary refresh transitions.
+The dedicated limited-user logon task has no delay and uses Task Scheduler
+priority 2 (`AboveNormal`) instead of the background default 7 (`BelowNormal`).
+The executable reasserts `AboveNormal` for alternate launch paths without
+requesting administrator rights. Only that task starts the helper at logon.
 
-At idle, the animation stops, the 1 ms timer-resolution request is released, the helper trims its own working set, and the process waits in the normal Windows message loop. The first visible raw-mouse packet wakes it again. A controller/game profile naturally produces no usable mouse activity, so the same state machine enters deep idle regardless of whether the profile came from ClawTweaks, MSI Center M, another controller utility, or no profile manager at all. The helper does not inspect or control any of those applications.
+Three named-event channels coordinate the resident process without restarting
+it:
 
-Because only the mouse usage is registered, `WM_INPUT` is handled directly without allocating and parsing a native buffer for every packet.
+- Ready publishes a verified runtime state after initialization;
+- Resync recreates the DXGI device/swap chain in place after final Intel/display
+  startup verification;
+- Shutdown requests cooperative exit before update or removal.
 
-The helper suppresses its animation when the system cursor is hidden. It does not inspect, inject into, or hook a game process. This also preserves compatibility with Windows Xbox Full Screen Experience, where the shell itself covers the complete monitor.
+If native D3D11/DXGI initialization fails, the process automatically starts the
+isolated compatibility implementation in
+`ClawLabCursorRefreshHelperWpf.cs`. This fallback affects only the desktop
+surface. It never restores or changes VRR, EDID or Intel LFC.
 
-The source targets the inbox .NET Framework WPF runtime so that the public binary can be rebuilt with the Windows `csc.exe` compiler.
+The engine uses standard Win32, Raw Input, DWM, D3D11 and DXGI APIs only. It
+does not enumerate, hook, inject into or monitor game processes, and it does
+not modify game files, anti-cheat components, display-driver files or panel
+firmware. Hidden cursors suppress normal mouse-triggered presentation; Windows
+Xbox Full Screen Experience and controller profiles therefore remain outside
+the helper's active path.
+
+`Build-CursorRefreshHelper.ps1` compiles both source files into the public
+single executable with the inbox .NET Framework C# compiler. Its isolated test
+arguments use test-specific mutexes, events and runtime-state files so the
+native engine can be exercised without touching the installed helper or any
+display profile.

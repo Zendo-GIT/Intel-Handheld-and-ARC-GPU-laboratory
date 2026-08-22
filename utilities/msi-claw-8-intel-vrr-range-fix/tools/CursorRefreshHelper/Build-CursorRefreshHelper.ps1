@@ -19,7 +19,15 @@ if ([string]::IsNullOrWhiteSpace($compiler)) {
     throw 'The inbox .NET Framework C# compiler was not found.'
 }
 
-$source = Join-Path $PSScriptRoot 'ClawLabCursorRefreshHelperWpf.cs'
+$sources = @(
+    (Join-Path $PSScriptRoot 'ClawLabCursorRefreshHelperWpf.cs'),
+    (Join-Path $PSScriptRoot 'ClawLabCursorRefreshNativeDxgi.cs')
+)
+foreach ($source in $sources) {
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Cursor Refresh Engine source was not found: $source"
+    }
+}
 $wpfReferenceRoot = Join-Path (Split-Path -Parent $compiler) 'WPF'
 $systemXamlReference = Join-Path (Split-Path -Parent $compiler) 'System.Xaml.dll'
 $windowsBaseReference = Join-Path $wpfReferenceRoot 'WindowsBase.dll'
@@ -46,7 +54,7 @@ $arguments = @(
     "/reference:$windowsBaseReference",
     "/reference:$presentationCoreReference",
     "/reference:$presentationFrameworkReference",
-    $source
+    $sources
 )
 
 & $compiler @arguments

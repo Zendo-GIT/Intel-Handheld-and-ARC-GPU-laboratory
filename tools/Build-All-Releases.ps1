@@ -7,7 +7,7 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$TheIsleVersion = '1.0.0',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$VrrVersion = '2.2.1',
+    [string]$VrrVersion = '2.3.0',
     [switch]$SkipValidation
 )
 

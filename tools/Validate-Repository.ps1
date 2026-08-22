@@ -36,12 +36,19 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Edid-Normalization.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ArcSync-Range-Policy.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\Scheduled-Task-Persistence.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Localization.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Transaction.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\locales\messages.json',
+    'utilities\msi-claw-8-intel-vrr-range-fix\SELECT_LANGUAGE.bat',
+    'utilities\msi-claw-8-intel-vrr-range-fix\UPDATE_CURSOR_REFRESH_ENGINE.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\Lfc-Backup-Identity.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Intel-VRR-LFC-Driver-Interface.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Health-Check.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\Export-ClawLab-Status.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshNativeDxgi.cs',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-A1M-Edid.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Backup-Identity.ps1',
@@ -49,6 +56,15 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-ArcSync-Range-Policy.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Experimental-Overclock-Edids.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Public-Installer-Matrix.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-ClawLab-VRR-Transaction.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Scheduled-Task-Persistence.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Tma2027-Recovery-Flow.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Guarded-Trial-FailClosed.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Startup-Orchestration.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Normalization-Compensation.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Lfc-Factory-Defaults-Recovery.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tools\Test-Stable-Same-Profile-Repair.ps1',
+    'utilities\msi-claw-8-intel-vrr-range-fix\tests\Test-ClawLab-Localization.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-VRR-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-LFC-Startup.vbs',
     'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Experimental-Trial-Startup.vbs',
@@ -61,7 +77,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\Collect-Claw-Display-Diagnostics.ps1',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_ORIGINAL_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\RESTORE_INTEL_LFC_DEFAULTS.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.2.1.md',
+    'utilities\msi-claw-8-intel-vrr-range-fix\docs\RELEASE_NOTES_2.3.0.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\docs\A1M_EDID_REFERENCE.md',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
@@ -71,7 +87,7 @@ $requiredFiles = @(
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat',
-    'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat'
+    'utilities\msi-claw-8-intel-vrr-range-fix\EMERGENCY_REMOVE_CLAWLAB_EDID.bat',
     'utilities\msi-claw-8-intel-vrr-range-fix\SET_INTEL_LFC_FACTORY_DEFAULTS.bat'
 )
 foreach ($relativePath in $requiredFiles) {
@@ -194,7 +210,7 @@ foreach ($relativePath in $retiredVrrPublicFiles) {
     }
 }
 $requiredVrrValues = @(
-    "`$fixVersion = '2.2.1'",
+    "`$fixVersion = '2.3.0'",
     'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
     '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
     '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
@@ -242,9 +258,13 @@ $requiredVrrValues = @(
     "'Intel' + [char]0x00AE + ' Graphics Software'"
     'Install-CursorRefreshHelper',
     'Start-CursorRefreshHelper',
+    'Start-ClawLabScheduledTask',
+    'Sync-CursorRefreshHelper',
+    'Update-CursorRefreshHelperOnly',
     'Remove-CursorRefreshHelper',
-    'RUNNING_EVENT_DRIVEN'
-    'DEEP_IDLE_NO_TIMER_RESOLUTION'
+    'RUNNING_NATIVE_DXGI'
+    'RUNNING_WPF_FALLBACK'
+    'KERNEL_EVENT_WAIT_NO_ACTIVE_PRESENTS_OR_TIMER_RESOLUTION'
     'VERSION_MISMATCH'
     'CLAW_A1M_CLAW_7_AI_PLUS'
     'Overclock48_180EdidSha256'
@@ -252,7 +272,7 @@ $requiredVrrValues = @(
     'Overclock48_192EdidSha256'
     'Overclock30_192EdidSha256'
     'OLDER_VERSION_RESTORE_REQUIRED'
-    'Test-ClawLabFirstInstallProfileSafe'
+    'Resolve-FirstInstallProfileBaseline'
     'Test-SnapshotMatchesSavedProfile'
     'CTL_RESULT_ERROR_KMD_CALL'
 )
@@ -291,9 +311,12 @@ foreach ($requiredRangeMarker in @(
         throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
     }
 }
-foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'Install24', 'MinimumHz = 24', 'MinimumHz=24')) {
+foreach ($forbiddenRangeMarker in @(
+        '15-120', '15_120', 'Install15', 'MinimumHz = 15', 'MinimumHz=15',
+        '24-120', '24_120', 'Install24', 'MinimumHz = 24', 'MinimumHz=24'
+    )) {
     if ($vrrScript -match [regex]::Escape($forbiddenRangeMarker)) {
-        throw "Forbidden 24 Hz profile marker found in the VRR source: $forbiddenRangeMarker"
+        throw "Forbidden telemetry-only profile marker found in the VRR source: $forbiddenRangeMarker"
     }
 }
 
@@ -322,7 +345,7 @@ $overclockEdidTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-v
 $overclockEdidResult = & $overclockEdidTestPath
 if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne 'PASS' -or
     [int]$overclockEdidResult.ProfilesVerified -ne 16 -or
-    [int]$overclockEdidResult.Unsupported24HzProfiles -ne 0) {
+    [int]$overclockEdidResult.UnsupportedTelemetryOnlyProfiles -ne 0) {
     throw 'The two-panel guarded overclock EDID test failed.'
 }
 
@@ -330,17 +353,34 @@ $installerMatrixTestPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel
 $installerMatrixResult = & $installerMatrixTestPath
 if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -ne 'PASS' -or
     [int]$installerMatrixResult.LfcIntegratedProfiles -ne 10 -or
+    [int]$installerMatrixResult.RoutedLaunchers -ne 19 -or
+    [int]$installerMatrixResult.CoordinatorActions -ne 19 -or
     [string]$installerMatrixResult.GuardedTrialOrder -ne 'PASS' -or
-    [int]$installerMatrixResult.Forbidden24HzProfiles -ne 0) {
+    [int]$installerMatrixResult.ForbiddenTelemetryOnlyProfiles -ne 0) {
     throw 'The public installer/action/LFC/guarded-trial matrix test failed.'
+}
+
+foreach ($vrrTest in @(
+        'tests\Test-ClawLab-Localization.ps1',
+        'tools\Test-Scheduled-Task-Persistence.ps1',
+        'tools\Test-ClawLab-VRR-Transaction.ps1',
+        'tools\Test-Tma2027-Recovery-Flow.ps1',
+        'tools\Test-Guarded-Trial-FailClosed.ps1',
+        'tools\Test-Startup-Orchestration.ps1',
+        'tools\Test-Normalization-Compensation.ps1',
+        'tools\Test-Lfc-Factory-Defaults-Recovery.ps1',
+        'tools\Test-Stable-Same-Profile-Repair.ps1'
+    )) {
+    $vrrTestPath = Join-Path $repositoryRoot "utilities\msi-claw-8-intel-vrr-range-fix\$vrrTest"
+    & $vrrTestPath | Out-Host
 }
 
 $cursorHelperPath = Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\ClawLab-Cursor-Refresh-Helper.exe'
 $cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
-if ($cursorHelperAssembly.Version.ToString() -ne '2.2.1.0') {
+if ($cursorHelperAssembly.Version.ToString() -ne '2.3.0.0') {
     throw "Cursor Refresh Helper has unexpected assembly version $($cursorHelperAssembly.Version)."
 }
-$cursorHelperSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs') -Raw
+$cursorHelperWpfSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs') -Raw
 foreach ($value in @(
     'RidevInputSink',
     'RegisterRawInputDevices',
@@ -357,12 +397,27 @@ foreach ($value in @(
     'SetProcessWorkingSetSize',
     'timeEndPeriod(1)'
 )) {
-    if ($cursorHelperSource -notmatch [regex]::Escape($value)) {
-        throw "Cursor Refresh Helper source no longer contains required safety value: $value"
+    if ($cursorHelperWpfSource -notmatch [regex]::Escape($value)) {
+        throw "Cursor Refresh WPF fallback source no longer contains required safety value: $value"
+    }
+}
+$cursorHelperNativeSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\tools\CursorRefreshHelper\ClawLabCursorRefreshNativeDxgi.cs') -Raw
+foreach ($value in @(
+    'NATIVE_WIN32_DXGI_FLIP_MODEL',
+    'DxgiSwapEffectFlipSequential',
+    'MsgWaitForMultipleObjectsEx',
+    'RidevInputSink',
+    'CursorRefreshControl.NativeWaitHandles',
+    'CursorRefreshControl.SignalReady();',
+    'WaitFailed'
+)) {
+    if ($cursorHelperNativeSource -notmatch [regex]::Escape($value)) {
+        throw "Cursor Refresh native DXGI source no longer contains required value: $value"
     }
 }
 foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')) {
-    if ($cursorHelperSource -match [regex]::Escape($forbiddenMarker)) {
+    if ($cursorHelperWpfSource -match [regex]::Escape($forbiddenMarker) -or
+        $cursorHelperNativeSource -match [regex]::Escape($forbiddenMarker)) {
         throw "Cursor Refresh Helper reintroduced a per-packet native allocation path: $forbiddenMarker"
     }
 }
@@ -380,7 +435,7 @@ foreach ($value in @(
 
 $lfcScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-Intel-LFC-Fix.ps1') -Raw
 foreach ($value in @(
-    "`$toolVersion = '2.0.6'",
+    "`$toolVersion = '2.0.7'",
     'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
     "'OFFICIAL_48_120'",
     "'CLAWLAB_30_120'",
@@ -442,78 +497,19 @@ $backupReadIndex = $lfcScript.IndexOf('$backup = Get-LfcBackup', [StringComparis
 if ($rangeRefusalIndex -lt 0 -or $backupReadIndex -lt 0 -or $rangeRefusalIndex -gt $backupReadIndex) {
     throw 'The exact LFC range refusal must execute before any backup migration or creation.'
 }
-foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'MinimumHz -eq 24', 'MinimumHz = 24')) {
+foreach ($forbiddenRangeMarker in @(
+        '15-120', '15_120', 'MinimumHz -eq 15', 'MinimumHz = 15',
+        '24-120', '24_120', 'MinimumHz -eq 24', 'MinimumHz = 24'
+    )) {
     if ($lfcScript -match [regex]::Escape($forbiddenRangeMarker)) {
-        throw "Forbidden 24 Hz profile marker found in the LFC source: $forbiddenRangeMarker"
+        throw "Forbidden telemetry-only profile marker found in the LFC source: $forbiddenRangeMarker"
     }
 }
 
-$lfcInstallers = @(
-    'INSTALL_30_120_VRR.bat',
-    'INSTALL_48_120_VRR.bat'
-)
-foreach ($installerName in $lfcInstallers) {
-    $installerPath = Join-Path $repositoryRoot "utilities\msi-claw-8-intel-vrr-range-fix\$installerName"
-    $installerText = Get-Content -LiteralPath $installerPath -Raw
-    if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
-        throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
-    }
-    foreach ($cruMarker in @(
-            'IMPORTANT VERSION UPGRADE',
-            '2.2.0 or any older release',
-            'refuses to overwrite an older managed installation',
-            'reset-all.exe',
-            'Has CRU never been used',
-            'If CRU has never been used'
-        )) {
-        if ($installerText -notmatch [regex]::Escape($cruMarker)) {
-            throw "Managed VRR installer is missing the interactive CRU preflight: $installerName / $cruMarker"
-        }
-    }
-    foreach ($ownershipMarker in @('VRR ownership preflight', 'ClawTweaks', '3.0 or later', 'ClawLab VRR compatibility patch', 'optional and is not required')) {
-        if ($installerText -notmatch [regex]::Escape($ownershipMarker)) {
-            throw "Managed VRR installer is missing the exclusive-ownership preflight: $installerName / $ownershipMarker"
-        }
-    }
-}
-
-$experimentalInstallers = @(
-    'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'
-)
-foreach ($installerName in $experimentalInstallers) {
-    $installerPath = Join-Path $repositoryRoot "utilities\msi-claw-8-intel-vrr-range-fix\$installerName"
-    $installerText = Get-Content -LiteralPath $installerPath -Raw
-    foreach ($marker in @(
-            'DISPLAY OVERCLOCK',
-            'IMPORTANT VERSION UPGRADE',
-            '2.2.0 or any older release',
-            'refuses to overwrite an older managed installation',
-            'silicon lottery',
-            'timeout /t 10 /nobreak',
-            'I ACCEPT THE OVERCLOCK RISK',
-            '15 SECONDS',
-            'DO NOT POWER OFF OR REBOOT',
-            'Disconnect every external display',
-            'reset-all.exe',
-            'If CRU has never been used',
-            'Has CRU never been used, or was reset-all.exe followed by a restart?',
-            'Is every conflicting VRR/EDID tool disabled or removed?',
-            'ClawLab VRR compatibility patch',
-            '3.0 or later',
-            'optional and is not required'
-        )) {
-        if ($installerText -notmatch [regex]::Escape($marker)) {
-            throw "Experimental installer is missing a mandatory guard: $installerName / $marker"
-        }
-    }
-}
+# Public BAT files are intentionally thin localized wrappers in 2.3.0.
+# Test-Public-Installer-Matrix.ps1 validates every launcher-to-action route and
+# Test-ClawLab-VRR-Transaction.ps1 validates the centralized preflights,
+# one-UAC boundary, joint VRR/LFC verification and rollback sequencing.
 
 $mainVrrScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\MSI-Claw-VRR-Fix.ps1') -Raw
 foreach ($marker in @(
@@ -521,7 +517,7 @@ foreach ($marker in @(
         'try { Remove-ExperimentalOverclockTrial }',
         '$backupPath,',
         "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
-        'ClawLab-VRR-Privileged\2.2.1',
+        'ClawLab-VRR-Privileged\2.3.0',
         'Assert-ProtectedRuntimeIntegrity',
         'protected-runtime.json',
         'Remove-ProtectedExperimentalRuntime',
@@ -535,20 +531,22 @@ foreach ($marker in @(
 
 $trialScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'utilities\msi-claw-8-intel-vrr-range-fix\Experimental-Overclock-VRR-Trial.ps1') -Raw
 foreach ($marker in @(
-        "`$fixVersion = '2.2.1'",
-        'ObservationSeconds = 15',
+        "`$fixVersion = '2.3.0'",
+        'ObservationSeconds = 30',
         'TimeoutSeconds 15',
         "-ToolAction 'SetSafe120ForTrial'",
         'UserConfirmed = $false',
         'Confirm-AdministratorOrRelaunch',
-        '-RunLevel Limited',
-        'ClawLab-VRR-Privileged\2.2.1',
+        'New-ClawLabLogonTaskSpec',
+        'ClawLab-VRR-Privileged\2.3.0',
         'Initialize-ProtectedRuntimeDirectory',
         'DirectorySecurity',
         'Write-ProtectedRuntimeManifest',
         'Assert-ProtectedRuntimeIntegrity',
-        "-ToolAction 'ConfirmExperimentalTrial'",
-        "-ToolAction 'Restore'"
+        'Invoke-BoundElevatedTrialConfirmation -Trial $trial',
+        '& $toolPath -Action ConfirmExperimentalTrial',
+        'Invoke-BoundElevatedTrialRollback -Trial $trial',
+        '& $vrrToolPath -Action RestoreGuardedTrial'
     )) {
     if ($trialScript -notmatch [regex]::Escape($marker)) {
         throw "Guarded trial source is missing a required rollback/confirmation marker: $marker"
@@ -571,8 +569,7 @@ if (([regex]::Matches($trialScript, 'Confirm-AdministratorOrRelaunch')).Count -n
 }
 foreach ($unsafeTimeout in @(
         "-ToolAction 'ConfirmExperimentalTrial' -TimeoutSeconds",
-        "-ToolPath `$installedVrrToolPath -ToolAction 'Restore' -TimeoutSeconds",
-        '-ExecutionTimeLimit'
+        "-ToolPath `$installedVrrToolPath -ToolAction 'Restore' -TimeoutSeconds"
     )) {
     if ($trialScript -match [regex]::Escape($unsafeTimeout)) {
         throw "Guarded trial can force-terminate an elevation-sensitive action: $unsafeTimeout"

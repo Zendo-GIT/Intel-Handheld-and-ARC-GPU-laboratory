@@ -8,8 +8,14 @@ $packageRoot = $PSScriptRoot
 $vrrTool = Join-Path $packageRoot 'MSI-Claw-VRR-Fix.ps1'
 $lfcTool = Join-Path $packageRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
 $healthTool = Join-Path $packageRoot 'ClawLab-Health-Check.ps1'
+$scheduledTaskTool = Join-Path $packageRoot 'Scheduled-Task-Persistence.ps1'
+if (-not (Test-Path -LiteralPath $scheduledTaskTool -PathType Leaf)) {
+    throw "Required task-query component is missing: $scheduledTaskTool"
+}
+. $scheduledTaskTool
 $vrrStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-Arc-Sync-Full-Range'
 $lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-LFC-Fix'
+$transactionStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\VRR-Transaction'
 
 function Invoke-ReadOnlyReport {
     param(
@@ -34,17 +40,91 @@ function Invoke-ReadOnlyReport {
     }
 }
 
+function Get-ClawLabTaskRuntimeRecord {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $service = $null
+    $folder = $null
+    $registeredTask = $null
+    try {
+        $service = New-Object -ComObject 'Schedule.Service'
+        $service.Connect()
+        $folder = $service.GetFolder('\')
+        try {
+            $registeredTask = $folder.GetTask($Name)
+        }
+        catch {
+            $hresult = [BitConverter]::ToUInt32(
+                [BitConverter]::GetBytes([int32]$_.Exception.HResult),
+                0
+            )
+            if ($hresult -in @(
+                [Convert]::ToUInt32('80070002', 16),
+                [Convert]::ToUInt32('8004130F', 16)
+            )) {
+                return $null
+            }
+            throw ('Task Scheduler runtime query failed for "{0}" with HRESULT 0x{1:X8}: {2}' -f
+                $Name, $hresult, $_.Exception.Message)
+        }
+
+        return [pscustomobject]@{
+            LastRunTime = [datetime]$registeredTask.LastRunTime
+            LastTaskResult = [int]$registeredTask.LastTaskResult
+            NextRunTime = [datetime]$registeredTask.NextRunTime
+        }
+    }
+    finally {
+        foreach ($comObject in @($registeredTask, $folder, $service)) {
+            if ($null -ne $comObject -and [Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
+                [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
+            }
+        }
+    }
+}
+
 function Get-TaskReport {
     param([Parameter(Mandatory)][string]$Name)
-    $task = Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue
-    if ($null -eq $task) { return [pscustomobject]@{ Installed = $false } }
-    $info = Get-ScheduledTaskInfo -TaskName $Name -ErrorAction SilentlyContinue
-    [pscustomobject]@{
-        Installed = $true
-        State = [string]$task.State
-        LastRunTime = if ($null -ne $info) { $info.LastRunTime } else { $null }
-        LastTaskResult = if ($null -ne $info) { $info.LastTaskResult } else { $null }
-        NextRunTime = if ($null -ne $info) { $info.NextRunTime } else { $null }
+
+    try {
+        $task = Get-ClawLabScheduledTaskRecord -TaskName $Name
+        if ($null -eq $task) {
+            return [pscustomobject]@{
+                QueryState = 'ABSENT'
+                Installed = $false
+                State = $null
+                LastRunTime = $null
+                LastTaskResult = $null
+                NextRunTime = $null
+                Error = $null
+            }
+        }
+
+        $runtime = Get-ClawLabTaskRuntimeRecord -Name $Name
+        if ($null -eq $runtime) {
+            throw "The task disappeared while its diagnostic state was being collected: $Name"
+        }
+        return [pscustomobject]@{
+            QueryState = 'PRESENT'
+            Installed = $true
+            State = [string]$task.State
+            Enabled = [bool]$task.Enabled
+            LastRunTime = $runtime.LastRunTime
+            LastTaskResult = $runtime.LastTaskResult
+            NextRunTime = $runtime.NextRunTime
+            Error = $null
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            QueryState = 'TASK_QUERY_ERROR'
+            Installed = $null
+            State = $null
+            LastRunTime = $null
+            LastTaskResult = $null
+            NextRunTime = $null
+            Error = $_.Exception.Message
+        }
     }
 }
 
@@ -90,9 +170,38 @@ $report = [ordered]@{
     LFC = $lfc
     Tasks = [ordered]@{
         VrrRange = Get-TaskReport -Name 'ClawLab MSI Claw 8 VRR Range'
+        CursorRefresh = Get-TaskReport -Name 'ClawLab MSI Claw Cursor Refresh Engine'
         IntelLfc = Get-TaskReport -Name 'ClawLab MSI Claw Intel LFC Fix'
     }
+    CursorRefreshRuntime = Invoke-ReadOnlyReport -Name 'Cursor Refresh runtime' -AllowEmpty -Operation {
+        $path = Join-Path $env:LOCALAPPDATA 'ClawLab\Cursor-Refresh-Helper\runtime-state.txt'
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8)
+        }
+        else { $null }
+    }
     LfcBackupMetadata = Get-LfcBackupMetadata
+    RecoveryArtifacts = [ordered]@{
+        NormalizationCompensationPresent = Test-Path -LiteralPath `
+            (Join-Path $vrrStateRoot 'normalization-compensation.json') -PathType Leaf
+        LfcRestoreCommittedPresent = Test-Path -LiteralPath `
+            (Join-Path $lfcStateRoot 'restore-committed.json') -PathType Leaf
+        LfcRestoreFinalizedPresent = Test-Path -LiteralPath `
+            (Join-Path $lfcStateRoot 'restore-finalized.json') -PathType Leaf
+        LfcFactoryIntentPresent = Test-Path -LiteralPath `
+            (Join-Path $lfcStateRoot 'factory-default-intent.json') -PathType Leaf
+        LfcFactoryFinalizedPresent = Test-Path -LiteralPath `
+            (Join-Path $lfcStateRoot 'factory-finalized.json') -PathType Leaf
+        TransactionJournalPresent = Test-Path -LiteralPath `
+            (Join-Path $transactionStateRoot 'transaction.json') -PathType Leaf
+    }
+    TransactionJournal = Invoke-ReadOnlyReport -Name 'VRR transaction journal' -AllowEmpty -Operation {
+        $path = Join-Path $transactionStateRoot 'transaction.json'
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        }
+        else { $null }
+    }
     StartupLastRun = Invoke-ReadOnlyReport -Name 'Startup last run' -AllowEmpty -Operation {
         $path = Join-Path $vrrStateRoot 'startup-last-run.json'
         if (Test-Path -LiteralPath $path -PathType Leaf) {
@@ -102,6 +211,10 @@ $report = [ordered]@{
     }
     LastVrrError = Invoke-ReadOnlyReport -Name 'Last VRR error' -AllowEmpty -Operation {
         $path = Join-Path $vrrStateRoot 'last-error.txt'
+        if (Test-Path -LiteralPath $path -PathType Leaf) { [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) } else { $null }
+    }
+    LastExperimentalConfirmationError = Invoke-ReadOnlyReport -Name 'Last experimental confirmation error' -AllowEmpty -Operation {
+        $path = Join-Path $vrrStateRoot 'experimental-confirmation-last-error.txt'
         if (Test-Path -LiteralPath $path -PathType Leaf) { [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) } else { $null }
     }
 }

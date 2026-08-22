@@ -1,5 +1,92 @@
 # Changelog
 
+## 2.3.0 — 2026-08-22
+
+- Adds a strict MSI Claw A1M / Claw 7 AI+ first-install fallback for the exact
+  pinned TMA2027 OEM `CUSTOM 30-120` state when the Intel driver refuses both
+  standard profile setters. It is limited to the 30–120 profile and requires
+  native 1920×1080 at 120 Hz plus exact ControlLib and direct-driver readback.
+- Preserves the verified TMA2027 OEM custom baseline during restore and factory
+  cleanup without calling the rejected setter; any drift is refused before
+  managed state is removed.
+- Recognizes the second collected TMA2027 ControlLib anomaly where an already
+  loaded ClawLab 30 Hz floor is reported as `15-120`. It is accepted only when
+  the exact current-version managed record and independently queried active
+  Intel profile both prove the requested 30 Hz range. No 15 Hz profile exists.
+- Replaces ambiguous scheduled-task queries with exact COM readback, semantic
+  validation, bounded verification and verified removal, fixing collected
+  startup-task install failures and orphan-task cleanup risks.
+- Registers interactive tasks through the SID-resolved Windows account name
+  while retaining the immutable SID for ownership/readback checks. This fixes
+  the collected Task Scheduler `ERROR_INVALID_PARAMETER (32,8):UserId` failure
+  on affected accounts without weakening task identity or elevation.
+- Allows current 2.3.0 Recovery to migrate a legacy 2.2.x installation after an
+  Intel driver/Graphics Software update rewrites its Run entry. A replacement
+  is accepted and preserved only after fresh canonical-path, Intel Authenticode
+  and file-identity verification; arbitrary entries remain fail-closed.
+- Adds a bounded no-backup Recovery path for the collected orphaned legacy-task
+  case. It requires exact pinned Intel factory VRR/LFC readback, native 120 Hz,
+  no EDID or other managed state, and one provably owned invalid ClawLab VRR
+  task; it removes only that task/payloads and performs no display-state write.
+  `CHECK_STATUS` identifies the exact case as
+  `ORPHANED_DEFAULT_VRR_SHELL_RECOVERABLE`; every near match remains blocked.
+- Coordinates public install and recovery actions across one verified UAC
+  identity so a non-elevated launch cannot silently split VRR and LFC work.
+- Reuses an already elevated launcher token instead of requesting a redundant
+  second UAC elevation. A genuine elevation-launch failure now keeps and shows
+  its technical cause instead of being reduced to an ambiguous rights message.
+- Preserves in-place repair for an exact same stable 2.3.0 profile without
+  consuming its existing original-state backups. Overclock reruns require a
+  verified restore and a new guarded trial.
+- Adds automatic UI localization for the same 34 languages as Clawptimize,
+  English fallback and a manual language selector. Yes/No prompts now display
+  and accept the localized one-letter shortcuts immediately without Enter.
+- Keeps Korean interface text fully localized while using the community-
+  requested conventional `Y/N` confirmation shortcuts.
+- Makes every packaged PowerShell source code-page-independent ASCII while the
+  translated catalog remains explicitly decoded UTF-8. This fixes the Korean
+  Windows PowerShell 5.1 parser failure and is release-gated for future builds.
+- Reworks the overclock preflight so risks and automatic recovery are visible
+  throughout the ten-second reading countdown and the exact typed phrase is
+  requested only once.
+- Replaces the unattended 15-second overclock interval with an explicit
+  post-sign-in Start dialog, a dedicated animated 30-second observation, exact
+  end-of-test Windows/Intel readback and the same automatic safe-120 `finally`
+  path before persistence confirmation.
+- Fixes guarded experimental installation after a successful normal Restore:
+  exact verified `ORIGINAL_LFC_RESTORE_FINALIZED` provenance is now accepted as
+  a clean original LFC baseline instead of being mistaken for a pending patch.
+  A false experimental recovery journal is reconciled only after a new complete
+  VRR/LFC, task, artifact and protected-runtime proof; `CHECK_STATUS` now reports
+  any unreconciled transaction instead of labelling the system clean.
+- Fixes protected-runtime ACL verification for every guarded experimental
+  profile. The verifier now explicitly loads both the access rules and owner
+  section before validating the administrator owner, preventing the misleading
+  PowerShell `Value property was not found` scheduling failure.
+- Fixes successful experimental trials being rolled back after the user chose
+  Yes. Final confirmation now records `PERSISTENCE_APPLIED`, verifies the exact
+  expected `EXPERIMENTAL_TRIAL_PENDING` pre-commit state, then atomically commits
+  and consumes the one-time task instead of requiring impossible post-commit
+  consistency before that task was removed.
+- Replaces the desktop helper's primary WPF surface with a native Win32,
+  D3D11/DXGI flip-model engine launched directly by a dedicated limited-user
+  logon task. It covers Steam startup immediately, resynchronizes its swap chain
+  in place after final Intel verification and blocks on kernel events at idle.
+  WPF remains an automatic helper-only compatibility fallback.
+- Gives that dedicated task explicit `AboveNormal` priority instead of the
+  Task Scheduler `BelowNormal` default, removes the competing secondary launch,
+  and alternates the native backbuffer content so DWM cannot coalesce its
+  presentations as unchanged frames.
+- Adds `UPDATE_CURSOR_REFRESH_ENGINE.bat`, which verifies an already healthy
+  2.3.0 managed range and updates only the cursor engine/task. It never writes
+  EDID, Arc Sync or LFC and does not require profile reinstallation.
+- Records successful 48–180 Hz validation on one Claw 8 AI+ Polar Tempest
+  Edition. It remains Unstable Experimental and panel-specific.
+- Keeps all public ranges unchanged. No 15 or 24 Hz profile exists; the
+  observed A1M/Claw 7 half-floor values remain telemetry only.
+- Updates Intel LFC to 2.0.7 and the public package and Cursor Refresh Helper to
+  2.3.0.
+
 ## 2.2.1 — 2026-08-17
 
 - Removes the target-only Windows refresh-choice experiment that could reject

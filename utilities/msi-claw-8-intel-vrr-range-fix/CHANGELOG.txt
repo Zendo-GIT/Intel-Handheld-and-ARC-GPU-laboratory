@@ -1,6 +1,76 @@
 MSI CLAW INTEL VRR RANGE FIX - CHANGELOG
 ========================================
 
+2.3.0 - 2026-08-22
+------------------
+- Adds a strict A1M / Claw 7 AI+ fallback for the exact pinned TMA2027 OEM
+  CUSTOM 30-120 state when Intel refuses both standard profile setters.
+- Requires native 1920x1080 at 120 Hz and exact panel, timing, telemetry and
+  direct-driver validation; this fallback is limited to INSTALL_30_120_VRR.
+- Preserves that exact OEM baseline without a rejected setter during restore
+  and factory cleanup, while every drift remains fail-closed.
+- Recognizes the collected TMA2027 15-120 monitor telemetry shown after a
+  managed 30 Hz profile loads. It is accepted only with the exact 2.3.0 managed
+  record and independently verified 30 Hz active Intel profile. No 15 Hz
+  profile exists.
+- Replaces ambiguous scheduled-task readback with exact COM verification and
+  verified removal.
+- Registers tasks through the SID-resolved Windows account name while retaining
+  SID ownership checks, fixing the collected (32,8):UserId invalid-parameter
+  failure on affected Windows accounts.
+- Lets 2.3.0 Recovery migrate an older 2.2.x installation after a signed Intel
+  update rewrites its Graphics Software startup entry. Only a canonical-path,
+  freshly Intel-signed replacement is preserved; unknown entries remain blocked.
+- Adds bounded no-backup Recovery for the exact orphaned legacy-task case. It
+  requires pinned Intel factory VRR/LFC readback, native 120 Hz, no EDID or
+  other managed state, and one provably owned invalid ClawLab task. It removes
+  only that task and payloads with no display write; every near match is blocked.
+- Coordinates public VRR/LFC actions through one verified UAC identity.
+- Reuses an already elevated launcher token rather than requesting a second
+  UAC elevation, and reports the real cause when UAC launch itself fails.
+- Allows exact same stable-profile repair without consuming existing original
+  backups; overclock reruns require Restore and a new guarded trial.
+- Adds automatic UI localization in 34 languages, English fallback and a
+  manual language selector. Yes/No prompts use the localized one-letter
+  shortcuts immediately without Enter.
+- Keeps Korean interface text fully localized while using the community-
+  requested conventional Y/N confirmation shortcuts.
+- Keeps packaged PowerShell code 7-bit ASCII and reads the translated catalog
+  explicitly as UTF-8, fixing parser failures on Korean Windows PowerShell 5.1.
+- Shows the overclock risks throughout a visible ten-second countdown and asks
+  for the exact typed acceptance phrase only once.
+- Replaces the unattended 15-second overclock interval with a user-started,
+  animated 30-second test, exact end readback and automatic safe-120 return
+  before the profile can be confirmed.
+- Fixes guarded experimental installation after a successful Restore by
+  accepting exact verified ORIGINAL_LFC_RESTORE_FINALIZED provenance as a
+  clean baseline. False experimental recovery journals are removed only after
+  a new complete clean-state proof, and CHECK_STATUS exposes any journal that
+  remains instead of labelling the system clean.
+- Fixes ACL verification for all guarded experimental profiles by loading both
+  access rules and owner metadata before validating the protected runtime. This
+  prevents the misleading PowerShell "Value property was not found" failure.
+- Fixes successful experimental trials being rolled back after Yes. The final
+  confirmation now verifies the expected pending pre-commit state before it
+  atomically commits and removes the one-time trial task.
+- Replaces the desktop helper's primary WPF path with a native
+  Win32/D3D11/DXGI flip-model engine launched directly by its own limited-user
+  logon task. It covers early Steam/desktop startup, resynchronizes its swap
+  chain in place after final Intel verification and blocks on kernel events at
+  idle. WPF remains an automatic helper-only compatibility fallback.
+- Sets the dedicated helper task to AboveNormal instead of the Windows
+  BelowNormal background default, removes the duplicate launch path and changes
+  the native 2x2 backbuffer every frame so DWM cannot discard unchanged frames.
+- Adds UPDATE_CURSOR_REFRESH_ENGINE.bat. It verifies the already installed
+  2.3.0 managed range, then updates only the cursor engine and its logon task.
+  It never writes EDID, Arc Sync or LFC and requires no profile reinstall,
+  overclock retest, restart or profile switch.
+- Records a successful 48-180 Hz test on one Claw 8 AI+ Polar Tempest Edition;
+  the profile remains Unstable Experimental and panel-specific.
+- Keeps 30-120 and 48-120 as the only stable ranges. No 15 or 24 Hz profile
+  exists.
+- Updates Intel LFC to 2.0.7 and the package and cursor helper to 2.3.0.
+
 2.2.1 - 2026-08-17
 ------------------
 - Removes the target-only Windows refresh-choice experiment that could reject

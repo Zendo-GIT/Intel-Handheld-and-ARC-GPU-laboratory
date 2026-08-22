@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Version 2.2.1 separates six responsibilities:
+Version 2.3.0 separates nine responsibilities:
 
 1. `MSI-Claw-VRR-Fix.ps1` validates hardware, generates exact EDID variants,
    selects Intel Arc Sync profiles, manages Windows refresh and owns the
@@ -11,11 +11,21 @@ Version 2.2.1 separates six responsibilities:
    flags through a direct D3DKMT Intel private escape.
 3. `ArcSync-Range-Policy.ps1` isolates normal range matching and the exact
    TMA2027 telemetry exception.
-4. `Experimental-Overclock-VRR-Trial.ps1` schedules and executes the protected
-   one-time 15-second display-overclock trial.
+4. `Experimental-Overclock-VRR-Trial.ps1` schedules and executes the protected,
+   user-started, visibly animated 30-second display-overclock trial.
 5. `ClawLab-Cursor-Refresh-Helper.exe` raises normal desktop composition from
    the VRR floor only in response to visible raw-mouse movement.
-6. Windowless VBS launchers run one-shot sign-in operations without visible
+6. `Scheduled-Task-Persistence.ps1` owns exact Task Scheduler COM readback,
+   semantic validation, bounded registration and verified removal.
+7. `ClawLab-VRR-Transaction.ps1` coordinates public mutable actions across one
+   verified UAC identity and prevents split VRR/LFC completion. An already
+   elevated launch inherits its verified token in the bound child rather than
+   crossing a redundant second UAC boundary.
+8. `ClawLab-Localization.ps1` and `locales/messages.json` provide the validated
+   34-language public interface while internal state identifiers remain fixed.
+   Runtime PowerShell is restricted to code-page-independent ASCII and the
+   external translation catalog is decoded explicitly as UTF-8.
+9. Windowless VBS launchers run one-shot sign-in operations without visible
    PowerShell windows.
 
 No component contains game-specific logic or accesses a game process.
@@ -85,16 +95,29 @@ The official 48–120 mode has no EDID override and uses the physical hash.
 Three sources of truth are intentionally separate:
 
 - physical EDID range: 48–120 Hz;
-- Intel Control Library monitor capability: observed as 24–120 Hz on TMA2027;
+- Intel Control Library monitor capability: observed as 24–120 Hz for the
+  physical floor and 15–120 Hz after one managed 30–120 load on TMA2027;
 - Intel active profile: selected independently as the exact managed range.
 
-`ArcSync-Range-Policy.ps1` accepts 24–120 only as
+`ArcSync-Range-Policy.ps1` classifies 24–120 as
 `INTEL_CONTROL_LIB_HALF_PHYSICAL_FLOOR` for panel key
-`CLAW_A1M_CLAW_7_AI_PLUS`. Expected profile minimum remains restricted to 30 or
-48, and expected maximum to 120, 144, 165, 180 or 192. The direct D3DKMT interface
-may continue to report physical 48–120 on this panel; it is accepted only when
-the loaded EDID hash is the exact expected managed variant. Thus a pending,
-foreign or mismatched EDID cannot be mistaken for a ready profile.
+`CLAW_A1M_CLAW_7_AI_PLUS`. It classifies the 15 Hz variant as
+`INTEL_CONTROL_LIB_HALF_MANAGED_FLOOR` only when its caller supplies an exact
+expected 30 Hz managed minimum and a known ceiling. The current-version managed
+record, active Intel profile and expected EDID must then independently agree;
+without that binding, 15 Hz remains `UNSUPPORTED`. Expected profile minimum is
+still restricted to 30 or 48, and expected maximum to 120, 144, 165, 180 or
+192. The direct D3DKMT interface may continue to report physical 48–120 on this
+panel; it is accepted only when the loaded EDID hash is the exact expected
+managed variant. Thus a pending, foreign or mismatched EDID cannot be mistaken
+for a ready profile.
+
+The exact affected-driver first-install signature additionally requires active
+profile ID 7 `CUSTOM 30–120`, 8333/8333 µs timings, one active display, native
+1920×1080 at 120 Hz, no EDID override and a direct Intel 48–120 state with VRR
+and both original solution flags enabled. That complete state can be preserved
+as the restoration baseline only for `Install30`; no Intel profile setter is
+called. Any variation, `Install48` or overclock request remains refused.
 
 ## Intel Control Library path
 
@@ -129,7 +152,7 @@ An experimental install is a two-phase transaction.
 - save the original Intel profile;
 - write only the exact generated EDID blocks;
 - record panel key, physical/experimental hashes, range and classification;
-- do not install normal persistence or LFC yet;
+- do not install stable VRR, LFC or Cursor Helper persistence yet;
 - stage exact runtime files and register a limited-interactive one-time task in
   the same elevated transaction as the pending EDID;
 - roll back the pending EDID, managed state, task and copied trial artifacts if
@@ -149,19 +172,28 @@ An experimental install is a two-phase transaction.
 
 - task waits 10 seconds after sign-in for display initialization;
 - exact trial context is revalidated;
+- a visible ready dialog must be explicitly accepted before any overclock is
+  applied;
 - the validated internal panel must be the only active Windows display;
 - requested Windows maximum and Intel `EXCELLENT` profile are attempted;
-- child execution is bounded to 15 seconds;
-- 120 Hz restoration runs unconditionally in `finally`;
-- confirmation appears only after safe restoration;
+- a separately bounded normal-user process presents an animated 30-second test
+  window, so the display is judged only after the desktop is visible;
+- the exact Windows maximum and Intel range are read back again at the end of
+  the observation;
+- 120 Hz restoration is attempted in `finally` and its result is verified;
+- confirmation appears only after verified safe restoration;
 - Yes is written to the trial record before a separate visible UAC request and
   protected-runtime verification/final persistence can pass;
-- No, timeout or error restores original state and restarts Windows.
+- No, timeout or error enters the exact saved-state recovery path. Automatic
+  restart is permitted only after independent terminal proof succeeds; failed
+  proof retains evidence and does not restart Windows automatically.
 
 `ConfirmExperimentalTrial` refuses to persist without `UserConfirmed = true` in
 the exact matching trial record. A successful path reapplies the requested
-Windows maximum, re-verifies Intel range, installs normal startup/cursor files,
-applies LFC, removes the trial task and restarts.
+Windows maximum and verifies the exact VRR identity, applies and verifies LFC,
+then validates the Cursor Refresh Helper and normal one-shot persistence before
+removing the trial task and restarting. This same terminal order applies to all
+eight confirmed experimental profiles and both stable profiles.
 
 ## Restore-before-switch state machine
 
@@ -170,10 +202,22 @@ required artifacts agree. `Test-ClawLabProfileTransitionAllowed` implements:
 
 ```text
 CLEAN/NONE                       -> requested mode allowed
-CONSISTENT + current 2.2.1 + same requested mode -> allowed as idempotent repair
+CONSISTENT + current 2.3.0 + same stable mode -> guarded in-place repair
+CONSISTENT + any experimental mode             -> Restore before a new trial
 older managed FixVersion -> OLDER_VERSION_RESTORE_REQUIRED
 anything else                    -> RESTORE_ORIGINAL_VRR required
 ```
+
+The core transition policy can recognize an exact same experimental mode, but
+the public 2.3.0 coordinator deliberately does not reuse a previously confirmed
+trial. It requires Restore so that each overclock installation receives a new
+warning, timed test and explicit confirmation. A stable repair retains its
+pre-existing original backups; if joint VRR/LFC verification fails, ClawLab
+marks recovery required instead of consuming those backups as compensation.
+The public repair path additionally requires the exact current panel, physical
+EDID, managed mode and both backups. It can rebuild missing managed task/payload
+state or recover a narrowly recognized Intel standard-profile reset after a
+driver update. Unknown `CUSTOM`, range or identity drift remains refused.
 
 `Test-ClawLabFirstInstallProfileSafe` adds a separate baseline rule: a genuine
 `CLEAN/NONE` first installation accepts Intel `RECOMMENDED` or `EXCELLENT`
@@ -181,13 +225,24 @@ directly. A clean unmanaged `CUSTOM` result enters a normalization transaction:
 the main script tries Intel `RECOMMENDED`, obtains fresh ControlLib readback and,
 if the driver silently retains `CUSTOM`, tries `EXCELLENT` and reads back again.
 Only verified profile ID 1 or 2 can become the restoration baseline. Unknown
-CUSTOM values are never adopted, and failure leaves no backup.
+CUSTOM values are never adopted. Before the first setter, the exact snapshot and
+panel/GPU/driver/target identity are atomically stored in
+`normalization-compensation.json`. Success retires that journal only after the
+standard baseline backup is verified. Failure or power loss restores the exact
+snapshot; unresolved compensation blocks new installs until Recovery resumes it.
+
+`Get-ClawLabFirstInstallBaselineDecision` contains one narrow exception to that
+last rule for the complete TMA2027 OEM signature above. The saved backup records
+the baseline policy. Factory reset and restore use pure policy decisions: an
+exact matching TMA2027 baseline is preserved without a setter, while any drift
+is rejected before display or managed-state mutation. Standard Intel baselines
+retain the existing verified skip/write behavior.
 
 No exception exists for stable-to-stable, stable-to-experimental, or one
 experimental range to another. The pure test covers every pair for both panel
 families.
 
-## Intel LFC component 2.0.6
+## Intel LFC component 2.0.7
 
 The direct Intel driver interface queries VRR support, range, enable state and
 both solution flags. Before change, schema-4 backup records original values,
@@ -195,14 +250,13 @@ physical panel identity, active EDID, managed mode, driver and monitor-instance
 history. Atomic file replacement uses a real same-directory backup path for
 Windows PowerShell/.NET compatibility.
 
-Both low- and high-FPS solutions are disabled and read back. Any error restores
-saved values. The one-shot sign-in task first waits for the managed VRR reapply,
-then verifies the exact mode/EDID/range policy before touching flags.
-
-The standalone VRR task and the LFC parent can be triggered at nearly the same
-time. A per-user named mutex serializes only their `ApplyStartup` phase, avoiding
-duplicate profile/helper operations. The mutex is released when startup work
-ends and is not a resident watcher.
+Both low- and high-FPS solutions are disabled and read back. Any error enters
+verified saved-state recovery. The LFC task is the canonical sign-in
+orchestrator: it holds the global display-transaction lock, invokes and waits for
+the bounded VRR child, then takes the shared startup lock and applies LFC only
+after exact mode/EDID/range verification. The direct VRR task delegates driver
+writes whenever that exact orchestrator and payload verify, and remains a
+fail-closed fallback if they do not. No resident watcher is installed.
 
 All stable and experimental profiles receive the same LFC patch. TMA2027 uses
 the exact-panel direct-range exception described above; CSW0801 still requires
@@ -215,14 +269,31 @@ removes the original Run entry while managed, runs its own one-shot task, then
 starts the trusted Intel application. Signed application updates are accepted
 only after fresh Authenticode and SHA-256 verification.
 
-The windowless task launcher starts the already installed non-elevated cursor
-helper as its first best-effort action. It does not wait for PowerShell, WMI or
-Intel Control Library initialization. The helper waits internally for the
-interactive shell and DWM composition before creating its surface. The main
-verified startup path later checks its hash/state and recreates that surface
-exactly once after Intel/display initialization settles. This separates desktop
-responsiveness from the slower driver-stabilization phase without accepting an
-early but ineffective DWM window or creating a resident VRR watcher.
+If an Intel update rewrites the Run command while an older ClawLab backup still
+exists, the differing entry is classified separately from an unknown entry. It
+may be adopted for managed ordering or preserved during Recovery only after its
+canonical executable path, Intel Authenticode signer and stable file identity
+are freshly proven. Recovery therefore does not require a deleted legacy ZIP,
+but it still refuses an unsigned, noncanonical or unrecognized command.
+
+Task specifications retain the caller SID as their immutable ownership key.
+Registration uses the NT account name translated from that SID because affected
+Windows installations reject a raw SID in Task Scheduler XML `Principal/UserId`
+with `ERROR_INVALID_PARAMETER`. Trigger and principal readback are translated
+back to SID and must match before a task can be reused, started or removed.
+
+A dedicated limited-user logon task executes the installed Cursor Refresh
+Engine directly with no PowerShell, WMI or Intel Control Library dependency.
+The trigger has zero delay and Task Scheduler priority 2 (`AboveNormal`), rather
+than the priority-7 `BelowNormal` default. The executable reasserts the same
+priority on itself but remains non-elevated. The process waits internally for
+the interactive shell and DWM composition,
+creates its native swap chain and begins a bounded 30-second warm-up. This early
+desktop action does not satisfy the terminal transaction. The coordinated path
+applies and verifies VRR, applies and verifies LFC, then sets a named auto-reset
+resynchronization event. The existing process recreates its DXGI swap chain in
+place and starts one final bounded warm-up. No process stop/start gap and no
+additional profile write occurs.
 
 Every other VRR/EDID writer must be disabled. The only supported exception is
 [ClawTweaks 3.0 or later](https://github.com/enterTheVoidCode/ClawTweaks), whose
@@ -231,31 +302,60 @@ not a dependency; absent installations skip the optional startup wait.
 
 ## Cursor helper implementation
 
-The C#/.NET Framework WPF helper registers Raw Input with `RIDEV_INPUTSINK` and
-uses no per-packet native allocation. While a visible mouse moves it animates a
-nearly transparent 2×2 surface at the extreme lower-right corner. Its 8 ms
-animation timer stays active for 1.5 seconds after the latest input to avoid
-rapid floor/ceiling oscillation. Deep idle stops the timer, calls
-`timeEndPeriod(1)`, trims only its process working set and waits in the Windows
-message loop.
+The primary C#/.NET Framework engine creates a non-activating 2×2 native Win32
+window at the extreme lower-right corner and a D3D11/DXGI flip-sequential swap
+chain. Before every `Present(1, 0)`, it clears the current backbuffer to one of
+two opaque black/near-black values through `ID3D11DeviceContext`, ensuring the
+2×2 content really changes without becoming visibly distracting. It registers
+generic-desktop mouse Raw Input with `RIDEV_INPUTSINK` and does not allocate a
+native packet buffer per event. Presentations continue for
+1.5 seconds after the latest visible mouse packet. Hidden cursors suppress the
+tail, so controller/game use naturally reaches idle without inspecting a
+profile manager or game process.
 
-Hidden cursors suppress activation. Controller use therefore consumes no
-continuous animation resources. The helper is non-elevated and does not inject
-into or inspect elevated windows or games.
+After the bounded sign-in warm-up or mouse tail expires, the engine performs no
+presentation and calls `MsgWaitForMultipleObjectsEx` with an infinite timeout
+over native messages plus named Shutdown/Resync events. This is deep idle: no
+polling loop, timer-resolution request, periodic profile write or continuous
+animation. Resync recreates only the swap chain and never changes VRR/EDID/LFC.
+
+If native window, D3D11 or DXGI initialization throws, the same executable
+records the reason and falls back to the earlier WPF/DWM implementation. This
+fallback is confined to the optional desktop helper. It cannot restore or
+change the managed display profile. Status distinguishes native flip,
+compatibility presentation and WPF fallback states.
+
+`UPDATE_CURSOR_REFRESH_ENGINE.bat` is a separate maintenance transaction. It
+requires exact 2.3.0 managed-mode and Intel range consistency before elevation,
+then updates only the executable/state record and dedicated task. Its result
+explicitly reports that profile, LFC and EDID were unchanged.
 
 ## Recovery boundaries
 
 Normal restore order is:
 
 1. select safe 120 Hz for an overclock state;
-2. restore saved Intel LFC flags;
-3. restore saved Intel Arc Sync profile;
-4. remove only exact known ClawLab EDID blocks;
-5. remove tasks/helpers/scripts;
-6. restore the original Intel Graphics Software startup state;
-7. require a restart to reload the physical EDID.
+2. run LFC `PrepareRestore`, which restores and verifies the saved flags while
+   retaining their exact active backup;
+3. restore and verify the saved Intel Arc Sync profile, exact known ClawLab EDID
+   blocks, tasks, helper payloads and original Intel Graphics Software startup
+   state;
+4. run LFC `CommitRestore`, atomically converting the retained backup into
+   `restore-committed.json`;
+5. prove the complete VRR/LFC state independently;
+6. run LFC `FinalizeRestore`, atomically retaining terminal
+   `restore-finalized.json` provenance, then prove the terminal state again;
+7. request a restart only after that proof succeeds so Windows reloads the
+   physical EDID.
 
-Step 3 is idempotent. The current snapshot is compared with every saved CUSTOM
+An interruption at any stage is resumable. Failed terminal proof does not
+request an automatic restart, does not delete the transaction journal and does
+not discard recovery evidence. The one-time trial task is neutralized when safe.
+The separately labelled LFC Factory Defaults action follows an analogous
+`factory-default-intent.json` to `factory-finalized.json` transaction, so a
+crash can resume without guessing whether one or both flags were changed.
+
+Arc Sync restoration is idempotent. The current snapshot is compared with every saved CUSTOM
 field (profile ID, range and both transition timings), or with the saved
 standard profile ID. If it already matches, the setter is skipped; fresh
 readback must still match before cleanup. Transient Intel device/KMD/retry
@@ -263,11 +363,29 @@ results receive up to three fresh ControlLib attempts. Internal adapter,
 display, support and telemetry-drift failures use distinct ClawLab errors and
 are no longer reported as Intel `CTL_RESULT_ERROR_KMD_CALL`.
 
+A separate missing-backup resolver is limited to an orphaned legacy startup
+shell. It first attempts the normal fully-clean proof. Only if that fails does
+the private `RecoverOrphanedDefaultState` action permit cleanup, and only after
+fresh readback matches an exact pinned unmanaged factory signature: Claw 8
+`RECOMMENDED 60-120` with 8333/8333 us timings, or the exact TMA2027 OEM
+`CUSTOM 30-120` signature. It additionally proves native 120 Hz, Intel factory
+LFC flags, no EDID/normalization/managed record/protected runtime, no other
+tasks, and exact ownership of the one invalid VRR task. The action contains no
+Arc Sync setter, display-mode setter or EDID registry write. It deletes the
+owned task/payloads, rereads the factory profile, and then runs the ordinary
+clean-state proof before the transaction may continue.
+
 The health policy distinguishes an exact clean uninstall (no managed record,
 backup, EDID, task, helper or LFC modification) from a broken installation and
 reports `CLEAN_NOT_INSTALLED`. A clean unmanaged CUSTOM Arc Sync profile remains
 visible but receives the automatic standard-profile normalization instruction,
 not another Restore.
+
+Before the final requested restart, status may legitimately expose a managed
+`*_PENDING_RESTART` state, `READY_AT_NEXT_SIGN_IN` persistence and
+`LfcFixActive: False`. Health policy treats these as transitional rather than
+terminal success or failure. After restart, exact active-profile and LFC
+readback, including `LfcFixActive: True`, is required.
 
 Unknown third-party EDID blocks are never removed. Emergency EDID removal also
 requires an exact known hash and exact validated registry path.
@@ -280,7 +398,8 @@ requires an exact known hash and exact validated registry path.
 - rebuilds and versions the cursor helper;
 - verifies physical and custom EDID hashes for both panels;
 - reproduces all 16 overclock variants;
-- runs the complete profile-switch matrix;
+- runs the complete two-panel profile-switch matrix: 20 same-mode recognitions
+  and 180 cross-profile refusals across ten modes per panel;
 - validates mandatory 10/15/30-second trial markers and rollback actions;
 - rejects any 24 Hz install marker;
 - validates ZIP layout and emits per-file and archive SHA-256 manifests.

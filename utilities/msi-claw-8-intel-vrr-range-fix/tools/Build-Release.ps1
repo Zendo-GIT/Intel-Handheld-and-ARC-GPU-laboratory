@@ -1,52 +1,125 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.2.1'
+    [string]$Version = '2.3.0',
+    [switch]$ValidateOnly
 )
 
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
 $packageName = 'MSI-Claw-Intel-VRR-Range-Fix'
+$expectedLfcVersion = '2.0.7'
+$expectedProtectedRuntimeVersion = '2.3.0'
 $distRoot = Join-Path $projectRoot 'dist'
 $stagingRoot = Join-Path $distRoot ".staging-$packageName-$Version"
 $stagedPackageRoot = Join-Path $stagingRoot $packageName
 $archiveName = "$packageName-$Version.zip"
 $archivePath = Join-Path $distRoot $archiveName
 $hashPath = Join-Path $distRoot 'RELEASE_SHA256.txt'
+$archiveHashPath = "$archivePath.sha256.txt"
 $cursorHelperRelativePath = 'ClawLab-Cursor-Refresh-Helper.exe'
 $cursorHelperPath = Join-Path $projectRoot $cursorHelperRelativePath
 $cursorHelperBuilder = Join-Path $projectRoot 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'
 
-& $cursorHelperBuilder -OutputDirectory $projectRoot | Out-Host
-if (-not (Test-Path -LiteralPath $cursorHelperPath -PathType Leaf)) {
-    throw 'Cursor Refresh Helper build did not produce the expected executable.'
-}
-$cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
-if ($cursorHelperAssembly.Version.ToString() -ne "$Version.0") {
-    throw "Cursor Refresh Helper version $($cursorHelperAssembly.Version) does not match release $Version."
-}
-$cursorHelperSourcePath = Join-Path $projectRoot 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'
-$cursorHelperSourceText = Get-Content -LiteralPath $cursorHelperSourcePath -Raw
-foreach ($value in @(
-        '1500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices',
-        'SetProcessWorkingSetSize', 'timeEndPeriod(1)',
-        'WaitForInteractiveDesktop();', 'GetShellWindow()', 'DwmIsCompositionEnabled'
-    )) {
-    if ($cursorHelperSourceText -notmatch [regex]::Escape($value)) {
-        throw "Cursor Refresh Helper source is missing the validated allocation-free marker: $value"
+function Assert-ContainsLiteral {
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$Value,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    if (-not $Text.Contains($Value)) {
+        throw "$Label is missing required value: $Value"
     }
 }
-foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')) {
-    if ($cursorHelperSourceText -match [regex]::Escape($forbiddenMarker)) {
-        throw "Cursor Refresh Helper source reintroduced a per-packet native allocation path: $forbiddenMarker"
+
+function Get-LiteralStringArrayAssignment {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$VariableName
+    )
+
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile(
+        [IO.Path]::GetFullPath($Path), [ref]$tokens, [ref]$parseErrors)
+    if (@($parseErrors).Count -gt 0) {
+        throw "Cannot parse $Path while validating $VariableName."
+    }
+    $assignments = @($ast.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and
+                $node.Left.VariablePath.UserPath -ceq $VariableName
+            }, $true))
+    if ($assignments.Count -ne 1) {
+        throw "Expected one literal assignment for $VariableName in $Path; found $($assignments.Count)."
+    }
+    return @($assignments[0].Right.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.StringConstantExpressionAst]
+            }, $true) | ForEach-Object { [string]$_.Value })
+}
+
+function Get-LiteralStringArrayFunctionResult {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$FunctionName
+    )
+
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile(
+        [IO.Path]::GetFullPath($Path), [ref]$tokens, [ref]$parseErrors)
+    if (@($parseErrors).Count -gt 0) {
+        throw "Cannot parse $Path while validating $FunctionName."
+    }
+    $functions = @($ast.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -ceq $FunctionName
+            }, $true))
+    if ($functions.Count -ne 1) {
+        throw "Expected one function named $FunctionName in $Path; found $($functions.Count)."
+    }
+    $returnStatements = @($functions[0].Body.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.ReturnStatementAst]
+            }, $true))
+    if ($returnStatements.Count -ne 1) {
+        throw "Expected one literal return statement in $FunctionName; found $($returnStatements.Count)."
+    }
+    return @($returnStatements[0].Pipeline.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.StringConstantExpressionAst]
+            }, $true) | ForEach-Object { [string]$_.Value })
+}
+
+function Invoke-ClawLabTestInShell {
+    param(
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string]$TestPath,
+        [Parameter(Mandatory = $true)][string]$ShellLabel
+    )
+
+    Write-Host ("[{0}] {1}" -f $ShellLabel, (Split-Path $TestPath -Leaf)) -ForegroundColor Cyan
+    & $Executable -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $TestPath | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "$ShellLabel validation failed: $TestPath (exit $LASTEXITCODE)."
     }
 }
 
 $releaseFiles = @(
     [pscustomobject]@{ Source = 'INSTALL_48_120_VRR.bat'; Destination = 'INSTALL_48_120_VRR.bat' },
     [pscustomobject]@{ Source = 'INSTALL_30_120_VRR.bat'; Destination = 'INSTALL_30_120_VRR.bat' },
+    [pscustomobject]@{ Source = 'SELECT_LANGUAGE.bat'; Destination = 'SELECT_LANGUAGE.bat' },
+    [pscustomobject]@{ Source = 'CHECK_STATUS.bat'; Destination = 'CHECK_STATUS.bat' },
+    [pscustomobject]@{ Source = 'UPDATE_CURSOR_REFRESH_ENGINE.bat'; Destination = 'UPDATE_CURSOR_REFRESH_ENGINE.bat' },
+    [pscustomobject]@{ Source = 'README.txt'; Destination = 'README.txt' },
+    [pscustomobject]@{ Source = 'CHANGELOG.txt'; Destination = 'CHANGELOG.txt' },
+    [pscustomobject]@{ Source = 'LICENSE.txt'; Destination = 'LICENSE.txt' },
+
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat' },
@@ -55,10 +128,6 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat' },
     [pscustomobject]@{ Source = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'; Destination = 'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat' },
-    [pscustomobject]@{ Source = 'CHECK_STATUS.bat'; Destination = 'CHECK_STATUS.bat' },
-    [pscustomobject]@{ Source = 'README.txt'; Destination = 'README.txt' },
-    [pscustomobject]@{ Source = 'CHANGELOG.txt'; Destination = 'CHANGELOG.txt' },
-    [pscustomobject]@{ Source = 'LICENSE.txt'; Destination = 'LICENSE.txt' },
 
     [pscustomobject]@{ Source = 'RESTORE_ORIGINAL_VRR.bat'; Destination = 'RECOVERY\RESTORE_ORIGINAL_VRR.bat' },
     [pscustomobject]@{ Source = 'RESTORE_INTEL_LFC_DEFAULTS.bat'; Destination = 'RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat' },
@@ -68,6 +137,7 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat'; Destination = 'DIAGNOSTICS\COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat' },
     [pscustomobject]@{ Source = 'EXPORT_STATUS_REPORT.bat'; Destination = 'DIAGNOSTICS\EXPORT_STATUS_REPORT.bat' },
 
+    [pscustomobject]@{ Source = 'ClawLab-VRR-Transaction.ps1'; Destination = 'scripts\ClawLab-VRR-Transaction.ps1' },
     [pscustomobject]@{ Source = 'MSI-Claw-VRR-Fix.ps1'; Destination = 'scripts\MSI-Claw-VRR-Fix.ps1' },
     [pscustomobject]@{ Source = 'MSI-Claw-Intel-LFC-Fix.ps1'; Destination = 'scripts\MSI-Claw-Intel-LFC-Fix.ps1' },
     [pscustomobject]@{ Source = 'Intel-VRR-LFC-Driver-Interface.ps1'; Destination = 'scripts\Intel-VRR-LFC-Driver-Interface.ps1' },
@@ -77,6 +147,10 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'Edid-Normalization.ps1'; Destination = 'scripts\Edid-Normalization.ps1' },
     [pscustomobject]@{ Source = 'Lfc-Backup-Identity.ps1'; Destination = 'scripts\Lfc-Backup-Identity.ps1' },
     [pscustomobject]@{ Source = 'ArcSync-Range-Policy.ps1'; Destination = 'scripts\ArcSync-Range-Policy.ps1' },
+    [pscustomobject]@{ Source = 'Scheduled-Task-Persistence.ps1'; Destination = 'scripts\Scheduled-Task-Persistence.ps1' },
+    [pscustomobject]@{ Source = 'ClawLab-Localization.ps1'; Destination = 'scripts\ClawLab-Localization.ps1' },
+    [pscustomobject]@{ Source = 'tools\Select-ClawLab-Language.ps1'; Destination = 'scripts\Select-ClawLab-Language.ps1' },
+    [pscustomobject]@{ Source = 'locales\messages.json'; Destination = 'scripts\locales\messages.json' },
     [pscustomobject]@{ Source = 'Experimental-Overclock-VRR-Trial.ps1'; Destination = 'scripts\Experimental-Overclock-VRR-Trial.ps1' },
     [pscustomobject]@{ Source = 'ClawLab-Cursor-Refresh-Helper.exe'; Destination = 'scripts\ClawLab-Cursor-Refresh-Helper.exe' },
     [pscustomobject]@{ Source = 'ClawLab-VRR-Startup.vbs'; Destination = 'scripts\ClawLab-VRR-Startup.vbs' },
@@ -88,7 +162,7 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'docs\TECHNICAL_DETAILS.md'; Destination = 'docs\TECHNICAL_DETAILS.md' },
     [pscustomobject]@{ Source = 'docs\NEXUS_MODS.md'; Destination = 'docs\NEXUS_MODS.md' },
     [pscustomobject]@{ Source = 'docs\A1M_EDID_REFERENCE.md'; Destination = 'docs\A1M_EDID_REFERENCE.md' },
-    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.2.1.md'; Destination = 'docs\RELEASE_NOTES_2.2.1.md' },
+    [pscustomobject]@{ Source = 'docs\RELEASE_NOTES_2.3.0.md'; Destination = 'docs\RELEASE_NOTES_2.3.0.md' },
 
     [pscustomobject]@{ Source = 'tools\Test-A1M-Edid.ps1'; Destination = 'SOURCE\Test-A1M-Edid.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Lfc-Backup-Identity.ps1'; Destination = 'SOURCE\Test-Lfc-Backup-Identity.ps1' },
@@ -97,14 +171,110 @@ $releaseFiles = @(
     [pscustomobject]@{ Source = 'tools\Test-Experimental-Overclock-Edids.ps1'; Destination = 'SOURCE\Test-Experimental-Overclock-Edids.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Public-Installer-Matrix.ps1'; Destination = 'SOURCE\Test-Public-Installer-Matrix.ps1' },
     [pscustomobject]@{ Source = 'tools\Test-Protected-Runtime-Acl.ps1'; Destination = 'SOURCE\Test-Protected-Runtime-Acl.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Scheduled-Task-Persistence.ps1'; Destination = 'SOURCE\Test-Scheduled-Task-Persistence.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Tma2027-Recovery-Flow.ps1'; Destination = 'SOURCE\Test-Tma2027-Recovery-Flow.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Guarded-Trial-FailClosed.ps1'; Destination = 'SOURCE\Test-Guarded-Trial-FailClosed.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-ClawLab-VRR-Transaction.ps1'; Destination = 'SOURCE\Test-ClawLab-VRR-Transaction.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Startup-Orchestration.ps1'; Destination = 'SOURCE\Test-Startup-Orchestration.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Normalization-Compensation.ps1'; Destination = 'SOURCE\Test-Normalization-Compensation.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Lfc-Factory-Defaults-Recovery.ps1'; Destination = 'SOURCE\Test-Lfc-Factory-Defaults-Recovery.ps1' },
+    [pscustomobject]@{ Source = 'tools\Test-Stable-Same-Profile-Repair.ps1'; Destination = 'SOURCE\Test-Stable-Same-Profile-Repair.ps1' },
+    [pscustomobject]@{ Source = 'tests\Test-ClawLab-Localization.ps1'; Destination = 'SOURCE\Test-ClawLab-Localization.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs' },
+    [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\ClawLabCursorRefreshNativeDxgi.cs'; Destination = 'SOURCE\CursorRefreshHelper\ClawLabCursorRefreshNativeDxgi.cs' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\Build-CursorRefreshHelper.ps1'; Destination = 'SOURCE\CursorRefreshHelper\Build-CursorRefreshHelper.ps1' },
     [pscustomobject]@{ Source = 'tools\CursorRefreshHelper\README.md'; Destination = 'SOURCE\CursorRefreshHelper\README.md' }
 )
 
 foreach ($releaseFile in $releaseFiles) {
-    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $releaseFile.Source) -PathType Leaf)) {
+    $sourcePath = Join-Path $projectRoot $releaseFile.Source
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
         throw "Release file missing: $($releaseFile.Source)"
+    }
+}
+$releasePowerShellSources = @($releaseFiles | Where-Object {
+        [IO.Path]::GetExtension([string]$_.Destination) -ieq '.ps1'
+    })
+foreach ($releasePowerShellSource in $releasePowerShellSources) {
+    $sourcePath = Join-Path $projectRoot ([string]$releasePowerShellSource.Source)
+    $nonAsciiBytes = @([IO.File]::ReadAllBytes($sourcePath) | Where-Object { $_ -gt 0x7F })
+    if ($nonAsciiBytes.Count -gt 0) {
+        throw "PowerShell release source is not code-page-independent ASCII: $($releasePowerShellSource.Source)"
+    }
+}
+$plannedBatchLaunchers = @($releaseFiles | Where-Object {
+        [IO.Path]::GetExtension([string]$_.Source) -ieq '.bat'
+    })
+foreach ($launcher in $plannedBatchLaunchers) {
+    $launcherPath = Join-Path $projectRoot ([string]$launcher.Source)
+    $launcherText = [IO.File]::ReadAllText($launcherPath, [Text.Encoding]::Default)
+    if ([regex]::Matches($launcherText,
+            '(?im)^set "CLAWLAB_POWERSHELL=%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe"\s*$').Count -ne 1 -or
+        [regex]::Matches($launcherText,
+            '(?im)^if not exist "%CLAWLAB_POWERSHELL%" exit /b 1\s*$').Count -ne 1 -or
+        [regex]::Matches($launcherText,
+            '(?im)^"%CLAWLAB_POWERSHELL%"\s').Count -ne 1 -or
+        $launcherText -match '(?im)^\s*powershell(?:\.exe)?\s') {
+        throw "Release launcher does not use the fail-closed absolute Windows PowerShell path: $($launcher.Source)"
+    }
+}
+$duplicateDestinations = @($releaseFiles | Group-Object Destination | Where-Object Count -ne 1)
+if ($duplicateDestinations.Count -gt 0) {
+    throw "Duplicate release destinations: $($duplicateDestinations.Name -join ', ')"
+}
+foreach ($releaseFile in $releaseFiles) {
+    $source = [string]$releaseFile.Source
+    $destination = [string]$releaseFile.Destination
+    if ([IO.Path]::IsPathRooted($source) -or $source -match '(^|[\\/])\.\.([\\/]|$)') {
+        throw "Unsafe release source: $source"
+    }
+    if ([IO.Path]::IsPathRooted($destination) -or $destination -match '(^|[\\/])\.\.([\\/]|$)') {
+        throw "Unsafe release destination: $destination"
+    }
+}
+$expectedRootFiles = @(
+    'INSTALL_30_120_VRR.bat', 'INSTALL_48_120_VRR.bat',
+    'SELECT_LANGUAGE.bat', 'CHECK_STATUS.bat', 'UPDATE_CURSOR_REFRESH_ENGINE.bat', 'README.txt',
+    'CHANGELOG.txt', 'LICENSE.txt', 'FILES_SHA256.txt'
+)
+$requiredStructuredEntries = @(
+    'RECOVERY/RESTORE_ORIGINAL_VRR.bat',
+    'EMERGENCY/FACTORY_RESET_CLAWLAB_VRR.bat',
+    'DIAGNOSTICS/EXPORT_STATUS_REPORT.bat',
+    'scripts/ClawLab-VRR-Transaction.ps1',
+    'scripts/Scheduled-Task-Persistence.ps1',
+    'scripts/ClawLab-Localization.ps1',
+    'scripts/Select-ClawLab-Language.ps1',
+    'scripts/locales/messages.json',
+    'scripts/MSI-Claw-VRR-Fix.ps1',
+    'scripts/MSI-Claw-Intel-LFC-Fix.ps1',
+    'scripts/Experimental-Overclock-VRR-Trial.ps1',
+    'scripts/ClawLab-Cursor-Refresh-Helper.exe',
+    'SOURCE/Test-ClawLab-Localization.ps1',
+    'SOURCE/Test-Scheduled-Task-Persistence.ps1',
+    'SOURCE/Test-ClawLab-VRR-Transaction.ps1',
+    'SOURCE/Test-Tma2027-Recovery-Flow.ps1',
+    'SOURCE/Test-Guarded-Trial-FailClosed.ps1',
+    'SOURCE/Test-Startup-Orchestration.ps1',
+    'SOURCE/Test-Normalization-Compensation.ps1',
+    'SOURCE/Test-Lfc-Factory-Defaults-Recovery.ps1',
+    'SOURCE/Test-Stable-Same-Profile-Repair.ps1',
+    'SOURCE/Test-Public-Installer-Matrix.ps1',
+    'SOURCE/CursorRefreshHelper/ClawLabCursorRefreshNativeDxgi.cs',
+    'docs/RELEASE_NOTES_2.3.0.md'
+)
+$plannedEntries = @($releaseFiles | ForEach-Object {
+        ([string]$_.Destination).Replace('\', '/')
+    }) + @('FILES_SHA256.txt')
+$plannedRootFiles = @($plannedEntries | Where-Object { $_ -notmatch '/' } | Sort-Object)
+$missingPlannedRoot = @($expectedRootFiles | Where-Object { $_ -notin $plannedRootFiles })
+$unexpectedPlannedRoot = @($plannedRootFiles | Where-Object { $_ -notin $expectedRootFiles })
+if ($missingPlannedRoot.Count -gt 0 -or $unexpectedPlannedRoot.Count -gt 0) {
+    throw "Unexpected planned ZIP root. Missing: $($missingPlannedRoot -join ', '). Unexpected: $($unexpectedPlannedRoot -join ', ')."
+}
+foreach ($requiredEntry in $requiredStructuredEntries) {
+    if ($requiredEntry -notin $plannedEntries) {
+        throw "Required planned ZIP entry is missing: $requiredEntry"
     }
 }
 
@@ -116,465 +286,180 @@ $retiredPublicFiles = @(
 )
 foreach ($relativePath in $retiredPublicFiles) {
     if (Test-Path -LiteralPath (Join-Path $projectRoot $relativePath)) {
-        throw "Retired 144 Hz public file must not exist: $relativePath"
+        throw "Retired public file must not exist: $relativePath"
     }
 }
 
-$scriptPath = Join-Path $projectRoot 'MSI-Claw-VRR-Fix.ps1'
-$scriptText = Get-Content -LiteralPath $scriptPath -Raw
-$expectedFixVersionLine = "`$fixVersion = '$Version'"
-if ($scriptText -notmatch [regex]::Escape($expectedFixVersionLine)) {
-    throw "Release version $Version does not match the source fix version."
+& $cursorHelperBuilder -OutputDirectory $projectRoot | Out-Host
+if (-not (Test-Path -LiteralPath $cursorHelperPath -PathType Leaf)) {
+    throw 'Cursor Refresh Helper build did not produce the expected executable.'
 }
-$requiredIntegrityValues = @(
-    'E49BC570225510B7C889ED292570F1345CAA07F5840DB57EA6998A403DB5CEF0',
-    '14CDDC390CF69367C4B6821A46728518200446A33F708A1A87CA673B68B66918',
-    '597D5A95C28171B7B9DF111C1BB12830532F63831EA38111E02D618850E76698',
-    'C2000A5E8A3D91C80DCE75DC5BB2F63269C77501338FD059B4CF71CD0CE94743',
-    '4CFB165CE96119BA37A07176F9D346691D447E0A40E8697777E499E1556A744E',
-    '65E46C6D528BF69D31D17BB88FD47A17C98576597508CC75D3AD047A029A7172',
-    'CA1A52F35378CB58709876EDD9BC648224D3C8AE0FA176E96A587BE8DABD8EB2',
-    '0B8E8A25325B4D9CAC2B6A03CF9B574688B1A6D2DEDF10401605C4898E0CAC05',
-    '7773D16AFD7F0C9AE0363D1FDE684C12E20F460DB5815516EF76633F70FBF60D',
-    '8AD37320E4C2FF8DF4E71E205241A152DA3136CB0BE25F54E7A78D6273317640',
-    '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1',
-    '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647',
-    'FBB2CEFA8A0CC36CD5231D1070D4271165CAB9EA43A22271E3B2FD49D6914677',
-    '279EA02FF5AEB3FA474235ECFCD3119AE7845A969C2F6BB7A63866CC3151EF62',
-    '8EDC82A04D9E1FAD037CA4D794D53BD0D374C9554059B137E75C40D9F9C416A7',
-    '0D1969CF0C7CFBA3CF9F077667C1427E202DB895DFA0A750FAF1323F57A88E4B',
-    'AF1F6DEB144767F089522C37B89C1171DE59D06107B5F5073877A5693EBC9ADB',
-    '89B0BDD6ACEB5A2320F235864314CC33CD67E4F3E4107E21573D506594E902D2',
-    '0AA3BFD4DA2D6EB8D36BBA9F87CD476D453AD86651348CC3D17E8314BD3C898D',
-    'DFD9CBDDB7C0B8A711F026C43E3EB73165958F2E129857B97EB7EB008CB71B5E',
-    'C0147C505E16907C62E66B56A3436870B591E1CB7B2FBA6CA410EEE3BEBDDC51',
-    'CE853C0CB689CC6247E72E59C7965FEDCAE49479BCFD04EE7959FA3113A9D679',
-    'DC60F9E3CC7B33C4F094181C57E4AF271C1BFB4449AFDE2614B4EAC27C032752',
-    '949A7143DB4549FC7D0D36F9F2521A528C1C796DE8F3F1FA948E4B3DBF5ECED6',
-    '4FA15135645E89BF10DA6B007921BA6702E03951C8FB9D2E2576F2837AD02BDE',
-    '6553A5DA6651D29D447F0E0D14EC80CA631B1178544DA60E1CC2D54C4FAFB4C9',
-    "Name = 'TL070FVXS02-0'",
-    'ctlSetIntelArcSyncProfile',
-    'Get-AuthenticodeSignature',
-    'Start-ManagedIntelGraphicsSoftware',
-    'Write-IntelStartupBackupAtomically',
-    'Set-IntelStartupTrustedIdentity',
-    'OriginalEntryPresent',
-    'SchemaVersion = 4',
-    'Set-IntelStartupAbsentState',
-    'last-error.txt',
-    'Remove-FileIfPresent',
-    'IdentityVerifiedAt',
-    'WindowsDisplayMode',
-    'FileSha256',
-    'Assert-ProfileTransitionAllowed',
-    'managed-mode.json',
-    "'FactoryReset'",
-    'ApplyExperimentalTrial',
-    'ConfirmExperimentalTrial',
-    'SetSafe120ForTrial',
-    'Set-Safe120DisplayMode',
-    'ActiveDisplayCount()',
-    'Exactly one active display is required',
-    'ClawLab.MSIClaw.VrrApplyStartup',
-    'Enter-StartupApplyMutex',
-    'Exit-StartupApplyMutex',
-    '$expectedEmergencyPattern',
-    '[^\\]+\\Device Parameters\\EDID_OVERRIDE',
-    "'Intel' + [char]0x00AE + ' Graphics Software'"
-    'Install-CursorRefreshHelper',
-    'Start-CursorRefreshHelper',
-    'Restart-CursorRefreshHelper',
-    'Remove-CursorRefreshHelper',
-    'RUNNING_EVENT_DRIVEN',
-    'VERSION_MISMATCH'
-    'CLAW_A1M_CLAW_7_AI_PLUS'
-    'Overclock48_180EdidSha256'
-    'Overclock30_180EdidSha256'
-    'Overclock48_192EdidSha256'
-    'Overclock30_192EdidSha256'
-)
-foreach ($value in $requiredIntegrityValues) {
-    if ($scriptText -notmatch [regex]::Escape($value)) {
-        throw "Required integrity value is missing from the release source: $value"
-    }
+$cursorHelperAssembly = [Reflection.AssemblyName]::GetAssemblyName($cursorHelperPath)
+if ($cursorHelperAssembly.Version.ToString() -ne "$Version.0") {
+    throw "Cursor Refresh Helper version $($cursorHelperAssembly.Version) does not match release $Version."
 }
-$installActions = @(
-    [regex]::Matches($scriptText, "'Install\d+(?:_\d+)?'") |
-        ForEach-Object { $_.Value } |
-        Sort-Object -Unique
-)
-$expectedInstallActions = @(
-    "'Install30'", "'Install48'",
-    "'Install30_144'", "'Install30_165'", "'Install30_180'", "'Install30_192'",
-    "'Install48_144'", "'Install48_165'", "'Install48_180'", "'Install48_192'"
-)
-if (@(Compare-Object -ReferenceObject $expectedInstallActions -DifferenceObject $installActions).Count -ne 0) {
-    throw "Unexpected VRR installation actions: $($installActions -join ', ')"
-}
-foreach ($requiredRangeMarker in @(
-        '$targetMinimumHz = 48.0',
-        '$experimentalMinimumHz = 30.0',
-        '$targetMaximumHz = 120.0',
-        "'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192'",
-        "'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192'"
-    )) {
-    if ($scriptText -notmatch [regex]::Escape($requiredRangeMarker)) {
-        throw "Required 30-120 / 48-120 range guard is missing: $requiredRangeMarker"
-    }
-}
-foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'Install24', 'MinimumHz = 24', 'MinimumHz=24')) {
-    if ($scriptText -match [regex]::Escape($forbiddenRangeMarker)) {
-        throw "Forbidden 24 Hz profile marker found in the VRR source: $forbiddenRangeMarker"
-    }
-}
-
-$edidNormalizationText = Get-Content -LiteralPath (Join-Path $projectRoot 'Edid-Normalization.ps1') -Raw
-foreach ($value in @('ZERO_PADDED_128_NORMALIZED', '$baseBlock[126] -eq 0', '$Bytes[$index] -ne 0')) {
-    if ($edidNormalizationText -notmatch [regex]::Escape($value)) {
-        throw "EDID normalization safety module is missing: $value"
-    }
-}
-
-$a1mCatalogTest = Join-Path $projectRoot 'tools\Test-A1M-Edid.ps1'
-$a1mResult = & $a1mCatalogTest
-if ($null -eq $a1mResult -or [string]$a1mResult.Result -ne 'PASS') {
-    throw 'The pinned Claw A1M EDID generator test failed.'
-}
-
-$rangePolicyTest = Join-Path $projectRoot 'tools\Test-ArcSync-Range-Policy.ps1'
-$rangePolicyResult = & $rangePolicyTest
-if ($null -eq $rangePolicyResult -or [string]$rangePolicyResult.Result -ne 'PASS' -or
-    [string]$rangePolicyResult.ProfileSwitchMatrix -ne 'PASS' -or
-    [bool]$rangePolicyResult.TelemetryFloorInstallable) {
-    throw 'The Arc Sync telemetry and all-profile transition-guard test failed.'
-}
-
-$overclockEdidTest = Join-Path $projectRoot 'tools\Test-Experimental-Overclock-Edids.ps1'
-$overclockEdidResult = & $overclockEdidTest
-if ($null -eq $overclockEdidResult -or [string]$overclockEdidResult.Result -ne 'PASS' -or
-    [int]$overclockEdidResult.ProfilesVerified -ne 16 -or
-    [int]$overclockEdidResult.Unsupported24HzProfiles -ne 0) {
-    throw 'The two-panel guarded overclock EDID test failed.'
-}
-
-$installerMatrixTest = Join-Path $projectRoot 'tools\Test-Public-Installer-Matrix.ps1'
-$installerMatrixResult = & $installerMatrixTest
-if ($null -eq $installerMatrixResult -or [string]$installerMatrixResult.Result -ne 'PASS' -or
-    [int]$installerMatrixResult.LfcIntegratedProfiles -ne 10 -or
-    [string]$installerMatrixResult.GuardedTrialOrder -ne 'PASS' -or
-    [int]$installerMatrixResult.Forbidden24HzProfiles -ne 0) {
-    throw 'The public installer/action/LFC/guarded-trial matrix test failed.'
-}
-
-$protectedAclTest = Join-Path $projectRoot 'tools\Test-Protected-Runtime-Acl.ps1'
-$protectedAclResult = & $protectedAclTest
-if ($null -eq $protectedAclResult -or
-    [string]$protectedAclResult.Result -ne 'PASS' -or
-    -not [bool]$protectedAclResult.DistinctAclObjects -or
-    -not [bool]$protectedAclResult.StandardUserReadExecute -or
-    [bool]$protectedAclResult.StandardUserWrite) {
-    throw 'The protected-runtime fresh-ACL and standard-user access test failed.'
-}
-
-$lfcIdentityTest = Join-Path $projectRoot 'tools\Test-Lfc-Backup-Identity.ps1'
-$lfcIdentityResult = & $lfcIdentityTest
-if ($null -eq $lfcIdentityResult -or [string]$lfcIdentityResult.Result -ne 'PASS') {
-    throw 'The Intel LFC stable backup identity test failed.'
-}
-
-$lfcAtomicTest = Join-Path $projectRoot 'tools\Test-Lfc-Atomic-Replace.ps1'
-$lfcAtomicResult = & $lfcAtomicTest
-if ($null -eq $lfcAtomicResult -or [string]$lfcAtomicResult.Result -ne 'PASS') {
-    throw 'The Windows PowerShell atomic LFC backup replacement test failed.'
-}
-
-$launcherPath = Join-Path $projectRoot 'ClawLab-VRR-Startup.vbs'
-$launcherText = Get-Content -LiteralPath $launcherPath -Raw
+$cursorHelperWpfSourceText = [IO.File]::ReadAllText(
+    (Join-Path $projectRoot 'tools\CursorRefreshHelper\ClawLabCursorRefreshHelperWpf.cs'),
+    [Text.Encoding]::UTF8)
 foreach ($value in @(
-    '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe',
-    '%LOCALAPPDATA%\ClawLab\Intel-Arc-Sync-Full-Range\ClawLab-Cursor-Refresh-Helper.exe',
-    'fileSystem.FileExists(helperPath)',
-    'shell.Run helperCommand, 0, False',
-    'shell.Run(command, 0, True)',
-    '-Action ApplyStartup'
-)) {
-    if ($launcherText -notmatch [regex]::Escape($value)) {
-        throw "Windowless launcher no longer contains required value: $value"
-    }
+        '1500L / 1000L', 'NearBlackBrush', 'RegisterRawInputDevices',
+        'SetProcessWorkingSetSize', 'timeEndPeriod(1)', 'WaitForInteractiveDesktop();',
+        'StartupWarmupTicks', 'BeginStartupWarmup();',
+        'GetShellWindow()', 'DwmIsCompositionEnabled', "AssemblyVersion(`"$Version.0`")"
+    )) {
+    Assert-ContainsLiteral -Text $cursorHelperWpfSourceText -Value $value -Label 'Cursor Refresh WPF fallback source'
 }
-$helperLaunchIndex = $launcherText.IndexOf('shell.Run helperCommand, 0, False', [StringComparison]::Ordinal)
-$startupApplyIndex = $launcherText.IndexOf('-Action ApplyStartup', [StringComparison]::Ordinal)
-if ($helperLaunchIndex -lt 0 -or $startupApplyIndex -lt 0 -or $helperLaunchIndex -gt $startupApplyIndex) {
-    throw 'The cursor helper must launch before the slower PowerShell startup reapply path.'
-}
-
-$lfcScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1') -Raw
+$cursorHelperNativeSourceText = [IO.File]::ReadAllText(
+    (Join-Path $projectRoot 'tools\CursorRefreshHelper\ClawLabCursorRefreshNativeDxgi.cs'),
+    [Text.Encoding]::UTF8)
 foreach ($value in @(
-    "`$toolVersion = '2.0.6'",
-    'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE',
-    "'OFFICIAL_48_120'",
-    "'CLAWLAB_30_120'",
-    "'CLAWLAB_48_144'",
-    "'CLAWLAB_30_144'",
-    "'CLAWLAB_48_165'",
-    "'CLAWLAB_48_180'",
-    "'CLAWLAB_48_192'",
-    "'CLAWLAB_30_165'",
-    "'CLAWLAB_30_180'",
-    "'CLAWLAB_30_192'",
-    '$managedProfiles.ContainsKey($managedModeName)',
-    'OriginalLowFpsSolutionEnabled',
-    'OriginalHighFpsSolutionEnabled',
-    'Remove-FileIfPresent',
-    'ClawLab MSI Claw Intel LFC Fix'
-    '$rangeProcess.WaitForExit()'
-    'TL070FVXS02-0'
-    '3518AB4456669D12A7B8D254F63005EAE143C784DCE02EC56C3753C41A664CA1'
-    '7B5EE7D96BC91E83EBD2419B3A4F12771035D76303F77EEB0E356C996BFA4647'
-    'Resolve-ClawLabLfcBackupIdentity'
-    'SchemaVersion = 4'
-    'InstanceMigrationCount'
-    '[IO.File]::Replace($temporaryPath, $lfcBackupPath, $replacementBackupPath)'
-    'No backup, persistence task or LFC flag was changed.'
-    'Refusing to save an unknown modified state as the original.'
-)) {
-    if ($lfcScriptText -notmatch [regex]::Escape($value)) {
-        throw "Required LFC safety value is missing from the release source: $value"
-    }
-}
-if ($lfcScriptText -match [regex]::Escape('[IO.File]::Replace($temporaryPath, $lfcBackupPath, $null)')) {
-    throw 'The invalid null destination-backup path was reintroduced into LFC atomic replacement.'
-}
-$rangeRefusalIndex = $lfcScriptText.IndexOf('if (-not $rangeReady -and -not $validCustomRestartPending)', [StringComparison]::Ordinal)
-$backupReadIndex = $lfcScriptText.IndexOf('$backup = Get-LfcBackup', [StringComparison]::Ordinal)
-if ($rangeRefusalIndex -lt 0 -or $backupReadIndex -lt 0 -or $rangeRefusalIndex -gt $backupReadIndex) {
-    throw 'The exact LFC range refusal must execute before any backup migration or creation.'
-}
-foreach ($forbiddenRangeMarker in @('24-120', '24_120', 'MinimumHz -eq 24', 'MinimumHz = 24')) {
-    if ($lfcScriptText -match [regex]::Escape($forbiddenRangeMarker)) {
-        throw "Forbidden 24 Hz profile marker found in the LFC source: $forbiddenRangeMarker"
-    }
-}
-if ($lfcScriptText -match [regex]::Escape('-WindowStyle Hidden -Wait -PassThru')) {
-    throw 'The LFC startup path must not wait for the resident helper process tree.'
-}
-
-$lfcInstallers = @(
-    'INSTALL_30_120_VRR.bat',
-    'INSTALL_48_120_VRR.bat'
-)
-foreach ($installerName in $lfcInstallers) {
-    $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
-    if ($installerText -notmatch [regex]::Escape('MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
-        throw "Managed VRR installer does not integrate the shared LFC fix: $installerName"
-    }
-    foreach ($marker in @('reset-all.exe', 'If CRU has never been used', 'VRR ownership preflight', 'ClawTweaks', '3.0 or later', 'ClawLab VRR compatibility patch', 'optional and is not required')) {
-        if ($installerText -notmatch [regex]::Escape($marker)) {
-            throw "Managed VRR installer is missing a conflict preflight: $installerName / $marker"
-        }
-    }
-}
-
-$experimentalInstallers = @(
-    'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat',
-    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'
-)
-foreach ($installerName in $experimentalInstallers) {
-    $installerText = Get-Content -LiteralPath (Join-Path $projectRoot $installerName) -Raw
-    foreach ($marker in @(
-            'DISPLAY OVERCLOCK',
-            'silicon lottery',
-            'timeout /t 10 /nobreak',
-            'I ACCEPT THE OVERCLOCK RISK',
-            '15 SECONDS',
-            'DO NOT POWER OFF OR REBOOT',
-            'Disconnect every external display',
-            'reset-all.exe',
-            'If CRU has never been used',
-            'Has CRU never been used, or was reset-all.exe followed by a restart?',
-            'Is every conflicting VRR/EDID tool disabled or removed?',
-            'ClawLab VRR compatibility patch',
-            '3.0 or later',
-            'optional and is not required'
-        )) {
-        if ($installerText -notmatch [regex]::Escape($marker)) {
-            throw "Experimental installer is missing a mandatory guard: $installerName / $marker"
-        }
-    }
-}
-
-$mainVrrScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'MSI-Claw-VRR-Fix.ps1') -Raw
-foreach ($marker in @(
-        '& $trialSchedulerPath -Action Schedule -Mode $DesiredState',
-        'try { Remove-ExperimentalOverclockTrial }',
-        '$backupPath,',
-        "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
-        'ClawLab-VRR-Privileged\2.2.1',
-        'Assert-ProtectedRuntimeIntegrity',
-        'protected-runtime.json',
-        'Remove-ProtectedExperimentalRuntime',
-        '& $protectedLfcToolPath -Action Apply',
-        'LfcFixActive'
-        'OLDER_VERSION_RESTORE_REQUIRED'
-        'Test-ClawLabFirstInstallProfileSafe'
-        'Resolve-FirstInstallProfileBaseline'
-        "ProfileId = `$profileRecommended; Name = 'RECOMMENDED'"
-        "ProfileId = `$profileExcellent; Name = 'EXCELLENT'"
-        'Invoke-SetProfile -Target $normalized -ProfileId ([int]$candidate.ProfileId)'
-        'No ClawLab original-profile backup was created.'
-        'Test-SnapshotMatchesSavedProfile'
-        'CTL_RESULT_ERROR_KMD_CALL'
-        'Get-ThirdPartyEdidOverrideValueNames'
-        'Assert-NoThirdPartyEdidOverrideValues'
-        'ClawLab refused to trust or overwrite this state.'
+        'NATIVE_WIN32_DXGI_FLIP_MODEL', 'DxgiSwapEffectFlipSequential',
+        'MsgWaitForMultipleObjectsEx', 'RidevInputSink',
+        'CursorRefreshControl.NativeWaitHandles', 'CursorRefreshControl.SignalReady();',
+        'CursorRefreshControl.WriteRuntimeState(', 'WaitFailed',
+        'ClearRenderTargetViewVtableIndex', 'ALTERNATING_OPAQUE_NEAR_BLACK',
+        'GCHandleType.Pinned'
     )) {
-    if ($mainVrrScriptText -notmatch [regex]::Escape($marker)) {
-        throw "Atomic experimental install transaction is missing: $marker"
-    }
+    Assert-ContainsLiteral -Text $cursorHelperNativeSourceText -Value $value -Label 'Cursor Refresh native DXGI source'
 }
-$lfcThirdPartyMarkers = @(
-    'Get-ThirdPartyEdidOverrideValueNames',
-    'The Intel LFC patch refused to run while third-party EDID override metadata is installed:',
-    'ThirdPartyEdidOverrideValues'
-)
-foreach ($marker in $lfcThirdPartyMarkers) {
-    if ($lfcScriptText -notmatch [regex]::Escape($marker)) {
-        throw "The LFC source is missing third-party EDID fail-closed handling: $marker"
-    }
-}
-$baselineResolverCount = [regex]::Matches(
-    $mainVrrScriptText,
-    [regex]::Escape('Resolve-FirstInstallProfileBaseline')
-).Count
-if ($baselineResolverCount -ne 3) {
-    throw "Every stable/custom first-install path must use the shared baseline resolver; found $baselineResolverCount definition/call markers."
-}
-$recommendedCandidateIndex = $mainVrrScriptText.IndexOf(
-    "ProfileId = `$profileRecommended; Name = 'RECOMMENDED'",
-    [StringComparison]::Ordinal
-)
-$excellentCandidateIndex = $mainVrrScriptText.IndexOf(
-    "ProfileId = `$profileExcellent; Name = 'EXCELLENT'",
-    [StringComparison]::Ordinal
-)
-$normalizationWriteIndex = $mainVrrScriptText.IndexOf(
-    'Invoke-SetProfile -Target $normalized -ProfileId ([int]$candidate.ProfileId)',
-    [StringComparison]::Ordinal
-)
-$normalizationReadbackIndex = $mainVrrScriptText.IndexOf(
-    '$normalized = Get-TargetSnapshot -Attempts 10',
-    [StringComparison]::Ordinal
-)
-$normalizationVerificationIndex = $mainVrrScriptText.IndexOf(
-    'if ([int]$normalized.ProfileId -eq [int]$candidate.ProfileId)',
-    [StringComparison]::Ordinal
-)
-if ($recommendedCandidateIndex -lt 0 -or
-    $excellentCandidateIndex -le $recommendedCandidateIndex -or
-    $normalizationWriteIndex -le $excellentCandidateIndex -or
-    $normalizationReadbackIndex -le $normalizationWriteIndex -or
-    $normalizationVerificationIndex -le $normalizationReadbackIndex) {
-    throw 'Unmanaged CUSTOM normalization must try RECOMMENDED then EXCELLENT, with fresh readback and exact verification.'
-}
-$customResolverIndex = $mainVrrScriptText.IndexOf(
-    '$Before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $Before',
-    [StringComparison]::Ordinal
-)
-$customBackupIndex = $mainVrrScriptText.IndexOf(
-    'Save-OriginalProfile -Snapshot $Before',
-    [StringComparison]::Ordinal
-)
-$officialResolverIndex = $mainVrrScriptText.IndexOf(
-    '$before = Resolve-FirstInstallProfileBaseline -Transition $transition -Snapshot $before',
-    [StringComparison]::Ordinal
-)
-$officialBackupIndex = $mainVrrScriptText.IndexOf(
-    'Save-OriginalProfile -Snapshot $before',
-    [StringComparison]::Ordinal
-)
-if ($customResolverIndex -lt 0 -or $customBackupIndex -le $customResolverIndex -or
-    $officialResolverIndex -lt 0 -or $officialBackupIndex -le $officialResolverIndex) {
-    throw 'Every stable/custom installer must resolve and verify its first-install baseline before saving the original profile.'
-}
-
-$healthScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'ClawLab-Health-Check.ps1') -Raw
-foreach ($marker in @('Test-ClawLabCleanNotInstalledState', 'CLEAN_NOT_INSTALLED', 'InstallationState')) {
-    if ($healthScriptText -notmatch [regex]::Escape($marker)) {
-        throw "Health status is missing a clean-uninstalled marker: $marker"
+foreach ($forbiddenMarker in @('GetRawInputData', 'AllocHGlobal', 'FreeHGlobal')) {
+    if ($cursorHelperWpfSourceText.Contains($forbiddenMarker) -or
+        $cursorHelperNativeSourceText.Contains($forbiddenMarker)) {
+        throw "Cursor Refresh Helper reintroduced a per-packet allocation path: $forbiddenMarker"
     }
 }
 
-$trialScriptText = Get-Content -LiteralPath (Join-Path $projectRoot 'Experimental-Overclock-VRR-Trial.ps1') -Raw
-foreach ($marker in @(
-        "`$fixVersion = '$Version'",
-        'ObservationSeconds = 15',
-        'Stability = [string]$profile.Stability',
-        'TimeoutSeconds 15',
-        "-ToolAction 'SetSafe120ForTrial'",
-        'UserConfirmed = $false',
-        'Confirm-AdministratorOrRelaunch',
-        '-RunLevel Limited',
-        'ClawLab-VRR-Privileged\2.2.1',
-        'Initialize-ProtectedRuntimeDirectory',
-        'New-ProtectedRuntimeAcl',
-        'DirectorySecurity',
-        'Write-ProtectedRuntimeManifest',
-        'Assert-ProtectedRuntimeIntegrity',
-        "-ToolAction 'ConfirmExperimentalTrial'",
-        "-ToolAction 'Restore'"
+$mainVrrPath = Join-Path $projectRoot 'MSI-Claw-VRR-Fix.ps1'
+$lfcPath = Join-Path $projectRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
+$trialPath = Join-Path $projectRoot 'Experimental-Overclock-VRR-Trial.ps1'
+$coordinatorPath = Join-Path $projectRoot 'ClawLab-VRR-Transaction.ps1'
+$mainVrr = [IO.File]::ReadAllText($mainVrrPath, [Text.Encoding]::UTF8)
+$lfc = [IO.File]::ReadAllText($lfcPath, [Text.Encoding]::UTF8)
+$trial = [IO.File]::ReadAllText($trialPath, [Text.Encoding]::UTF8)
+$coordinator = [IO.File]::ReadAllText($coordinatorPath, [Text.Encoding]::UTF8)
+
+Assert-ContainsLiteral -Text $mainVrr -Value "`$fixVersion = '$Version'" -Label 'VRR source'
+Assert-ContainsLiteral -Text $mainVrr -Value "ClawLab-VRR-Privileged\$expectedProtectedRuntimeVersion" -Label 'VRR source'
+Assert-ContainsLiteral -Text $lfc -Value "`$toolVersion = '$expectedLfcVersion'" -Label 'LFC source'
+Assert-ContainsLiteral -Text $trial -Value "`$fixVersion = '$Version'" -Label 'Experimental trial source'
+Assert-ContainsLiteral -Text $trial -Value "ClawLab-VRR-Privileged\$expectedProtectedRuntimeVersion" -Label 'Experimental trial source'
+Assert-ContainsLiteral -Text $coordinator -Value "`$script:CoordinatorVersion = '$Version'" -Label 'Coordinator source'
+foreach ($textDefinition in @(
+        [pscustomobject]@{ Text = $mainVrr; Label = 'VRR source' },
+        [pscustomobject]@{ Text = $lfc; Label = 'LFC source' },
+        [pscustomobject]@{ Text = $trial; Label = 'Experimental trial source' },
+        [pscustomobject]@{ Text = $coordinator; Label = 'Coordinator source' }
     )) {
-    if ($trialScriptText -notmatch [regex]::Escape($marker)) {
-        throw "Guarded trial source is missing: $marker"
-    }
-}
-$protectedAclFactoryCount = [regex]::Matches(
-    $trialScriptText,
-    [regex]::Escape('New-ProtectedRuntimeAcl')
-).Count
-if ($protectedAclFactoryCount -ne 3 -or
-    $trialScriptText -match [regex]::Escape('SetAccessControl($acl)')) {
-    throw 'The protected parent and versioned runtime must each receive a fresh explicit ACL object.'
-}
-$trialLauncherText = Get-Content -LiteralPath (Join-Path $projectRoot 'ClawLab-Experimental-Trial-Startup.vbs') -Raw
-foreach ($marker in @('WScript.ScriptFullName', 'Experimental-Overclock-VRR-Trial.ps1')) {
-    if ($trialLauncherText -notmatch [regex]::Escape($marker)) {
-        throw "Protected guarded-trial launcher is missing: $marker"
-    }
-}
-if ($trialLauncherText -match [regex]::Escape('%LOCALAPPDATA%')) {
-    throw 'The guarded-trial launcher still executes a user-writable LocalAppData script.'
-}
-if ($trialScriptText -match [regex]::Escape('-RunLevel Highest')) {
-    throw 'Guarded trial source must never schedule its user-writable runtime at Highest privilege.'
-}
-if (([regex]::Matches($trialScriptText, 'Confirm-AdministratorOrRelaunch')).Count -ne 2) {
-    throw 'Guarded trial elevation must exist only as one function definition and one Schedule action call.'
-}
-foreach ($unsafeTimeout in @(
-        "-ToolAction 'ConfirmExperimentalTrial' -TimeoutSeconds",
-        "-ToolPath `$installedVrrToolPath -ToolAction 'Restore' -TimeoutSeconds",
-        '-ExecutionTimeLimit'
-    )) {
-    if ($trialScriptText -match [regex]::Escape($unsafeTimeout)) {
-        throw "Guarded trial can force-terminate an elevation-sensitive action: $unsafeTimeout"
+    if ($textDefinition.Text -match '(?i)(^|[^0-9])(15|24)[-_]120([^0-9]|$)|Install(15|24)') {
+        throw "$($textDefinition.Label) exposes a forbidden telemetry-only profile."
     }
 }
 
-$forbiddenExtensions = @('.exe', '.dll', '.sys', '.bin', '.rom', '.zip', '.7z', '.rar', '.bak', '.dmp', '.etl')
+$expectedProtectedPayload = @(
+    'MSI-Claw-VRR-Fix.ps1',
+    'Edid-Normalization.ps1',
+    'ArcSync-Range-Policy.ps1',
+    'Scheduled-Task-Persistence.ps1',
+    'ClawLab-VRR-Startup.vbs',
+    'ClawLab-Cursor-Refresh-Helper.exe',
+    'MSI-Claw-Intel-LFC-Fix.ps1',
+    'Intel-VRR-LFC-Driver-Interface.ps1',
+    'Lfc-Backup-Identity.ps1',
+    'ClawLab-LFC-Startup.vbs',
+    'ClawLab-Localization.ps1',
+    'locales\messages.json',
+    'Experimental-Overclock-VRR-Trial.ps1',
+    'ClawLab-Experimental-Trial-Startup.vbs'
+)
+$protectedPayloads = @(
+    @(Get-LiteralStringArrayAssignment -Path $mainVrrPath -VariableName 'protectedRuntimePayloadNames'),
+    @(Get-LiteralStringArrayFunctionResult -Path $trialPath -FunctionName 'Get-ProtectedRuntimePayload')
+)
+$expectedPayloadKey = (@($expectedProtectedPayload | Sort-Object) -join '|')
+foreach ($payload in $protectedPayloads) {
+    if ($payload.Count -ne $expectedProtectedPayload.Count -or
+        (@($payload | Sort-Object) -join '|') -cne $expectedPayloadKey) {
+        throw 'Protected runtime payload definitions are not identical and complete for 2.3.0.'
+    }
+}
+
+$powerShellSources = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File -Filter '*.ps1' |
+    Where-Object { $_.FullName -notmatch '[\\/]dist[\\/]' })
+foreach ($source in $powerShellSources) {
+    $tokens = $null
+    $parseErrors = $null
+    [void][Management.Automation.Language.Parser]::ParseFile(
+        $source.FullName, [ref]$tokens, [ref]$parseErrors)
+    if (@($parseErrors).Count -gt 0) {
+        throw "PowerShell parse failure in $($source.FullName): $((@($parseErrors | ForEach-Object Message)) -join ' | ')"
+    }
+}
+
+$crossShellTests = @(
+    'tests\Test-ClawLab-Localization.ps1',
+    'tools\Test-Scheduled-Task-Persistence.ps1',
+    'tools\Test-ArcSync-Range-Policy.ps1',
+    'tools\Test-ClawLab-VRR-Transaction.ps1',
+    'tools\Test-Tma2027-Recovery-Flow.ps1',
+    'tools\Test-Guarded-Trial-FailClosed.ps1',
+    'tools\Test-Startup-Orchestration.ps1',
+    'tools\Test-Normalization-Compensation.ps1',
+    'tools\Test-Lfc-Factory-Defaults-Recovery.ps1',
+    'tools\Test-Stable-Same-Profile-Repair.ps1',
+    'tools\Test-Public-Installer-Matrix.ps1',
+    'tools\Test-A1M-Edid.ps1',
+    'tools\Test-Experimental-Overclock-Edids.ps1',
+    'tools\Test-Lfc-Backup-Identity.ps1',
+    'tools\Test-Lfc-Atomic-Replace.ps1',
+    'tools\Test-Protected-Runtime-Acl.ps1'
+)
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$powerShell7 = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
+    throw 'Windows PowerShell 5.1 was not found.'
+}
+if ($null -eq $powerShell7) {
+    throw 'PowerShell 7 is required for the cross-version release validation.'
+}
+foreach ($relativeTest in $crossShellTests) {
+    $testPath = Join-Path $projectRoot $relativeTest
+    Invoke-ClawLabTestInShell -Executable $windowsPowerShell -TestPath $testPath -ShellLabel 'PS5.1'
+    Invoke-ClawLabTestInShell -Executable $powerShell7.Source -TestPath $testPath -ShellLabel 'PS7'
+}
+
+$forbiddenExtensions = @('.dll', '.sys', '.bin', '.rom', '.zip', '.7z', '.rar', '.bak', '.dmp', '.etl')
 $forbiddenFiles = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File | Where-Object {
-    $_.FullName -notmatch '[\\/]dist[\\/]' -and
-    $forbiddenExtensions -contains $_.Extension.ToLowerInvariant() -and
-    -not $_.FullName.Equals($cursorHelperPath, [StringComparison]::OrdinalIgnoreCase)
-})
+        $_.FullName -notmatch '[\\/]dist[\\/]' -and
+        $forbiddenExtensions -contains $_.Extension.ToLowerInvariant()
+    })
 if ($forbiddenFiles.Count -gt 0) {
     throw "Forbidden binary, driver, EDID dump, trace, backup or archive found:`n$($forbiddenFiles.FullName -join "`n")"
+}
+$unexpectedExecutables = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File -Filter '*.exe' | Where-Object {
+        $_.FullName -notmatch '[\\/]dist[\\/]' -and
+        -not $_.FullName.Equals($cursorHelperPath, [StringComparison]::OrdinalIgnoreCase)
+    })
+if ($unexpectedExecutables.Count -gt 0) {
+    throw "Unexpected executable found in the release source:`n$($unexpectedExecutables.FullName -join "`n")"
+}
+$forbiddenPlannedEntries = @($plannedEntries | Where-Object {
+        $extension = [IO.Path]::GetExtension($_).ToLowerInvariant()
+        ($extension -in $forbiddenExtensions) -or
+        ($extension -eq '.exe' -and $_ -cne 'scripts/ClawLab-Cursor-Refresh-Helper.exe')
+    })
+if ($forbiddenPlannedEntries.Count -gt 0) {
+    throw "Forbidden file planned for the release ZIP:`n$($forbiddenPlannedEntries -join "`n")"
+}
+
+if ($ValidateOnly) {
+    return [pscustomobject]@{
+        Result = 'PASS'
+        Version = $Version
+        ValidationOnly = $true
+        ReleaseFiles = $releaseFiles.Count
+        PowerShellSources = $powerShellSources.Count
+        Archive = $null
+    }
 }
 
 $distFull = [IO.Path]::GetFullPath($distRoot)
@@ -590,109 +475,151 @@ if (Test-Path -LiteralPath $stagingRoot) {
 if (Test-Path -LiteralPath $archivePath) {
     [IO.File]::Delete($archivePath)
 }
+if (Test-Path -LiteralPath $archiveHashPath) {
+    [IO.File]::Delete($archiveHashPath)
+}
+if (Test-Path -LiteralPath $hashPath) {
+    [IO.File]::Delete($hashPath)
+}
 New-Item -ItemType Directory -Path $stagedPackageRoot -Force | Out-Null
 
-foreach ($releaseFile in $releaseFiles) {
-    $destination = Join-Path $stagedPackageRoot $releaseFile.Destination
-    [IO.Directory]::CreateDirectory((Split-Path $destination -Parent)) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot $releaseFile.Source) -Destination $destination
-}
-
-$manifest = @(Get-ChildItem -LiteralPath $stagedPackageRoot -Recurse -File | Sort-Object FullName | ForEach-Object {
-    $relativePath = $_.FullName.Substring($stagedPackageRoot.Length + 1).Replace('\', '/')
-    $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash *$relativePath"
-})
-[IO.File]::WriteAllLines((Join-Path $stagedPackageRoot 'FILES_SHA256.txt'), $manifest, [Text.Encoding]::ASCII)
-
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::CreateFromDirectory(
-    $stagingRoot,
-    $archivePath,
-    [IO.Compression.CompressionLevel]::Optimal,
-    $false
-)
-
-$zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
+$buildSucceeded = $false
 try {
-    $entries = @($zip.Entries)
-    $forbiddenEntries = @($entries | Where-Object {
-        [IO.Path]::GetExtension($_.FullName).ToLowerInvariant() -in $forbiddenExtensions -and
-        -not $_.FullName.Replace('/', '\').EndsWith("\$cursorHelperRelativePath", [StringComparison]::OrdinalIgnoreCase)
-    })
-    if ($forbiddenEntries.Count -gt 0) {
-        throw "Forbidden file detected in release ZIP:`n$($forbiddenEntries.FullName -join "`n")"
+    foreach ($releaseFile in $releaseFiles) {
+        $destination = Join-Path $stagedPackageRoot $releaseFile.Destination
+        [IO.Directory]::CreateDirectory((Split-Path $destination -Parent)) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $projectRoot $releaseFile.Source) -Destination $destination
     }
 
-    $packagePrefix = "$packageName/"
-    $relativeEntries = @($entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) } | ForEach-Object {
-            $normalizedEntryName = $_.FullName.Replace('\', '/')
-            if (-not $normalizedEntryName.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-                throw "Release ZIP entry escaped the package root: $($_.FullName)"
-            }
-            $normalizedEntryName.Substring($packagePrefix.Length)
+    $manifest = @(Get-ChildItem -LiteralPath $stagedPackageRoot -Recurse -File |
+        Sort-Object FullName | ForEach-Object {
+            $relativePath = $_.FullName.Substring($stagedPackageRoot.Length + 1).Replace('\', '/')
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$relativePath"
         })
-    $expectedRootFiles = @(
-        'INSTALL_30_120_VRR.bat',
-        'INSTALL_48_120_VRR.bat',
-        'CHECK_STATUS.bat',
-        'README.txt',
-        'CHANGELOG.txt',
-        'LICENSE.txt',
-        'FILES_SHA256.txt'
-    )
-    $actualRootFiles = @($relativeEntries | Where-Object { $_ -notmatch '/' } | Sort-Object)
-    $unexpectedRootFiles = @($actualRootFiles | Where-Object { $_ -notin $expectedRootFiles })
-    $missingRootFiles = @($expectedRootFiles | Where-Object { $_ -notin $actualRootFiles })
-    if ($unexpectedRootFiles.Count -gt 0 -or $missingRootFiles.Count -gt 0) {
-        throw "Unexpected public ZIP root layout. Missing: $($missingRootFiles -join ', '). Unexpected: $($unexpectedRootFiles -join ', ')."
+    [IO.File]::WriteAllLines(
+        (Join-Path $stagedPackageRoot 'FILES_SHA256.txt'), $manifest, [Text.Encoding]::ASCII)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory(
+        $stagingRoot, $archivePath, [IO.Compression.CompressionLevel]::Optimal, $false)
+
+    $zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
+    try {
+        $entries = @($zip.Entries)
+        $packagePrefix = "$packageName/"
+        $relativeEntries = @($entries | Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_.Name)
+            } | ForEach-Object {
+                $entry = $_.FullName.Replace('\', '/')
+                if (-not $entry.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "Release ZIP entry escaped the package root: $entry"
+                }
+                $entry.Substring($packagePrefix.Length)
+            })
+
+        $manifestEntry = @($entries | Where-Object {
+                $_.FullName.Replace('\', '/').Equals(
+                    ($packagePrefix + 'FILES_SHA256.txt'), [StringComparison]::OrdinalIgnoreCase)
+            })
+        if ($manifestEntry.Count -ne 1) {
+            throw 'The release ZIP must contain exactly one FILES_SHA256.txt manifest.'
+        }
+        $manifestStream = $manifestEntry[0].Open()
+        try {
+            $manifestReader = [IO.StreamReader]::new($manifestStream, [Text.Encoding]::ASCII, $false, 1024, $true)
+            try { $zippedManifest = $manifestReader.ReadToEnd() }
+            finally { $manifestReader.Dispose() }
+        }
+        finally {
+            $manifestStream.Dispose()
+        }
+        $manifestLines = @($zippedManifest -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($manifestLines.Count -ne $releaseFiles.Count) {
+            throw "The ZIP manifest has $($manifestLines.Count) entries; expected $($releaseFiles.Count)."
+        }
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            foreach ($line in $manifestLines) {
+                $match = [regex]::Match($line, '^([a-f0-9]{64}) \*(.+)$')
+                if (-not $match.Success) {
+                    throw "Invalid FILES_SHA256.txt line: $line"
+                }
+                $manifestRelativePath = $match.Groups[2].Value
+                $payloadEntry = @($entries | Where-Object {
+                        $_.FullName.Replace('\', '/').Equals(
+                            ($packagePrefix + $manifestRelativePath), [StringComparison]::Ordinal)
+                    })
+                if ($payloadEntry.Count -ne 1) {
+                    throw "Manifest payload is missing or duplicated in the ZIP: $manifestRelativePath"
+                }
+                $payloadStream = $payloadEntry[0].Open()
+                try {
+                    $actualPayloadHash = ([BitConverter]::ToString(
+                            $sha256.ComputeHash($payloadStream))).Replace('-', '').ToLowerInvariant()
+                }
+                finally {
+                    $payloadStream.Dispose()
+                }
+                if ($actualPayloadHash -cne $match.Groups[1].Value) {
+                    throw "ZIP payload hash mismatch: $manifestRelativePath"
+                }
+            }
+        }
+        finally {
+            $sha256.Dispose()
+        }
+
+        $actualRootFiles = @($relativeEntries | Where-Object { $_ -notmatch '/' } | Sort-Object)
+        $missingRoot = @($expectedRootFiles | Where-Object { $_ -notin $actualRootFiles })
+        $unexpectedRoot = @($actualRootFiles | Where-Object { $_ -notin $expectedRootFiles })
+        if ($missingRoot.Count -gt 0 -or $unexpectedRoot.Count -gt 0) {
+            throw "Unexpected ZIP root. Missing: $($missingRoot -join ', '). Unexpected: $($unexpectedRoot -join ', ')."
+        }
+
+        foreach ($requiredEntry in $requiredStructuredEntries) {
+            if ($requiredEntry -notin $relativeEntries) {
+                throw "Required structured ZIP entry is missing: $requiredEntry"
+            }
+        }
+
+        $forbiddenZipEntries = @($relativeEntries | Where-Object {
+                $extension = [IO.Path]::GetExtension($_).ToLowerInvariant()
+                ($extension -in $forbiddenExtensions) -or
+                ($extension -eq '.exe' -and $_ -cne 'scripts/ClawLab-Cursor-Refresh-Helper.exe')
+            })
+        if ($forbiddenZipEntries.Count -gt 0) {
+            throw "Forbidden file detected in release ZIP:`n$($forbiddenZipEntries -join "`n")"
+        }
+        $entryCount = $entries.Count
     }
-    foreach ($requiredEntry in @(
-            'RECOVERY/RESTORE_ORIGINAL_VRR.bat',
-            'RECOVERY/RESTORE_INTEL_LFC_DEFAULTS.bat',
-            'EMERGENCY/FACTORY_RESET_CLAWLAB_VRR.bat',
-            'EMERGENCY/EMERGENCY_REMOVE_CLAWLAB_EDID.bat',
-            'EMERGENCY/SET_INTEL_LFC_FACTORY_DEFAULTS.bat',
-            'DIAGNOSTICS/COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat',
-            'DIAGNOSTICS/EXPORT_STATUS_REPORT.bat',
-            'scripts/MSI-Claw-VRR-Fix.ps1',
-            'scripts/MSI-Claw-Intel-LFC-Fix.ps1',
-            'scripts/ClawLab-Health-Check.ps1',
-            'scripts/Export-ClawLab-Status.ps1',
-            'scripts/Edid-Normalization.ps1',
-            'scripts/Lfc-Backup-Identity.ps1',
-            'scripts/ArcSync-Range-Policy.ps1',
-            'scripts/Experimental-Overclock-VRR-Trial.ps1',
-            'scripts/ClawLab-Experimental-Trial-Startup.vbs',
-            'scripts/ClawLab-Cursor-Refresh-Helper.exe'
-            'SOURCE/Test-Lfc-Atomic-Replace.ps1'
-            'SOURCE/Test-ArcSync-Range-Policy.ps1'
-            'SOURCE/Test-Experimental-Overclock-Edids.ps1'
-            'SOURCE/Test-Public-Installer-Matrix.ps1'
-            'EXPERIMENTAL/INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'
-            'EXPERIMENTAL/INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'
-        )) {
-        if ($requiredEntry -notin $relativeEntries) {
-            throw "Required structured ZIP entry is missing: $requiredEntry"
+    finally {
+        $zip.Dispose()
+    }
+
+    $releaseHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    [IO.File]::WriteAllText($hashPath, "$releaseHash *$archiveName`r`n", [Text.Encoding]::ASCII)
+    [IO.File]::WriteAllText($archiveHashPath, "$releaseHash *$archiveName`r`n", [Text.Encoding]::ASCII)
+    $buildSucceeded = $true
+}
+finally {
+    if (Test-Path -LiteralPath $stagingRoot) {
+        [IO.Directory]::Delete($stagingRoot, $true)
+    }
+    if (-not $buildSucceeded) {
+        foreach ($failedArtifact in @($archivePath, $archiveHashPath, $hashPath)) {
+            if (Test-Path -LiteralPath $failedArtifact -PathType Leaf) {
+                [IO.File]::Delete($failedArtifact)
+            }
         }
     }
 }
-finally {
-    $zip.Dispose()
-}
-
-$releaseHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText($hashPath, "$releaseHash *$archiveName`r`n", [Text.Encoding]::ASCII)
-[IO.Directory]::Delete($stagingRoot, $true)
 
 [pscustomobject]@{
+    Result = 'PASS'
     Archive = $archivePath
+    HashFile = $archiveHashPath
     Sha256 = $releaseHash.ToUpperInvariant()
-    Entries = $entries.Count
+    Entries = $entryCount
+    Version = $Version
 }

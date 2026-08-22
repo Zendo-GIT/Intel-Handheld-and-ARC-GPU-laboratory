@@ -1,12 +1,15 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Apply', 'Restore', 'ApplyStartup', 'FactoryDefaults')]
+    [ValidateSet(
+        'Status', 'Apply', 'Restore', 'PrepareRestore', 'CommitRestore', 'FinalizeRestore',
+        'ApplyStartup', 'FactoryDefaults'
+    )]
     [string]$Action = 'Status'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$toolVersion = '2.0.6'
+$toolVersion = '2.0.7'
 
 # Intel LFC companion for every ClawLab-managed VRR mode. It
 # disables Intel's low- and high-FPS VRR solutions as one tested combination,
@@ -57,18 +60,30 @@ $managedModePath = Join-Path $vrrStateRoot 'managed-mode.json'
 $experimentalStatePath = Join-Path $vrrStateRoot 'experimental-edid.json'
 $lfcStateRoot = Join-Path $env:LOCALAPPDATA 'ClawLab\Intel-LFC-Fix'
 $lfcBackupPath = Join-Path $lfcStateRoot 'original-intel-vrr-solutions.json'
+$lfcRestoreCommittedPath = Join-Path $lfcStateRoot 'restore-committed.json'
+$lfcRestoreFinalizedPath = Join-Path $lfcStateRoot 'restore-finalized.json'
+$lfcFactoryIntentPath = Join-Path $lfcStateRoot 'factory-default-intent.json'
+$lfcFactoryFinalizedPath = Join-Path $lfcStateRoot 'factory-finalized.json'
 $installedToolPath = Join-Path $lfcStateRoot 'MSI-Claw-Intel-LFC-Fix.ps1'
 $installedDriverInterfacePath = Join-Path $lfcStateRoot 'Intel-VRR-LFC-Driver-Interface.ps1'
 $backupIdentityModulePath = Join-Path $PSScriptRoot 'Lfc-Backup-Identity.ps1'
 $edidNormalizationModulePath = Join-Path $PSScriptRoot 'Edid-Normalization.ps1'
 $arcSyncRangePolicyModulePath = Join-Path $PSScriptRoot 'ArcSync-Range-Policy.ps1'
+$scheduledTaskPersistenceModulePath = Join-Path $PSScriptRoot 'Scheduled-Task-Persistence.ps1'
 $installedBackupIdentityModulePath = Join-Path $lfcStateRoot 'Lfc-Backup-Identity.ps1'
 $installedEdidNormalizationModulePath = Join-Path $lfcStateRoot 'Edid-Normalization.ps1'
 $installedArcSyncRangePolicyModulePath = Join-Path $lfcStateRoot 'ArcSync-Range-Policy.ps1'
+$installedScheduledTaskPersistenceModulePath = Join-Path $lfcStateRoot 'Scheduled-Task-Persistence.ps1'
 $installedLauncherPath = Join-Path $lfcStateRoot 'ClawLab-LFC-Startup.vbs'
 $startupTaskName = 'ClawLab MSI Claw Intel LFC Fix'
+$startupApplyMutexName = 'Global\ClawLab.MSIClaw.VrrApplyStartup'
 
-foreach ($modulePath in @($backupIdentityModulePath, $edidNormalizationModulePath, $arcSyncRangePolicyModulePath)) {
+foreach ($modulePath in @(
+    $backupIdentityModulePath,
+    $edidNormalizationModulePath,
+    $arcSyncRangePolicyModulePath,
+    $scheduledTaskPersistenceModulePath
+)) {
     if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
         throw "A required LFC safety module is missing: $modulePath"
     }
@@ -90,6 +105,72 @@ function Remove-FileIfPresent {
     if (Test-Path -LiteralPath $LiteralPath -PathType Leaf) {
         [IO.File]::Delete($LiteralPath)
     }
+}
+
+function Write-LfcJsonFileAtomically {
+    param(
+        [Parameter(Mandatory)][string]$LiteralPath,
+        [Parameter(Mandatory)][object]$Value
+    )
+
+    [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
+    if (Test-Path -LiteralPath $LiteralPath) {
+        throw "Atomic LFC journal creation refused because the destination already exists: $LiteralPath"
+    }
+
+    $temporaryPath = Join-Path $lfcStateRoot ('.lfc-journal-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    try {
+        $encoding = [Text.UTF8Encoding]::new($false)
+        $bytes = $encoding.GetBytes(($Value | ConvertTo-Json -Depth 8))
+        $stream = [IO.FileStream]::new(
+            $temporaryPath,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None,
+            4096,
+            [IO.FileOptions]::WriteThrough
+        )
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        }
+        finally {
+            $stream.Dispose()
+        }
+        # Move is atomic on the same volume and refuses to replace an existing
+        # destination. A crash therefore leaves either no record or one complete
+        # record, never a partially written recovery journal.
+        [IO.File]::Move($temporaryPath, $LiteralPath)
+        if (-not (Test-Path -LiteralPath $LiteralPath -PathType Leaf)) {
+            throw "Atomic LFC journal readback failed: $LiteralPath"
+        }
+        [void]([IO.File]::ReadAllText($LiteralPath, [Text.Encoding]::UTF8) | ConvertFrom-Json)
+    }
+    finally {
+        Remove-FileIfPresent -LiteralPath $temporaryPath
+    }
+}
+
+function Get-LfcFactoryTransitionStage {
+    param(
+        [Parameter(Mandatory)][bool]$InitialLowFpsSolutionEnabled,
+        [Parameter(Mandatory)][bool]$InitialHighFpsSolutionEnabled,
+        [Parameter(Mandatory)][bool]$CurrentLowFpsSolutionEnabled,
+        [Parameter(Mandatory)][bool]$CurrentHighFpsSolutionEnabled
+    )
+
+    if ($CurrentLowFpsSolutionEnabled -and $CurrentHighFpsSolutionEnabled) {
+        return 'TARGET_REACHED'
+    }
+    if ($CurrentLowFpsSolutionEnabled -and
+        $CurrentHighFpsSolutionEnabled -eq $InitialHighFpsSolutionEnabled) {
+        return 'LOW_APPLIED'
+    }
+    if ($CurrentLowFpsSolutionEnabled -eq $InitialLowFpsSolutionEnabled -and
+        $CurrentHighFpsSolutionEnabled -eq $InitialHighFpsSolutionEnabled) {
+        return 'INTENT_RECORDED'
+    }
+    return 'UNSAFE_STATE'
 }
 
 function Get-ByteArraySha256 {
@@ -118,6 +199,87 @@ function Get-ThirdPartyEdidOverrideValueNames {
             Sort-Object -Unique
     )
 }
+
+$script:startupTransactionMutex = $null
+$script:startupApplyMutex = $null
+
+function Enter-LfcStartupTransactionMutex {
+    $mutex = [Threading.Mutex]::new($false, 'Global\ClawLab.VRR.DisplayTransaction')
+    $acquired = $false
+    try {
+        try {
+            $acquired = $mutex.WaitOne(180000)
+        }
+        catch [Threading.AbandonedMutexException] {
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            throw 'Another ClawLab VRR transaction did not finish within three minutes.'
+        }
+        $script:startupTransactionMutex = $mutex
+    }
+    catch {
+        if (-not $acquired) {
+            $mutex.Dispose()
+        }
+        throw
+    }
+}
+
+function Exit-LfcStartupTransactionMutex {
+    if ($null -eq $script:startupTransactionMutex) {
+        return
+    }
+    try {
+        $script:startupTransactionMutex.ReleaseMutex()
+    }
+    finally {
+        $script:startupTransactionMutex.Dispose()
+        $script:startupTransactionMutex = $null
+    }
+}
+
+function Enter-LfcStartupApplyMutex {
+    $mutex = [Threading.Mutex]::new($false, $startupApplyMutexName)
+    $acquired = $false
+    try {
+        try {
+            $acquired = $mutex.WaitOne(180000)
+        }
+        catch [Threading.AbandonedMutexException] {
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            throw 'Another ClawLab VRR startup reapply did not finish within three minutes.'
+        }
+        $script:startupApplyMutex = $mutex
+    }
+    catch {
+        if (-not $acquired) {
+            $mutex.Dispose()
+        }
+        throw
+    }
+}
+
+function Exit-LfcStartupApplyMutex {
+    if ($null -eq $script:startupApplyMutex) {
+        return
+    }
+    try {
+        $script:startupApplyMutex.ReleaseMutex()
+    }
+    finally {
+        $script:startupApplyMutex.Dispose()
+        $script:startupApplyMutex = $null
+    }
+}
+
+if ($Action -eq 'ApplyStartup') {
+    Enter-LfcStartupTransactionMutex
+}
+
+try {
 
 $panels = [Collections.Generic.List[object]]::new()
 foreach ($monitor in @(Get-CimInstance -Namespace 'root\wmi' -ClassName 'WmiMonitorID')) {
@@ -283,12 +445,51 @@ function Test-ManagedDirectRangeReady {
         -ReportedEdidSha256 $reportedEdidSha256 -ExpectedEdidSha256 $expectedEdidSha256
 }
 
+function Get-ClawTweaksHelperTaskState {
+    $service = $null
+    $folder = $null
+    $task = $null
+    try {
+        $service = New-Object -ComObject 'Schedule.Service'
+        $service.Connect()
+        try {
+            $folder = $service.GetFolder('\ClawTweaks')
+            $task = $folder.GetTask('ClawTweaksHelper')
+        }
+        catch {
+            $hresult = ConvertTo-ClawLabHResultUInt32 -HResult ([int]$_.Exception.HResult)
+            if ($hresult -in @(
+                    [Convert]::ToUInt32('80070002', 16),
+                    [Convert]::ToUInt32('8004130F', 16)
+                )) {
+                return 'NOT_INSTALLED'
+            }
+            throw ('Task Scheduler query failed for "\ClawTweaks\ClawTweaksHelper" with HRESULT 0x{0:X8}: {1}' -f
+                $hresult, $_.Exception.Message)
+        }
+
+        $stateNames = @('Unknown', 'Disabled', 'Queued', 'Ready', 'Running')
+        $stateNumber = [int]$task.State
+        if ($stateNumber -ge 0 -and $stateNumber -lt $stateNames.Count) {
+            return $stateNames[$stateNumber]
+        }
+        return "Unknown_$stateNumber"
+    }
+    finally {
+        foreach ($comObject in @($task, $folder, $service)) {
+            if ($null -ne $comObject -and [Runtime.InteropServices.Marshal]::IsComObject($comObject)) {
+                [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($comObject)
+            }
+        }
+    }
+}
+
 if ($Action -eq 'ApplyStartup') {
-    $clawTweaksTask = Get-ScheduledTask -TaskPath '\ClawTweaks\' -TaskName 'ClawTweaksHelper' -ErrorAction SilentlyContinue
-    if ($null -ne $clawTweaksTask) {
+    $clawTweaksTaskState = Get-ClawTweaksHelperTaskState
+    if ($clawTweaksTaskState -ne 'NOT_INSTALLED') {
         for ($attempt = 1; $attempt -le 30; $attempt++) {
-            $clawTweaksTask = Get-ScheduledTask -TaskPath '\ClawTweaks\' -TaskName 'ClawTweaksHelper' -ErrorAction SilentlyContinue
-            if ($null -ne $clawTweaksTask -and [string]$clawTweaksTask.State -eq 'Running') {
+            $clawTweaksTaskState = Get-ClawTweaksHelperTaskState
+            if ($clawTweaksTaskState -eq 'Running') {
                 break
             }
             Start-Sleep -Seconds 2
@@ -306,8 +507,12 @@ if ($Action -eq 'ApplyStartup') {
     # Run the range reapply in a child host. Its successful ApplyStartup path
     # deliberately calls exit 0; invoking it in this host would terminate the
     # LFC script before the Intel solution flags are reapplied.
-    $rangeArguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$installedVrrToolPath`" -Action ApplyStartup"
-    $rangeProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList $rangeArguments `
+    $windowsPowerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
+        throw "Windows PowerShell was not found at the trusted system path: $windowsPowerShellPath"
+    }
+    $rangeArguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$installedVrrToolPath`" -Action ApplyStartup -StartupSource LfcTask"
+    $rangeProcess = Start-Process -FilePath $windowsPowerShellPath -ArgumentList $rangeArguments `
         -WindowStyle Hidden -PassThru
     # Start-Process -Wait waits for the complete descendant process tree on
     # Windows PowerShell. Release 2.1 launches the resident Cursor Refresh
@@ -317,6 +522,10 @@ if ($Action -eq 'ApplyStartup') {
     if ($rangeProcess.ExitCode -ne 0) {
         throw "The installed ClawLab VRR startup reapply failed with exit code $($rangeProcess.ExitCode)."
     }
+    # The VRR child has released this second lock after its verified readback.
+    # Hold it now while the Intel LFC flags are applied and verified, while the
+    # parent keeps the machine-wide DisplayTransaction lock for the whole flow.
+    Enter-LfcStartupApplyMutex
 }
 $current = Invoke-DirectVrrDriverAction -DriverAction Status
 if ($Action -eq 'ApplyStartup') {
@@ -335,7 +544,8 @@ if ($Action -eq 'ApplyStartup' -and
 if ($Action -eq 'Apply' -and (-not $current.Supported -or $current.Result -ne 'Success')) {
     throw 'The Intel VRR driver interface is unavailable, so the LFC state cannot be backed up safely.'
 }
-if ($Action -in @('Restore', 'FactoryDefaults') -and (-not $current.Supported -or $current.Result -ne 'Success')) {
+if ($Action -in @('Restore', 'PrepareRestore', 'CommitRestore', 'FinalizeRestore', 'FactoryDefaults') -and
+    (-not $current.Supported -or $current.Result -ne 'Success')) {
     throw 'The signed Intel driver escape is unavailable, so the saved LFC state cannot be restored safely.'
 }
 
@@ -367,8 +577,13 @@ function Get-LfcBackup {
     if (-not (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf)) {
         return $null
     }
+    if ((Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $lfcFactoryIntentPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf)) {
+        throw 'The active LFC backup overlaps a restore or factory-default recovery record. Recovery was refused because the transaction identity is ambiguous.'
+    }
     $backup = [IO.File]::ReadAllText($lfcBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    $identityAction = if ($Action -eq 'Status') { 'Restore' } else { $Action }
+    $identityAction = if ($Action -in @('Status', 'PrepareRestore', 'CommitRestore', 'FinalizeRestore')) { 'Restore' } else { $Action }
     $resolution = Resolve-ClawLabLfcBackupIdentity -Backup $backup `
         -PanelManufacturer ([string]$panel.Manufacturer) `
         -PanelProductCode ([string]$panel.ProductCode) `
@@ -381,7 +596,8 @@ function Get-LfcBackup {
     if (-not $resolution.Accepted) {
         throw "The LFC backup identity was refused ($($resolution.State)): $($resolution.Reason)"
     }
-    if ([int]$backup.SchemaVersion -eq 1 -and $Action -ne 'Restore') {
+    if ([int]$backup.SchemaVersion -eq 1 -and
+        $Action -notin @('Restore', 'PrepareRestore', 'CommitRestore', 'FinalizeRestore')) {
         throw 'A legacy low-FPS-only experiment is still active. Restore it before applying this release.'
     }
     if ([int]$backup.SchemaVersion -in @(2, 3, 4) -and
@@ -433,6 +649,419 @@ function Get-LfcBackup {
         }
     }
     return $backup
+}
+
+function Get-LfcRestoreCommittedRecord {
+    if (-not (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf)) {
+        return $null
+    }
+    if (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) {
+        throw 'Both the active LFC backup and restore-commit tombstone exist. Recovery was refused because the transaction identity is ambiguous.'
+    }
+    $record = [IO.File]::ReadAllText($lfcRestoreCommittedPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $resolution = Resolve-ClawLabLfcBackupIdentity -Backup $record `
+        -PanelManufacturer ([string]$panel.Manufacturer) `
+        -PanelProductCode ([string]$panel.ProductCode) `
+        -PanelName ([string]$panel.Name) `
+        -PhysicalEdidSha256 $physicalEdidHash `
+        -ValidatedEdidHashes $validatedEdidHashes `
+        -CurrentPanelInstanceName ([string]$panel.InstanceName) `
+        -CurrentManagedMode $managedModeName `
+        -Action Restore
+    if (-not $resolution.Accepted) {
+        throw "The LFC restore-commit tombstone identity was refused ($($resolution.State)): $($resolution.Reason)"
+    }
+    if ([int]$record.SchemaVersion -in @(2, 3, 4) -and
+        'OriginalHighFpsSolutionEnabled' -notin $record.PSObject.Properties.Name) {
+        throw 'The LFC restore-commit tombstone is invalid.'
+    }
+    return $record
+}
+
+function Get-LfcRestoreFinalizedRecord {
+    if (-not (Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf)) {
+        return $null
+    }
+    if ((Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf)) {
+        throw 'The finalized LFC restore provenance overlaps another active recovery record. Recovery was refused because the transaction identity is ambiguous.'
+    }
+    $record = [IO.File]::ReadAllText($lfcRestoreFinalizedPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $resolution = Resolve-ClawLabLfcBackupIdentity -Backup $record `
+        -PanelManufacturer ([string]$panel.Manufacturer) `
+        -PanelProductCode ([string]$panel.ProductCode) `
+        -PanelName ([string]$panel.Name) `
+        -PhysicalEdidSha256 $physicalEdidHash `
+        -ValidatedEdidHashes $validatedEdidHashes `
+        -CurrentPanelInstanceName ([string]$panel.InstanceName) `
+        -CurrentManagedMode $managedModeName `
+        -Action Restore
+    if (-not $resolution.Accepted) {
+        throw "The finalized LFC restore provenance was refused ($($resolution.State)): $($resolution.Reason)"
+    }
+    if ([int]$record.SchemaVersion -in @(2, 3, 4) -and
+        'OriginalHighFpsSolutionEnabled' -notin $record.PSObject.Properties.Name) {
+        throw 'The finalized LFC restore provenance is invalid.'
+    }
+    return $record
+}
+
+function Get-LfcFactoryFinalizedRecord {
+    param([AllowNull()][string]$ExpectedTransactionId)
+
+    if (-not (Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf)) {
+        return $null
+    }
+    if ((Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf)) {
+        throw 'The factory-finalized LFC provenance overlaps an active backup or restore tombstone. Recovery was refused because the transaction identity is ambiguous.'
+    }
+
+    $record = [IO.File]::ReadAllText($lfcFactoryFinalizedPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @(
+            'SchemaVersion', 'FactoryProvenanceSchemaVersion', 'FactoryTransactionId',
+            'FactorySourceKind', 'FactorySourceSha256',
+            'OriginalLowFpsSolutionEnabled', 'OriginalHighFpsSolutionEnabled'
+        )) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The factory-finalized LFC provenance is missing $property."
+        }
+    }
+    $transactionGuid = [Guid]::Empty
+    if ([int]$record.SchemaVersion -ne 4 -or
+        [int]$record.FactoryProvenanceSchemaVersion -ne 1 -or
+        -not [Guid]::TryParse([string]$record.FactoryTransactionId, [ref]$transactionGuid) -or
+        -not ($record.OriginalLowFpsSolutionEnabled -is [bool]) -or
+        -not ($record.OriginalHighFpsSolutionEnabled -is [bool]) -or
+        -not [bool]$record.OriginalLowFpsSolutionEnabled -or
+        -not [bool]$record.OriginalHighFpsSolutionEnabled -or
+        [string]$record.FactorySourceKind -notin @('RESTORE_FINALIZED', 'CURRENT_STATE_NO_PROVENANCE')) {
+        throw 'The factory-finalized LFC provenance is invalid.'
+    }
+    if (([string]$record.FactorySourceKind -eq 'RESTORE_FINALIZED' -and
+            [string]$record.FactorySourceSha256 -notmatch '^[0-9A-Fa-f]{64}$') -or
+        ([string]$record.FactorySourceKind -eq 'CURRENT_STATE_NO_PROVENANCE' -and
+            -not [string]::IsNullOrEmpty([string]$record.FactorySourceSha256))) {
+        throw 'The factory-finalized LFC provenance has an invalid source binding.'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedTransactionId) -and
+        [string]$record.FactoryTransactionId -ne $ExpectedTransactionId) {
+        throw 'The factory-finalized LFC provenance belongs to a different factory-default transaction.'
+    }
+
+    $resolution = Resolve-ClawLabLfcBackupIdentity -Backup $record `
+        -PanelManufacturer ([string]$panel.Manufacturer) `
+        -PanelProductCode ([string]$panel.ProductCode) `
+        -PanelName ([string]$panel.Name) `
+        -PhysicalEdidSha256 $physicalEdidHash `
+        -ValidatedEdidHashes $validatedEdidHashes `
+        -CurrentPanelInstanceName ([string]$panel.InstanceName) `
+        -CurrentManagedMode $managedModeName `
+        -Action Restore
+    if (-not $resolution.Accepted) {
+        throw "The factory-finalized LFC provenance identity was refused ($($resolution.State)): $($resolution.Reason)"
+    }
+    return $record
+}
+
+function Get-LfcFactoryIntentRecord {
+    if (-not (Test-Path -LiteralPath $lfcFactoryIntentPath -PathType Leaf)) {
+        return $null
+    }
+    if ((Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf)) {
+        throw 'The factory-default intent overlaps an active LFC backup or restore tombstone. Recovery was refused because the transaction identity is ambiguous.'
+    }
+
+    $record = [IO.File]::ReadAllText($lfcFactoryIntentPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    foreach ($property in @(
+            'SchemaVersion', 'TransactionId', 'CreatedAt', 'PanelManufacturer',
+            'PanelProductCode', 'PanelName', 'PhysicalEdidSha256', 'PanelInstanceName',
+            'PanelEdidSha256', 'ManagedVrrMode', 'IntelDriverVersion',
+            'InitialLowFpsSolutionEnabled', 'InitialHighFpsSolutionEnabled',
+            'TargetLowFpsSolutionEnabled', 'TargetHighFpsSolutionEnabled',
+            'SourceKind', 'SourceRestoreFinalizedSha256'
+        )) {
+        if ($property -notin $record.PSObject.Properties.Name) {
+            throw "The LFC factory-default intent is missing $property."
+        }
+    }
+    $transactionGuid = [Guid]::Empty
+    if ([int]$record.SchemaVersion -ne 1 -or
+        -not [Guid]::TryParse([string]$record.TransactionId, [ref]$transactionGuid) -or
+        -not ($record.InitialLowFpsSolutionEnabled -is [bool]) -or
+        -not ($record.InitialHighFpsSolutionEnabled -is [bool]) -or
+        -not ($record.TargetLowFpsSolutionEnabled -is [bool]) -or
+        -not ($record.TargetHighFpsSolutionEnabled -is [bool]) -or
+        -not [bool]$record.TargetLowFpsSolutionEnabled -or
+        -not [bool]$record.TargetHighFpsSolutionEnabled -or
+        [string]$record.SourceKind -notin @('RESTORE_FINALIZED', 'CURRENT_STATE_NO_PROVENANCE')) {
+        throw 'The LFC factory-default intent is invalid.'
+    }
+    if ([string]$record.PanelManufacturer -ne [string]$panel.Manufacturer -or
+        [string]$record.PanelProductCode -ne [string]$panel.ProductCode -or
+        [string]$record.PanelName -ne [string]$panel.Name -or
+        [string]$record.PhysicalEdidSha256 -ne $physicalEdidHash -or
+        [string]$record.PanelInstanceName -ne [string]$panel.InstanceName -or
+        [string]$record.PanelEdidSha256 -ne $reportedEdidSha256 -or
+        [string]$record.PanelEdidSha256 -notin $validatedEdidHashes -or
+        [string]$record.ManagedVrrMode -ne $managedModeName -or
+        [string]$record.IntelDriverVersion -ne [string]$intelGpu.DriverVersion) {
+        throw 'The LFC factory-default intent no longer matches the exact driver, panel, EDID and managed-mode identity that created it.'
+    }
+
+    $factoryFinalizedPresent = Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf
+    if ([string]$record.SourceKind -eq 'RESTORE_FINALIZED') {
+        if ([string]$record.SourceRestoreFinalizedSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+            throw 'The LFC factory-default intent has no valid source-provenance hash.'
+        }
+        if (Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf) {
+            $actualSourceHash = (Get-FileHash -LiteralPath $lfcRestoreFinalizedPath -Algorithm SHA256).Hash
+            if ($actualSourceHash -ne [string]$record.SourceRestoreFinalizedSha256) {
+                throw 'The retained restore-finalized provenance does not match the factory-default intent.'
+            }
+        }
+        elseif (-not $factoryFinalizedPresent) {
+            throw 'The factory-default intent lost its source provenance before durable factory finalization.'
+        }
+    }
+    elseif (-not [string]::IsNullOrEmpty([string]$record.SourceRestoreFinalizedSha256) -or
+        (Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf)) {
+        throw 'A factory-default intent without restore provenance overlaps unexpected restore provenance.'
+    }
+
+    if ($factoryFinalizedPresent) {
+        [void](Get-LfcFactoryFinalizedRecord -ExpectedTransactionId ([string]$record.TransactionId))
+    }
+    return $record
+}
+
+function Assert-LfcFactoryFinalizedMatchesCurrentState {
+    param([Parameter(Mandatory)][object]$Record)
+
+    if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
+        throw 'Intel LFC factory finalization requires startup persistence to be absent.'
+    }
+    $after = Get-CurrentIntelVrrState
+    if ($after.Result -ne 'Success' -or
+        -not $after.LowFpsSolutionEnabled -or
+        -not $after.HighFpsSolutionEnabled) {
+        throw "The durable Intel LFC factory provenance does not match the current driver flags: $($after | ConvertTo-Json -Compress)"
+    }
+    return $after
+}
+
+function Get-LfcFactoryIntentStage {
+    param(
+        [Parameter(Mandatory)][object]$Intent,
+        [AllowNull()][object]$CurrentState
+    )
+
+    $now = if ($null -eq $CurrentState) { Get-CurrentIntelVrrState } else { $CurrentState }
+    if ($now.Result -ne 'Success') {
+        throw 'The Intel LFC factory-default transaction cannot read the current driver flags.'
+    }
+    $stage = Get-LfcFactoryTransitionStage `
+        -InitialLowFpsSolutionEnabled ([bool]$Intent.InitialLowFpsSolutionEnabled) `
+        -InitialHighFpsSolutionEnabled ([bool]$Intent.InitialHighFpsSolutionEnabled) `
+        -CurrentLowFpsSolutionEnabled ([bool]$now.LowFpsSolutionEnabled) `
+        -CurrentHighFpsSolutionEnabled ([bool]$now.HighFpsSolutionEnabled)
+    if ($stage -eq 'UNSAFE_STATE') {
+        throw "The current Intel LFC flags are not a safe prefix of the retained factory-default transaction: $($now | ConvertTo-Json -Compress)"
+    }
+    return [pscustomobject]@{ Stage = $stage; Current = $now }
+}
+
+function New-LfcFactoryIntentRecord {
+    param(
+        [Parameter(Mandatory)][object]$CurrentState,
+        [AllowNull()][object]$RestoreFinalizedRecord
+    )
+
+    $sourceKind = if ($null -eq $RestoreFinalizedRecord) {
+        'CURRENT_STATE_NO_PROVENANCE'
+    }
+    else {
+        'RESTORE_FINALIZED'
+    }
+    $sourceHash = if ($sourceKind -eq 'RESTORE_FINALIZED') {
+        (Get-FileHash -LiteralPath $lfcRestoreFinalizedPath -Algorithm SHA256).Hash
+    }
+    else {
+        ''
+    }
+    return [ordered]@{
+        SchemaVersion = 1
+        TransactionId = [Guid]::NewGuid().ToString('D')
+        CreatedAt = (Get-Date).ToString('o')
+        PanelManufacturer = [string]$panel.Manufacturer
+        PanelProductCode = [string]$panel.ProductCode
+        PanelName = [string]$panel.Name
+        PhysicalEdidSha256 = $physicalEdidHash
+        PanelInstanceName = [string]$panel.InstanceName
+        PanelEdidSha256 = $reportedEdidSha256
+        ManagedVrrMode = $managedModeName
+        IntelDriverVersion = [string]$intelGpu.DriverVersion
+        InitialLowFpsSolutionEnabled = [bool]$CurrentState.LowFpsSolutionEnabled
+        InitialHighFpsSolutionEnabled = [bool]$CurrentState.HighFpsSolutionEnabled
+        TargetLowFpsSolutionEnabled = $true
+        TargetHighFpsSolutionEnabled = $true
+        SourceKind = $sourceKind
+        SourceRestoreFinalizedSha256 = $sourceHash
+    }
+}
+
+function New-LfcFactoryFinalizedRecord {
+    param([Parameter(Mandatory)][object]$Intent)
+
+    return [ordered]@{
+        SchemaVersion = 4
+        SavedAt = (Get-Date).ToString('o')
+        PanelManufacturer = [string]$panel.Manufacturer
+        PanelProductCode = [string]$panel.ProductCode
+        PanelName = [string]$panel.Name
+        PhysicalEdidSha256 = $physicalEdidHash
+        PanelInstanceNameAtSave = [string]$panel.InstanceName
+        LastValidatedPanelInstanceName = [string]$panel.InstanceName
+        PanelEdidSha256AtSave = $reportedEdidSha256
+        InstanceMigrationCount = 0
+        LastInstanceMigrationAt = $null
+        PanelInstanceName = [string]$panel.InstanceName
+        PanelEdidSha256 = $reportedEdidSha256
+        ManagedVrrMode = $managedModeName
+        IntelDriverVersion = [string]$intelGpu.DriverVersion
+        DriverInterface = 'DIRECT_D3DKMT_INTEL_PRIVATE_ESCAPE'
+        OriginalLowFpsSolutionEnabled = $true
+        OriginalHighFpsSolutionEnabled = $true
+        FactoryProvenanceSchemaVersion = 1
+        FactoryTransactionId = [string]$Intent.TransactionId
+        FactoryFinalizedAt = (Get-Date).ToString('o')
+        FactorySourceKind = [string]$Intent.SourceKind
+        FactorySourceSha256 = [string]$Intent.SourceRestoreFinalizedSha256
+    }
+}
+
+function Complete-LfcFactoryDefaultsTransaction {
+    param([Parameter(Mandatory)][object]$Intent)
+
+    $progress = Get-LfcFactoryIntentStage -Intent $Intent
+    if (-not [bool]$progress.Current.LowFpsSolutionEnabled) {
+        Set-LowFpsSolution -Enabled $true
+        Start-Sleep -Milliseconds 150
+        $progress = Get-LfcFactoryIntentStage -Intent $Intent
+        if (-not [bool]$progress.Current.LowFpsSolutionEnabled) {
+            throw 'Intel did not retain the low-FPS factory-default flag.'
+        }
+    }
+    if (-not [bool]$progress.Current.HighFpsSolutionEnabled) {
+        Set-HighFpsSolution -Enabled $true
+        Start-Sleep -Milliseconds 150
+        $progress = Get-LfcFactoryIntentStage -Intent $Intent
+    }
+    if ([string]$progress.Stage -ne 'TARGET_REACHED') {
+        throw "Intel LFC factory-default transition stopped before its true/true target: $($progress.Current | ConvertTo-Json -Compress)"
+    }
+
+    Start-Sleep -Milliseconds 750
+    $after = Get-CurrentIntelVrrState
+    if ($after.Result -ne 'Success' -or
+        -not $after.LowFpsSolutionEnabled -or
+        -not $after.HighFpsSolutionEnabled) {
+        throw "Intel LFC factory-default verification failed: $($after | ConvertTo-Json -Compress)"
+    }
+
+    if (-not (Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf)) {
+        $factoryRecord = New-LfcFactoryFinalizedRecord -Intent $Intent
+        Write-LfcJsonFileAtomically -LiteralPath $lfcFactoryFinalizedPath -Value $factoryRecord
+    }
+    $verifiedFactoryRecord = Get-LfcFactoryFinalizedRecord -ExpectedTransactionId ([string]$Intent.TransactionId)
+    [void](Assert-LfcFactoryFinalizedMatchesCurrentState -Record $verifiedFactoryRecord)
+
+    # The target provenance is durable before the source provenance is retired.
+    # A crash before either delete is therefore resumed from the same exact WAL.
+    if (Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf) {
+        if ([string]$Intent.SourceKind -ne 'RESTORE_FINALIZED' -or
+            (Get-FileHash -LiteralPath $lfcRestoreFinalizedPath -Algorithm SHA256).Hash -ne
+                [string]$Intent.SourceRestoreFinalizedSha256) {
+            throw 'Factory-default cleanup refused to retire an unbound restore-finalized provenance.'
+        }
+        Remove-FileIfPresent -LiteralPath $lfcRestoreFinalizedPath
+    }
+    Remove-FileIfPresent -LiteralPath $lfcFactoryIntentPath
+    if ((Test-Path -LiteralPath $lfcFactoryIntentPath) -or
+        (Test-Path -LiteralPath $lfcRestoreFinalizedPath) -or
+        -not (Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf)) {
+        throw 'Intel LFC factory-default finalization could not retain one unambiguous durable provenance.'
+    }
+    return $after
+}
+
+function Activate-LfcFinalizedProvenanceForApply {
+    if (Test-Path -LiteralPath $lfcFactoryIntentPath -PathType Leaf) {
+        [void](Get-LfcFactoryIntentRecord)
+        throw 'An interrupted Intel LFC factory-default transaction must be resumed with the emergency Factory Defaults action before applying a managed profile.'
+    }
+
+    $restoreRecord = Get-LfcRestoreFinalizedRecord
+    $factoryRecord = Get-LfcFactoryFinalizedRecord
+    if ($null -ne $restoreRecord -and $null -ne $factoryRecord) {
+        throw 'Both restore-finalized and factory-finalized LFC provenance exist without an active transaction. Recovery was refused because ownership is ambiguous.'
+    }
+    $sourcePath = $null
+    $record = $null
+    if ($null -ne $restoreRecord) {
+        $sourcePath = $lfcRestoreFinalizedPath
+        $record = $restoreRecord
+        [void](Assert-LfcRestoreRecordMatchesCurrentState -Record $record)
+    }
+    elseif ($null -ne $factoryRecord) {
+        $sourcePath = $lfcFactoryFinalizedPath
+        $record = $factoryRecord
+        [void](Assert-LfcFactoryFinalizedMatchesCurrentState -Record $record)
+    }
+    else {
+        return
+    }
+
+    [IO.Directory]::CreateDirectory($lfcStateRoot) | Out-Null
+    [IO.File]::Move($sourcePath, $lfcBackupPath)
+    if (-not (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -or
+        (Test-Path -LiteralPath $sourcePath)) {
+        throw 'The finalized LFC original-state provenance could not be reactivated atomically.'
+    }
+
+    # A finalized provenance marker may come from a different previously
+    # restored ClawLab range. Rebind only its managed-mode ownership while
+    # preserving the exact original Intel flags and stable panel identity.
+    $reactivated = [IO.File]::ReadAllText($lfcBackupPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ('ManagedVrrMode' -in $reactivated.PSObject.Properties.Name) {
+        $reactivated.ManagedVrrMode = $managedModeName
+    }
+    else {
+        $reactivated | Add-Member -NotePropertyName ManagedVrrMode -NotePropertyValue $managedModeName
+    }
+    Write-LfcBackupAtomically -Backup $reactivated
+}
+
+function Assert-LfcRestoreRecordMatchesCurrentState {
+    param([Parameter(Mandatory)][object]$Record)
+
+    if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
+        throw 'Intel LFC restore cannot commit or finalize while startup persistence is still installed.'
+    }
+    $after = Get-CurrentIntelVrrState
+    $expectedHigh = if ([int]$Record.SchemaVersion -in @(2, 3, 4)) {
+        [bool]$Record.OriginalHighFpsSolutionEnabled
+    }
+    else {
+        [bool]$after.HighFpsSolutionEnabled
+    }
+    if ($after.Result -ne 'Success' -or
+        $after.LowFpsSolutionEnabled -ne [bool]$Record.OriginalLowFpsSolutionEnabled -or
+        $after.HighFpsSolutionEnabled -ne $expectedHigh) {
+        throw "Intel LFC restore verification failed because the current flags do not match the retained recovery record: $($after | ConvertTo-Json -Compress)"
+    }
+    return $after
 }
 
 function Write-LfcBackupAtomically {
@@ -488,19 +1117,46 @@ function Get-LfcBackupIdentityStatus {
 }
 
 function Get-StartupPersistenceState {
-    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
+    $task = Get-ClawLabScheduledTaskRecord -TaskName $startupTaskName
+    $payloadPaths = @(
+        $installedToolPath,
+        $installedDriverInterfacePath,
+        $installedBackupIdentityModulePath,
+        $installedEdidNormalizationModulePath,
+        $installedArcSyncRangePolicyModulePath,
+        $installedScheduledTaskPersistenceModulePath,
+        $installedLauncherPath
+    )
+    $missingPayload = @($payloadPaths | Where-Object {
+        -not (Test-Path -LiteralPath $_ -PathType Leaf)
+    })
+
     if ($null -eq $task) {
-        return 'NOT_INSTALLED'
+        if ($missingPayload.Count -eq $payloadPaths.Count) {
+            return 'NOT_INSTALLED'
+        }
+        return 'ORPHANED_PAYLOAD'
     }
-    if (-not (Test-Path -LiteralPath $installedToolPath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $installedDriverInterfacePath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $installedBackupIdentityModulePath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $installedEdidNormalizationModulePath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $installedArcSyncRangePolicyModulePath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $installedLauncherPath -PathType Leaf)) {
+    if ($missingPayload.Count -gt 0) {
         return 'INCOMPLETE'
     }
+
+    $validation = Test-ClawLabScheduledTaskRecord -Record $task -Spec (Get-StartupTaskSpec)
+    if (-not $validation.Valid) {
+        return 'INVALID_TASK_CONFIGURATION'
+    }
     return 'INSTALLED_ONE_SHOT_AT_LOGON'
+}
+
+function Get-StartupTaskSpec {
+    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    return New-ClawLabLogonTaskSpec `
+        -TaskName $startupTaskName `
+        -ExecutePath $wscriptPath `
+        -Arguments "//B //Nologo `"$installedLauncherPath`"" `
+        -Description 'Silently reapplies the selected ClawLab VRR range and Intel LFC state once at logon, then exits.' `
+        -ExecutionTimeLimitMinutes 12 `
+        -TriggerDelaySeconds 15
 }
 
 function Install-StartupPersistence {
@@ -514,6 +1170,7 @@ function Install-StartupPersistence {
     [IO.File]::Copy($backupIdentityModulePath, $installedBackupIdentityModulePath, $true)
     [IO.File]::Copy($edidNormalizationModulePath, $installedEdidNormalizationModulePath, $true)
     [IO.File]::Copy($arcSyncRangePolicyModulePath, $installedArcSyncRangePolicyModulePath, $true)
+    [IO.File]::Copy($scheduledTaskPersistenceModulePath, $installedScheduledTaskPersistenceModulePath, $true)
     [IO.File]::Copy($sourceLauncherPath, $installedLauncherPath, $true)
 
     foreach ($pair in @(
@@ -522,6 +1179,7 @@ function Install-StartupPersistence {
         @($backupIdentityModulePath, $installedBackupIdentityModulePath),
         @($edidNormalizationModulePath, $installedEdidNormalizationModulePath),
         @($arcSyncRangePolicyModulePath, $installedArcSyncRangePolicyModulePath),
+        @($scheduledTaskPersistenceModulePath, $installedScheduledTaskPersistenceModulePath),
         @($sourceLauncherPath, $installedLauncherPath)
     )) {
         if ((Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash -ne
@@ -530,32 +1188,23 @@ function Install-StartupPersistence {
         }
     }
 
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $wscriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
-    $arguments = "//B //Nologo `"$installedLauncherPath`""
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
-    $taskAction = New-ScheduledTaskAction -Execute $wscriptPath -Argument $arguments
-    $principal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4)
-    $task = New-ScheduledTask -Action $taskAction -Trigger $trigger -Principal $principal `
-        -Settings $settings -Description 'Silently reapplies the selected ClawLab VRR range and Intel LFC state once at logon, then exits.'
-    Register-ScheduledTask -TaskName $startupTaskName -InputObject $task -Force | Out-Null
+    [void](Install-ClawLabScheduledTask -Spec (Get-StartupTaskSpec))
     if ((Get-StartupPersistenceState) -ne 'INSTALLED_ONE_SHOT_AT_LOGON') {
         throw 'The one-shot startup persistence task could not be verified.'
     }
 }
 
 function Remove-StartupPersistence {
-    $task = Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue
-    if ($null -ne $task) {
-        Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction Stop
-    }
+    # The task must be confirmed absent before its executable payload is
+    # removed. This prevents an orphaned registered task from targeting files
+    # that a failed cleanup already deleted.
+    [void](Remove-ClawLabScheduledTask -Spec (Get-StartupTaskSpec) -AllowAbsent)
     Remove-FileIfPresent -LiteralPath $installedToolPath
     Remove-FileIfPresent -LiteralPath $installedDriverInterfacePath
     Remove-FileIfPresent -LiteralPath $installedBackupIdentityModulePath
     Remove-FileIfPresent -LiteralPath $installedEdidNormalizationModulePath
     Remove-FileIfPresent -LiteralPath $installedArcSyncRangePolicyModulePath
+    Remove-FileIfPresent -LiteralPath $installedScheduledTaskPersistenceModulePath
     Remove-FileIfPresent -LiteralPath $installedLauncherPath
     if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
         throw 'The one-shot startup persistence task was not fully removed.'
@@ -566,8 +1215,74 @@ $state = switch ($Action) {
     'Status' {
         $now = Get-CurrentIntelVrrState
         $statusBackupIdentity = Get-LfcBackupIdentityStatus
+        $restoreTombstonePresent = Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf
+        $restoreTombstoneRecord = if ($restoreTombstonePresent) {
+            Get-LfcRestoreCommittedRecord
+        }
+        else {
+            $null
+        }
+        $restoreFinalizedPresent = Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf
+        $restoreFinalizedRecord = if ($restoreFinalizedPresent) {
+            Get-LfcRestoreFinalizedRecord
+        }
+        else {
+            $null
+        }
+        $factoryIntentPresent = Test-Path -LiteralPath $lfcFactoryIntentPath -PathType Leaf
+        $factoryIntentRecord = if ($factoryIntentPresent) {
+            Get-LfcFactoryIntentRecord
+        }
+        else {
+            $null
+        }
+        $factoryFinalizedPresent = Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf
+        $factoryFinalizedRecord = if ($factoryFinalizedPresent) {
+            Get-LfcFactoryFinalizedRecord -ExpectedTransactionId $(
+                if ($null -eq $factoryIntentRecord) { $null } else { [string]$factoryIntentRecord.TransactionId }
+            )
+        }
+        else {
+            $null
+        }
+        if ($null -eq $factoryIntentRecord -and
+            $null -ne $restoreFinalizedRecord -and
+            $null -ne $factoryFinalizedRecord) {
+            throw 'Restore-finalized and factory-finalized LFC provenance overlap without their binding transaction intent.'
+        }
+
+        $factoryIntentStage = $null
+        $restoreFinalizedStateVerified = $false
+        if ($null -ne $factoryIntentRecord) {
+            $factoryIntentStage = Get-LfcFactoryIntentStage -Intent $factoryIntentRecord -CurrentState $now
+            if ($null -ne $factoryFinalizedRecord) {
+                [void](Assert-LfcFactoryFinalizedMatchesCurrentState -Record $factoryFinalizedRecord)
+            }
+        }
+        elseif ($null -ne $factoryFinalizedRecord) {
+            [void](Assert-LfcFactoryFinalizedMatchesCurrentState -Record $factoryFinalizedRecord)
+        }
+        elseif ($null -ne $restoreFinalizedRecord) {
+            [void](Assert-LfcRestoreRecordMatchesCurrentState -Record $restoreFinalizedRecord)
+            $restoreFinalizedStateVerified = $true
+        }
         [pscustomobject]@{
-            State = if (-not (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
+            State = if ($factoryIntentPresent -and $factoryFinalizedPresent) {
+                'INTEL_VRR_SOLUTIONS_FACTORY_DEFAULTS_FINALIZATION_PENDING'
+            }
+            elseif ($factoryIntentPresent) {
+                'INTEL_VRR_SOLUTIONS_FACTORY_DEFAULTS_PENDING_RESUME'
+            }
+            elseif ($factoryFinalizedPresent) {
+                'INTEL_VRR_SOLUTIONS_FACTORY_DEFAULTS_FINALIZED'
+            }
+            elseif ($restoreTombstonePresent) {
+                'ORIGINAL_LFC_RESTORE_COMMITTED_PENDING_FINALIZE'
+            }
+            elseif ($restoreFinalizedPresent) {
+                'ORIGINAL_LFC_RESTORE_FINALIZED'
+            }
+            elseif (-not (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
                 ($now.LowFpsSolutionEnabled -eq $false -or $now.HighFpsSolutionEnabled -eq $false)) {
                 'ORIGINAL_LFC_BACKUP_MISSING_CANNOT_RESTORE'
             }
@@ -592,11 +1307,54 @@ $state = switch ($Action) {
             }
             Current = $now
             BackupPresent = Test-Path -LiteralPath $lfcBackupPath -PathType Leaf
+            RestoreTombstonePresent = $restoreTombstonePresent
+            RestoreTombstoneSchemaVersion = if ($null -eq $restoreTombstoneRecord) {
+                0
+            }
+            else {
+                [int]$restoreTombstoneRecord.SchemaVersion
+            }
+            RestoreFinalizedPresent = $restoreFinalizedPresent
+            RestoreFinalizedVerified = $restoreFinalizedStateVerified
+            RestoreFinalizedSchemaVersion = if ($null -eq $restoreFinalizedRecord) {
+                0
+            }
+            else {
+                [int]$restoreFinalizedRecord.SchemaVersion
+            }
+            FactoryIntentPresent = $factoryIntentPresent
+            FactoryIntentVerified = $null -ne $factoryIntentRecord
+            FactoryIntentTransactionId = if ($null -eq $factoryIntentRecord) {
+                $null
+            }
+            else {
+                [string]$factoryIntentRecord.TransactionId
+            }
+            FactoryTransitionStage = if ($null -eq $factoryIntentStage) {
+                'NONE'
+            }
+            else {
+                [string]$factoryIntentStage.Stage
+            }
+            FactoryFinalizedPresent = $factoryFinalizedPresent
+            FactoryFinalizedVerified = $null -ne $factoryFinalizedRecord
+            FactoryFinalizedTransactionId = if ($null -eq $factoryFinalizedRecord) {
+                $null
+            }
+            else {
+                [string]$factoryFinalizedRecord.FactoryTransactionId
+            }
         }
     }
 
     { $_ -in @('Apply', 'ApplyStartup') } {
+        if (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf) {
+            throw 'A committed LFC restore is awaiting final verification. Complete ClawLab Recovery before applying a managed profile.'
+        }
         $startupApplication = $Action -eq 'ApplyStartup'
+        if (-not $startupApplication) {
+            Activate-LfcFinalizedProvenanceForApply
+        }
         $before = Get-CurrentIntelVrrState
         $rangeReady = Test-ManagedDirectRangeReady -State $before
         $validCustomRestartPending = -not $startupApplication -and
@@ -697,10 +1455,34 @@ $state = switch ($Action) {
         break
     }
 
-    'Restore' {
+    { $_ -in @('Restore', 'PrepareRestore') } {
         $backup = Get-LfcBackup
         if ($null -eq $backup) {
             Remove-StartupPersistence
+            $committedRecord = Get-LfcRestoreCommittedRecord
+            if ($null -ne $committedRecord) {
+                $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $committedRecord
+                [pscustomobject]@{
+                    State = 'ORIGINAL_LFC_RESTORE_COMMITTED_PENDING_FINALIZE'
+                    Current = $after
+                    BackupPresent = $false
+                    RestoreTombstonePresent = $true
+                }
+                break
+            }
+            $finalizedRecord = Get-LfcRestoreFinalizedRecord
+            if ($null -ne $finalizedRecord) {
+                $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $finalizedRecord
+                [pscustomobject]@{
+                    State = 'ORIGINAL_LFC_RESTORE_FINALIZED'
+                    Current = $after
+                    BackupPresent = $false
+                    RestoreTombstonePresent = $false
+                    RestoreFinalizedPresent = $true
+                    RestoreFinalizedVerified = $true
+                }
+                break
+            }
             $after = Get-CurrentIntelVrrState
             if (-not $after.LowFpsSolutionEnabled -or -not $after.HighFpsSolutionEnabled) {
                 throw 'The original Intel LFC backup is missing while one or both solution flags are disabled. Original values cannot be inferred. Do not delete ClawLab AppData; use EMERGENCY\SET_INTEL_LFC_FACTORY_DEFAULTS.bat only if factory defaults are explicitly intended.'
@@ -709,6 +1491,7 @@ $state = switch ($Action) {
                 State = 'ALREADY_RESTORED'
                 Current = $after
                 BackupPresent = $false
+                RestoreTombstonePresent = $false
             }
             break
         }
@@ -725,11 +1508,124 @@ $state = switch ($Action) {
                 $after.HighFpsSolutionEnabled -ne [bool]$backup.OriginalHighFpsSolutionEnabled)) {
             throw "The restored Intel state did not verify: $($after | ConvertTo-Json -Compress)"
         }
-        Remove-FileIfPresent -LiteralPath $lfcBackupPath
+        if ($Action -eq 'Restore') {
+            Remove-FileIfPresent -LiteralPath $lfcBackupPath
+        }
         [pscustomobject]@{
-            State = 'ORIGINAL_LFC_STATE_RESTORED'
+            State = if ($Action -eq 'PrepareRestore') {
+                'ORIGINAL_LFC_STATE_PREPARED_BACKUP_RETAINED'
+            }
+            else {
+                'ORIGINAL_LFC_STATE_RESTORED'
+            }
+            Current = $after
+            BackupPresent = $Action -eq 'PrepareRestore'
+            RestoreTombstonePresent = $false
+        }
+    }
+
+    'CommitRestore' {
+        $backup = Get-LfcBackup
+        if ($null -eq $backup) {
+            $committedRecord = Get-LfcRestoreCommittedRecord
+            if ($null -ne $committedRecord) {
+                $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $committedRecord
+                [pscustomobject]@{
+                    State = 'ORIGINAL_LFC_RESTORE_COMMITTED_PENDING_FINALIZE'
+                    Current = $after
+                    BackupPresent = $false
+                    RestoreTombstonePresent = $true
+                }
+                break
+            }
+            $finalizedRecord = Get-LfcRestoreFinalizedRecord
+            if ($null -ne $finalizedRecord) {
+                $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $finalizedRecord
+                [pscustomobject]@{
+                    State = 'ORIGINAL_LFC_RESTORE_FINALIZED'
+                    Current = $after
+                    BackupPresent = $false
+                    RestoreTombstonePresent = $false
+                    RestoreFinalizedPresent = $true
+                    RestoreFinalizedVerified = $true
+                }
+                break
+            }
+            $after = Get-CurrentIntelVrrState
+            if (-not $after.LowFpsSolutionEnabled -or -not $after.HighFpsSolutionEnabled -or
+                (Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
+                throw 'The LFC restore backup is absent, but the already-committed original state cannot be verified.'
+            }
+            [pscustomobject]@{
+                State = 'ORIGINAL_LFC_RESTORE_ALREADY_COMMITTED'
+                Current = $after
+                BackupPresent = $false
+                RestoreTombstonePresent = $false
+            }
+            break
+        }
+        $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $backup
+        if (Test-Path -LiteralPath $lfcRestoreCommittedPath) {
+            throw 'Intel LFC restore commit refused because a stale restore tombstone already exists.'
+        }
+        [IO.File]::Move($lfcBackupPath, $lfcRestoreCommittedPath)
+        if ((Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf)) {
+            throw 'Intel LFC restore commit could not atomically retain its recovery tombstone.'
+        }
+        [pscustomobject]@{
+            State = 'ORIGINAL_LFC_RESTORE_COMMITTED_PENDING_FINALIZE'
             Current = $after
             BackupPresent = $false
+            RestoreTombstonePresent = $true
+        }
+    }
+
+    'FinalizeRestore' {
+        if (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) {
+            throw 'Intel LFC restore cannot finalize while the active original-state backup still exists.'
+        }
+        $committedRecord = Get-LfcRestoreCommittedRecord
+        if ($null -eq $committedRecord) {
+            $finalizedRecord = Get-LfcRestoreFinalizedRecord
+            if ($null -ne $finalizedRecord) {
+                $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $finalizedRecord
+                [pscustomobject]@{
+                    State = 'ORIGINAL_LFC_RESTORE_ALREADY_FINALIZED'
+                    Current = $after
+                    BackupPresent = $false
+                    RestoreTombstonePresent = $false
+                    RestoreFinalizedPresent = $true
+                }
+                break
+            }
+            if ((Get-StartupPersistenceState) -ne 'NOT_INSTALLED') {
+                throw 'Intel LFC restore finalization found no tombstone, but startup persistence is still installed.'
+            }
+            [pscustomobject]@{
+                State = 'ORIGINAL_LFC_RESTORE_ALREADY_FINALIZED'
+                Current = Get-CurrentIntelVrrState
+                BackupPresent = $false
+                RestoreTombstonePresent = $false
+                RestoreFinalizedPresent = $false
+            }
+            break
+        }
+        $after = Assert-LfcRestoreRecordMatchesCurrentState -Record $committedRecord
+        if (Test-Path -LiteralPath $lfcRestoreFinalizedPath) {
+            throw 'Intel LFC restore finalization refused because a stale finalized provenance marker already exists.'
+        }
+        [IO.File]::Move($lfcRestoreCommittedPath, $lfcRestoreFinalizedPath)
+        if ((Test-Path -LiteralPath $lfcRestoreCommittedPath) -or
+            -not (Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf)) {
+            throw 'Intel LFC restore finalization could not atomically retain its verified provenance marker.'
+        }
+        [pscustomobject]@{
+            State = 'ORIGINAL_LFC_RESTORE_FINALIZED'
+            Current = $after
+            BackupPresent = $false
+            RestoreTombstonePresent = $false
+            RestoreFinalizedPresent = $true
         }
     }
 
@@ -737,20 +1633,61 @@ $state = switch ($Action) {
         if (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) {
             throw 'A valid original LFC backup is still present. Use RECOVERY\RESTORE_INTEL_LFC_DEFAULTS.bat so the exact saved values are restored.'
         }
-        Remove-StartupPersistence
-        Set-LowFpsSolution -Enabled $true
-        Set-HighFpsSolution -Enabled $true
-        Start-Sleep -Milliseconds 750
-        $after = Get-CurrentIntelVrrState
-        if ($after.Result -ne 'Success' -or
-            -not $after.LowFpsSolutionEnabled -or
-            -not $after.HighFpsSolutionEnabled) {
-            throw "Intel LFC factory-default verification failed: $($after | ConvertTo-Json -Compress)"
+        if (Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf) {
+            throw 'A committed LFC restore is awaiting final verification. Complete ClawLab Recovery instead of forcing factory defaults.'
         }
+
+        $factoryIntent = Get-LfcFactoryIntentRecord
+        $factoryFinalized = Get-LfcFactoryFinalizedRecord -ExpectedTransactionId $(
+            if ($null -eq $factoryIntent) { $null } else { [string]$factoryIntent.TransactionId }
+        )
+        if ($null -eq $factoryIntent -and $null -ne $factoryFinalized) {
+            if (Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf) {
+                throw 'Factory Defaults found overlapping terminal provenance without a binding transaction intent.'
+            }
+            $after = Assert-LfcFactoryFinalizedMatchesCurrentState -Record $factoryFinalized
+            [pscustomobject]@{
+                State = 'INTEL_VRR_SOLUTIONS_FACTORY_DEFAULTS_ALREADY_FINALIZED'
+                Current = $after
+                BackupPresent = $false
+                RestoreTombstonePresent = $false
+                RestoreFinalizedPresent = $false
+                FactoryIntentPresent = $false
+                FactoryFinalizedPresent = $true
+                FactoryFinalizedVerified = $true
+            }
+            break
+        }
+
+        Remove-StartupPersistence
+        if ($null -eq $factoryIntent) {
+            $finalizedRecord = Get-LfcRestoreFinalizedRecord
+            if ($null -ne $finalizedRecord) {
+                [void](Assert-LfcRestoreRecordMatchesCurrentState -Record $finalizedRecord)
+            }
+            $before = Get-CurrentIntelVrrState
+            if ($before.Result -ne 'Success') {
+                throw 'Intel LFC factory defaults could not read the original driver flags.'
+            }
+
+            # Persist and verify the exact source identity and target true/true
+            # before the first driver setter. Every subsequent driver state must
+            # be a safe prefix of this retained transaction.
+            $factoryIntentValue = New-LfcFactoryIntentRecord `
+                -CurrentState $before -RestoreFinalizedRecord $finalizedRecord
+            Write-LfcJsonFileAtomically -LiteralPath $lfcFactoryIntentPath -Value $factoryIntentValue
+            $factoryIntent = Get-LfcFactoryIntentRecord
+        }
+        $after = Complete-LfcFactoryDefaultsTransaction -Intent $factoryIntent
         [pscustomobject]@{
             State = 'INTEL_VRR_SOLUTIONS_FACTORY_DEFAULTS_APPLIED'
             Current = $after
             BackupPresent = $false
+            RestoreTombstonePresent = $false
+            RestoreFinalizedPresent = $false
+            FactoryIntentPresent = $false
+            FactoryFinalizedPresent = $true
+            FactoryFinalizedVerified = $true
         }
     }
 }
@@ -770,6 +1707,10 @@ $finalBackupIdentity = Get-LfcBackupIdentityStatus
     ThirdPartyEdidOverrideValues = if ($thirdPartyOverrideValueNames.Count -eq 0) { 'NONE' } else { $thirdPartyOverrideValueNames -join ', ' }
     LfcBackupIdentity = $finalBackupIdentity
     LfcTransition = $state
+    RestoreTombstonePresent = Test-Path -LiteralPath $lfcRestoreCommittedPath -PathType Leaf
+    RestoreFinalizedPresent = Test-Path -LiteralPath $lfcRestoreFinalizedPath -PathType Leaf
+    FactoryIntentPresent = Test-Path -LiteralPath $lfcFactoryIntentPath -PathType Leaf
+    FactoryFinalizedPresent = Test-Path -LiteralPath $lfcFactoryFinalizedPath -PathType Leaf
     StartupPersistence = Get-StartupPersistenceState
     LfcFixActive = $null -ne $managedProfile -and
         (Test-Path -LiteralPath $lfcBackupPath -PathType Leaf) -and
@@ -778,4 +1719,11 @@ $finalBackupIdentity = Get-LfcBackupIdentityStatus
         (Test-ManagedDirectRangeReady -State $state.Current) -and
         (-not [bool]$state.Current.LowFpsSolutionEnabled) -and
         (-not [bool]$state.Current.HighFpsSolutionEnabled)
+}
+}
+finally {
+    if ($Action -eq 'ApplyStartup') {
+        Exit-LfcStartupApplyMutex
+        Exit-LfcStartupTransactionMutex
+    }
 }

@@ -1,271 +1,240 @@
 [CmdletBinding()]
 param()
 
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 $packageRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$runtimeRoot = if (Test-Path -LiteralPath (Join-Path $packageRoot 'scripts\MSI-Claw-VRR-Fix.ps1') -PathType Leaf) {
+$isPackagedLayout = Test-Path -LiteralPath (Join-Path $packageRoot 'scripts\ClawLab-VRR-Transaction.ps1') -PathType Leaf
+$runtimeRoot = if ($isPackagedLayout) {
     Join-Path $packageRoot 'scripts'
 }
 else {
     $packageRoot
 }
 
-function Assert-Contains {
+function Assert-Test {
     param(
-        [Parameter(Mandatory)][string]$Text,
-        [Parameter(Mandatory)][string]$Marker,
-        [Parameter(Mandatory)][string]$Label
+        [Parameter(Mandatory = $true)][bool]$Condition,
+        [Parameter(Mandatory = $true)][string]$Message
     )
-    if ($Text -notmatch [regex]::Escape($Marker)) {
-        throw "$Label is missing: $Marker"
-    }
+    if (-not $Condition) { throw $Message }
 }
 
-function Assert-Ordered {
+function Get-TextSection {
     param(
-        [Parameter(Mandatory)][string]$Text,
-        [Parameter(Mandatory)][string[]]$Markers,
-        [Parameter(Mandatory)][string]$Label
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$StartMarker,
+        [Parameter(Mandatory = $true)][string]$EndMarker
     )
-    $last = -1
-    foreach ($marker in $Markers) {
-        $position = $Text.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase)
-        if ($position -lt 0 -or $position -le $last) {
-            throw "$Label has an invalid guard/action order at: $marker"
-        }
-        $last = $position
-    }
+
+    $start = $Text.IndexOf($StartMarker, [StringComparison]::Ordinal)
+    Assert-Test -Condition ($start -ge 0) -Message "Missing section start: $StartMarker"
+    $end = $Text.IndexOf($EndMarker, $start + $StartMarker.Length, [StringComparison]::Ordinal)
+    Assert-Test -Condition ($end -gt $start) -Message "Missing section end after ${StartMarker}: $EndMarker"
+    return $Text.Substring($start, $end - $start)
 }
 
-function Get-LiteralStringArrayAssignment {
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$VariableName
-    )
+function Get-LiteralValidateSet {
+    param([Parameter(Mandatory = $true)][string]$Path)
 
     $tokens = $null
     $parseErrors = $null
     $ast = [Management.Automation.Language.Parser]::ParseFile(
         [IO.Path]::GetFullPath($Path), [ref]$tokens, [ref]$parseErrors)
-    if (@($parseErrors).Count -gt 0) {
-        throw "Cannot parse $Path while validating protected runtime payloads."
-    }
-    $assignments = @($ast.FindAll({
-                param($node)
-                $node -is [Management.Automation.Language.AssignmentStatementAst] -and
-                $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and
-                $node.Left.VariablePath.UserPath -ceq $VariableName
-            }, $true))
-    if ($assignments.Count -ne 1) {
-        throw "Expected one literal assignment for $VariableName in $Path; found $($assignments.Count)."
-    }
-    return @($assignments[0].Right.FindAll({
-                param($node)
-                $node -is [Management.Automation.Language.StringConstantExpressionAst]
-            }, $true) | ForEach-Object { [string]$_.Value })
+    Assert-Test -Condition (@($parseErrors).Count -eq 0) `
+        -Message "Cannot parse coordinator while reading its action contract: $Path"
+
+    $actionParameter = @($ast.ParamBlock.Parameters | Where-Object {
+            $_.Name.VariablePath.UserPath -ceq 'Action'
+        })
+    Assert-Test -Condition ($actionParameter.Count -eq 1) `
+        -Message 'The coordinator must expose exactly one Action parameter.'
+    $validateSet = @($actionParameter[0].Attributes | Where-Object {
+            $_.TypeName.Name -ceq 'ValidateSet'
+        })
+    Assert-Test -Condition ($validateSet.Count -eq 1) `
+        -Message 'The coordinator Action parameter must have one literal ValidateSet.'
+    return @($validateSet[0].PositionalArguments | ForEach-Object {
+            [string]$_.SafeGetValue()
+        })
 }
 
-$commonPreflight = @(
-    'IMPORTANT VERSION UPGRADE',
-    '2.2.0 or any older release',
-    'refuses to overwrite an older managed installation',
-    'reset-all.exe',
-    'If CRU has never been used',
-    'ClawTweaks',
-    '3.0 or later',
-    'optional and is not required',
-    'ClawLab VRR compatibility patch'
-)
+$coordinatorPath = Join-Path $runtimeRoot 'ClawLab-VRR-Transaction.ps1'
+Assert-Test -Condition (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) `
+    -Message 'ClawLab-VRR-Transaction.ps1 is missing.'
+$coordinatorText = [IO.File]::ReadAllText($coordinatorPath, [Text.Encoding]::UTF8)
 
-$stableProfiles = @(
-    [pscustomobject]@{ File = 'INSTALL_30_120_VRR.bat'; Action = 'Install30' },
-    [pscustomobject]@{ File = 'INSTALL_48_120_VRR.bat'; Action = 'Install48' }
-)
-foreach ($profile in $stableProfiles) {
-    $path = Join-Path $packageRoot $profile.File
-    $text = Get-Content -LiteralPath $path -Raw
-    foreach ($marker in $commonPreflight + @('VRR ownership preflight', 'MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply')) {
-        Assert-Contains -Text $text -Marker $marker -Label $profile.File
-    }
-    Assert-Ordered -Text $text -Label $profile.File -Markers @(
-        'IMPORTANT CRU preflight',
-        'Has CRU never been used',
-        'IMPORTANT VRR ownership preflight',
-        'Is every conflicting VRR/EDID tool disabled or removed',
-        "MSI-Claw-VRR-Fix.ps1`" -Action $($profile.Action)",
-        'MSI-Claw-Intel-LFC-Fix.ps1" -Action Apply',
-        'Restart the PC now?'
-    )
-}
-
-$experimentalProfiles = @(
-    [pscustomobject]@{ File = 'INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat'; Action = 'Install48_144'; Mode = 'CLAWLAB_48_144'; Classification = 'STABLE EXPERIMENTAL'; Minimum = 48; Maximum = 144 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat'; Action = 'Install48_165'; Mode = 'CLAWLAB_48_165'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 48; Maximum = 165 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat'; Action = 'Install48_180'; Mode = 'CLAWLAB_48_180'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 48; Maximum = 180 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat'; Action = 'Install48_192'; Mode = 'CLAWLAB_48_192'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 48; Maximum = 192 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat'; Action = 'Install30_144'; Mode = 'CLAWLAB_30_144'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 144 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat'; Action = 'Install30_165'; Mode = 'CLAWLAB_30_165'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 165 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat'; Action = 'Install30_180'; Mode = 'CLAWLAB_30_180'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 180 },
-    [pscustomobject]@{ File = 'INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat'; Action = 'Install30_192'; Mode = 'CLAWLAB_30_192'; Classification = 'UNSTABLE EXPERIMENTAL'; Minimum = 30; Maximum = 192 }
-)
-foreach ($profile in $experimentalProfiles) {
-    $relativePath = Join-Path 'EXPERIMENTAL' $profile.File
-    $path = Join-Path $packageRoot $relativePath
-    $text = Get-Content -LiteralPath $path -Raw
-    foreach ($marker in $commonPreflight + @(
-            'DISPLAY OVERCLOCK',
-            "Profile: $($profile.Minimum)-$($profile.Maximum) Hz - $($profile.Classification)",
-            'silicon lottery',
-            'Has CRU never been used, or was reset-all.exe followed by a restart?',
-            'Is every conflicting VRR/EDID tool disabled or removed?',
-            'timeout /t 10 /nobreak',
-            'I ACCEPT THE OVERCLOCK RISK',
-            '15 SECONDS',
-            'DO NOT POWER OFF OR REBOOT',
-            'Disconnect every external display',
-            "MSI-Claw-VRR-Fix.ps1`" -Action $($profile.Action)",
-            'if errorlevel 1 goto :failed'
-        )) {
-        Assert-Contains -Text $text -Marker $marker -Label $profile.File
-    }
-    Assert-Ordered -Text $text -Label $profile.File -Markers @(
-        'Has CRU never been used, or was reset-all.exe followed by a restart?',
-        'Is every conflicting VRR/EDID tool disabled or removed?',
-        'timeout /t 10 /nobreak',
-        'I ACCEPT THE OVERCLOCK RISK',
-        "MSI-Claw-VRR-Fix.ps1`" -Action $($profile.Action)",
-        'Restart the PC now?'
-    )
-    if ($text -match '(?i)Install24|24[-_]120') {
-        throw "$($profile.File) exposes a forbidden 24 Hz profile."
-    }
-}
-$mainVrr = Get-Content -LiteralPath (Join-Path $runtimeRoot 'MSI-Claw-VRR-Fix.ps1') -Raw
 foreach ($marker in @(
-        "& `$trialSchedulerPath -Action Schedule -Mode `$DesiredState",
-        'try { Remove-ExperimentalOverclockTrial }',
-        '$backupPath,',
-        "(Join-Path `$stateRoot 'MSI-Claw-Intel-LFC-Fix.ps1')",
-        'ClawLab-VRR-Privileged\2.2.1',
-        'Assert-ProtectedRuntimeIntegrity',
-        'protected-runtime.json',
-        'Remove-ProtectedExperimentalRuntime',
-        "& `$protectedLfcToolPath -Action Apply",
-        'LfcFixActive'
-        'OLDER_VERSION_RESTORE_REQUIRED'
+        "`$script:CoordinatorVersion = '2.3.0'",
+        "`$script:StableActions = @('Install30', 'Install48')",
+        'VRR_AND_LFC_VERIFIED',
+        'Invoke-ClawLabExactRestore',
+        'Invoke-ClawLabInstallRollback',
+        'I ACCEPT THE OVERCLOCK RISK',
+        '[Console]::ReadKey($true)',
+        '$readingSeconds = 10',
+        'Start-Sleep -Seconds 1',
+        'ClawLab-Localization.ps1'
     )) {
-    Assert-Contains -Text $mainVrr -Marker $marker -Label 'Atomic experimental install transaction'
+    Assert-Test -Condition ($coordinatorText.Contains($marker)) `
+        -Message "The coordinator is missing a public safety marker: $marker"
 }
+Assert-Test -Condition ([regex]::Matches($coordinatorText, '(?i)-Verb\s+RunAs').Count -eq 1) `
+    -Message 'The coordinator must own exactly one UAC boundary.'
+Assert-Test -Condition ($coordinatorText -notmatch '(?i)(^|[^0-9])24[-_]120([^0-9]|$)') `
+    -Message 'The coordinator exposes a forbidden 24-120 profile.'
+Assert-Test -Condition ($coordinatorText -notmatch '(?i)(^|[^0-9])15[-_]120([^0-9]|$)') `
+    -Message 'The coordinator exposes a forbidden 15-120 profile.'
 
 $trialPath = Join-Path $runtimeRoot 'Experimental-Overclock-VRR-Trial.ps1'
-$trial = Get-Content -LiteralPath $trialPath -Raw
-$protectedMainPayload = @(Get-LiteralStringArrayAssignment `
-        -Path (Join-Path $runtimeRoot 'MSI-Claw-VRR-Fix.ps1') `
-        -VariableName 'protectedRuntimePayloadNames')
-$protectedTrialPayload = @(Get-LiteralStringArrayAssignment -Path $trialPath -VariableName 'protectedPayload')
-$protectedTrialExpected = @(Get-LiteralStringArrayAssignment -Path $trialPath -VariableName 'expectedFiles')
-$expectedProtectedPayload = @(
-    'MSI-Claw-VRR-Fix.ps1',
-    'Edid-Normalization.ps1',
-    'ArcSync-Range-Policy.ps1',
-    'ClawLab-VRR-Startup.vbs',
-    'ClawLab-Cursor-Refresh-Helper.exe',
-    'MSI-Claw-Intel-LFC-Fix.ps1',
-    'Intel-VRR-LFC-Driver-Interface.ps1',
-    'Lfc-Backup-Identity.ps1',
-    'ClawLab-LFC-Startup.vbs',
-    'Experimental-Overclock-VRR-Trial.ps1',
-    'ClawLab-Experimental-Trial-Startup.vbs'
-)
-$expectedPayloadKey = (@($expectedProtectedPayload | Sort-Object) -join '|')
-foreach ($payload in @($protectedMainPayload, $protectedTrialPayload, $protectedTrialExpected)) {
-    if ($payload.Count -ne $expectedProtectedPayload.Count -or
-        (@($payload | Sort-Object) -join '|') -cne $expectedPayloadKey) {
-        throw 'Protected runtime payload definitions are not identical and complete.'
-    }
-}
-if ($mainVrr -notmatch 'Assert-ProtectedRuntimeIntegrity\s*\r?\nforeach \(\$requiredModule') {
-    throw 'Protected main runtime integrity is not verified before module loading.'
-}
-if ($trial -notmatch 'Assert-ProtectedRuntimeIntegrity\s*\r?\n\$trial = Read-JsonFile') {
-    throw 'Protected trial integrity is not verified before trial-state processing.'
-}
+Assert-Test -Condition (Test-Path -LiteralPath $trialPath -PathType Leaf) `
+    -Message 'Experimental-Overclock-VRR-Trial.ps1 is missing.'
+$trialText = [IO.File]::ReadAllText($trialPath, [Text.Encoding]::UTF8)
 foreach ($marker in @(
-        "`$fixVersion = '2.2.1'",
-        "'STABLE_EXPERIMENTAL'",
-        "'UNSTABLE_EXPERIMENTAL'",
-        'ObservationSeconds = 15',
-        'TimeoutSeconds 15',
-        "-ToolAction 'SetSafe120ForTrial'",
-        'TimeoutSeconds 30',
-        '$answer -eq 6',
-        'Confirm-AdministratorOrRelaunch',
-        '-RunLevel Limited',
-        'ClawLab-VRR-Privileged\2.2.1',
-        'Initialize-ProtectedRuntimeDirectory',
-        'DirectorySecurity',
-        'Write-ProtectedRuntimeManifest',
-        'Assert-ProtectedRuntimeIntegrity',
-        "-ToolAction 'ConfirmExperimentalTrial'",
-        "-ToolAction 'Restore'",
-        'Restart-AfterTrial'
-)) {
-    Assert-Contains -Text $trial -Marker $marker -Label 'Guarded trial runtime'
-}
-if ($trial -match [regex]::Escape('-RunLevel Highest')) {
-    throw 'Guarded trial runtime schedules a user-writable script at Highest privilege.'
-}
-if (([regex]::Matches($trial, 'Confirm-AdministratorOrRelaunch')).Count -ne 2) {
-    throw 'Guarded trial elevation is not restricted to its definition and Schedule action.'
-}
-foreach ($unsafeTimeout in @(
-        "-ToolAction 'ConfirmExperimentalTrial' -TimeoutSeconds",
-        "-ToolPath `$installedVrrToolPath -ToolAction 'Restore' -TimeoutSeconds",
-        '-ExecutionTimeLimit'
+        "`$fixVersion = '2.3.0'",
+        'ObservationSeconds = $trialObservationSeconds',
+        "-ToolAction 'ApplyExperimentalTrial' -TimeoutSeconds 15",
+        'Invoke-ExperimentalObservationUi -Trial $trial',
+        "-ToolAction 'VerifyExperimentalTrial' -TimeoutSeconds 15",
+        "-ToolAction 'SetSafe120ForTrial' -TimeoutSeconds 15",
+        "Get-ClawLabString -Key 'experimental_trial_confirmation'",
+        '$trial.UserConfirmed = $true',
+        "Set-TrialLifecycleState -Trial `$trial -LifecycleState 'CONFIRMING'",
+        'Invoke-BoundElevatedTrialConfirmation -Trial $trial',
+        '& $toolPath -Action ConfirmExperimentalTrial',
+        "Get-ClawLabString -Key 'experimental_declined'"
     )) {
-    if ($trial -match [regex]::Escape($unsafeTimeout)) {
-        throw "Guarded trial can force-terminate an elevation-sensitive action: $unsafeTimeout"
-    }
+    Assert-Test -Condition ($trialText.Contains($marker)) `
+        -Message "The guarded trial is missing a safety/localization marker: $marker"
 }
-$trialLauncher = Get-Content -LiteralPath (Join-Path $runtimeRoot 'ClawLab-Experimental-Trial-Startup.vbs') -Raw
-foreach ($marker in @('WScript.ScriptFullName', 'Experimental-Overclock-VRR-Trial.ps1')) {
-    Assert-Contains -Text $trialLauncher -Marker $marker -Label 'Protected guarded-trial launcher'
-}
-if ($trialLauncher -match [regex]::Escape('%LOCALAPPDATA%')) {
-    throw 'The guarded-trial task launcher still executes a user-writable LocalAppData script.'
-}
-$healthScript = Get-Content -LiteralPath (Join-Path $runtimeRoot 'ClawLab-Health-Check.ps1') -Raw
-if ($healthScript -match '(?m)^\s*exit\s+0\s*$') {
-    throw 'Health-check failure paths can terminate the parent diagnostics host.'
-}
-if ($mainVrr -notmatch '(?s)Write-Host "ERROR:.*?# Preserve a non-zero exit.*?\r?\n\s*throw\s*\r?\n\}') {
-    throw 'VRR failures are not catchable by health and JSON diagnostic callers.'
-}
-foreach ($marker in @(
-        'ActiveDisplayCount()',
-        'Exactly one active display is required',
-        'ClawLab.MSIClaw.VrrApplyStartup',
-        'Enter-StartupApplyMutex',
-        'Exit-StartupApplyMutex'
-    )) {
-    Assert-Contains -Text $mainVrr `
-        -Marker $marker -Label 'Guarded display-target isolation'
-}
-Assert-Ordered -Text $trial -Label 'Guarded trial success path' -Markers @(
-    "-ToolAction 'ApplyExperimentalTrial'",
-    "-ToolAction 'SetSafe120ForTrial'",
+$trialRun = Get-TextSection -Text $trialText `
+    -StartMarker 'function Invoke-GuardedTrialRun {' -EndMarker '$trialExitCode = 1'
+$trialOrder = @(
+    '$readyAnswer = Show-Message',
+    "-ToolAction 'ApplyExperimentalTrial' -TimeoutSeconds 15",
+    'Invoke-ExperimentalObservationUi -Trial $trial',
+    "-ToolAction 'VerifyExperimentalTrial' -TimeoutSeconds 15",
+    "-ToolAction 'SetSafe120ForTrial' -TimeoutSeconds 15",
+    "Set-TrialLifecycleState -Trial `$trial -LifecycleState 'AWAITING_CONFIRMATION'",
     '$answer = Show-Message',
-    'Set-TrialConfirmation -Confirmed $true',
-    "-ToolAction 'ConfirmExperimentalTrial'"
+    '$trial.UserConfirmed = $true',
+    "Set-TrialLifecycleState -Trial `$trial -LifecycleState 'CONFIRMING'",
+    'Invoke-BoundElevatedTrialConfirmation -Trial $trial'
 )
+$previousPosition = -1
+foreach ($marker in $trialOrder) {
+    $position = $trialRun.IndexOf($marker, [StringComparison]::Ordinal)
+    Assert-Test -Condition ($position -gt $previousPosition) `
+        -Message "The guarded trial action order is invalid at: $marker"
+    $previousPosition = $position
+}
+Assert-Test -Condition (-not $trialRun.Contains("-ToolAction 'ConfirmExperimentalTrial'")) `
+    -Message 'The guarded trial Run path bypasses the bound elevated confirmation bootstrap.'
+Assert-Test -Condition ($trialText -notmatch [regex]::Escape("-ToolAction 'ConfirmExperimentalTrial' -TimeoutSeconds")) `
+    -Message 'The guarded trial may not force-terminate persistence while UAC is pending.'
+
+$launcherActions = [ordered]@{
+    'CHECK_STATUS.bat' = 'CheckStatus'
+    'UPDATE_CURSOR_REFRESH_ENGINE.bat' = 'UpdateCursorHelper'
+    'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat' = 'CollectDiagnostics'
+    'EXPORT_STATUS_REPORT.bat' = 'ExportStatus'
+    'INSTALL_30_120_VRR.bat' = 'Install30'
+    'INSTALL_48_120_VRR.bat' = 'Install48'
+    'RESTORE_ORIGINAL_VRR.bat' = 'Restore'
+    'RESTORE_INTEL_LFC_DEFAULTS.bat' = 'RestoreLfcOnly'
+    'FACTORY_RESET_CLAWLAB_VRR.bat' = 'FactoryReset'
+    'EMERGENCY_REMOVE_CLAWLAB_EDID.bat' = 'EmergencyRestoreEdid'
+    'SET_INTEL_LFC_FACTORY_DEFAULTS.bat' = 'FactoryLfcDefaults'
+    'EXPERIMENTAL\INSTALL_STABLE_EXPERIMENTAL_48_144_VRR.bat' = 'Install48_144'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_144_VRR.bat' = 'Install30_144'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_165_VRR.bat' = 'Install30_165'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_180_VRR.bat' = 'Install30_180'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_30_192_VRR.bat' = 'Install30_192'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_165_VRR.bat' = 'Install48_165'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_180_VRR.bat' = 'Install48_180'
+    'EXPERIMENTAL\INSTALL_UNSTABLE_EXPERIMENTAL_48_192_VRR.bat' = 'Install48_192'
+}
+$packagedLauncherDirectories = @{
+    'COLLECT_UNSUPPORTED_CLAW_DISPLAY.bat' = 'DIAGNOSTICS'
+    'EXPORT_STATUS_REPORT.bat' = 'DIAGNOSTICS'
+    'RESTORE_ORIGINAL_VRR.bat' = 'RECOVERY'
+    'RESTORE_INTEL_LFC_DEFAULTS.bat' = 'RECOVERY'
+    'FACTORY_RESET_CLAWLAB_VRR.bat' = 'EMERGENCY'
+    'EMERGENCY_REMOVE_CLAWLAB_EDID.bat' = 'EMERGENCY'
+    'SET_INTEL_LFC_FACTORY_DEFAULTS.bat' = 'EMERGENCY'
+}
+
+$allowedActions = @(Get-LiteralValidateSet -Path $coordinatorPath)
+foreach ($entry in $launcherActions.GetEnumerator()) {
+    $relativeLauncherPath = [string]$entry.Key
+    if ($isPackagedLayout -and $packagedLauncherDirectories.ContainsKey($relativeLauncherPath)) {
+        $relativeLauncherPath = Join-Path $packagedLauncherDirectories[$relativeLauncherPath] $relativeLauncherPath
+    }
+    $launcherPath = Join-Path $packageRoot $relativeLauncherPath
+    Assert-Test -Condition (Test-Path -LiteralPath $launcherPath -PathType Leaf) `
+        -Message "Public launcher is missing: $relativeLauncherPath"
+    Assert-Test -Condition ([string]$entry.Value -in $allowedActions) `
+        -Message "Launcher action is not accepted by the coordinator: $($entry.Value)"
+
+    $launcher = [IO.File]::ReadAllText($launcherPath, [Text.Encoding]::Default)
+    Assert-Test -Condition ([regex]::Matches($launcher,
+            '(?im)^set "CLAWLAB_POWERSHELL=%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe"\s*$').Count -eq 1) `
+        -Message "Public launcher does not pin Windows PowerShell by absolute System32 path: $($entry.Key)"
+    Assert-Test -Condition ([regex]::Matches($launcher,
+            '(?im)^if not exist "%CLAWLAB_POWERSHELL%" exit /b 1\s*$').Count -eq 1) `
+        -Message "Public launcher does not fail closed when Windows PowerShell is absent: $($entry.Key)"
+    Assert-Test -Condition ([regex]::Matches($launcher,
+            '(?im)^"%CLAWLAB_POWERSHELL%"\s').Count -eq 1) `
+        -Message "Public launcher must invoke the pinned Windows PowerShell exactly once: $($entry.Key)"
+    Assert-Test -Condition ($launcher -notmatch '(?im)^\s*powershell(?:\.exe)?\s') `
+        -Message "Public launcher still resolves PowerShell through PATH: $($entry.Key)"
+    Assert-Test -Condition ($launcher -match ('(?i)-Action\s+' + [regex]::Escape([string]$entry.Value) + '(?:\s|$)')) `
+        -Message "Public launcher routes to the wrong action: $($entry.Key)"
+    Assert-Test -Condition ($launcher -match 'ClawLab-VRR-Transaction\.ps1') `
+        -Message "Public launcher bypasses the coordinator: $($entry.Key)"
+    Assert-Test -Condition ($launcher -notmatch '(?i)MSI-Claw-(?:VRR|Intel-LFC)-Fix\.ps1') `
+        -Message "Public launcher invokes a core mutator directly: $($entry.Key)"
+    Assert-Test -Condition ($launcher -notmatch '(?im)^\s*(?:choice|set\s+/p|pause|timeout|shutdown(?:\.exe)?)\b') `
+        -Message "Public launcher contains a legacy prompt or restart side effect: $($entry.Key)"
+    Assert-Test -Condition ($launcher -notmatch '(?im)^\s*echo\s+[^.]') `
+        -Message "Public launcher contains user-facing text outside localization: $($entry.Key)"
+    Assert-Test -Condition ((Get-Content -LiteralPath $launcherPath).Count -le 10) `
+        -Message "Public launcher is no longer a thin wrapper: $($entry.Key)"
+}
+
+$stableActions = @('Install30', 'Install48')
+$experimentalActions = @(
+    'Install48_144', 'Install48_165', 'Install48_180', 'Install48_192',
+    'Install30_144', 'Install30_165', 'Install30_180', 'Install30_192'
+)
+$profileActions = @($launcherActions.Values | Where-Object { $_ -like 'Install*' })
+Assert-Test -Condition (@(Compare-Object -ReferenceObject @($stableActions + $experimentalActions) `
+            -DifferenceObject $profileActions).Count -eq 0) `
+    -Message 'The public launcher matrix does not expose exactly the ten approved profiles.'
+
+$selectorPath = Join-Path $packageRoot 'SELECT_LANGUAGE.bat'
+Assert-Test -Condition (Test-Path -LiteralPath $selectorPath -PathType Leaf) `
+    -Message 'SELECT_LANGUAGE.bat is missing from the public package root.'
+$selector = [IO.File]::ReadAllText($selectorPath, [Text.Encoding]::Default)
+Assert-Test -Condition ($selector -match '(?im)^set "CLAWLAB_POWERSHELL=%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe"\s*$' -and
+    $selector -match '(?im)^if not exist "%CLAWLAB_POWERSHELL%" exit /b 1\s*$' -and
+    $selector -match '(?im)^"%CLAWLAB_POWERSHELL%"\s') `
+    -Message 'SELECT_LANGUAGE.bat does not fail closed around the absolute Windows PowerShell path.'
+Assert-Test -Condition ($selector -notmatch '(?im)^\s*powershell(?:\.exe)?\s') `
+    -Message 'SELECT_LANGUAGE.bat still resolves PowerShell through PATH.'
+Assert-Test -Condition ($selector -match 'Select-ClawLab-Language\.ps1') `
+    -Message 'SELECT_LANGUAGE.bat does not route to the language selector.'
+Assert-Test -Condition ($selector -notmatch '(?i)MSI-Claw-(?:VRR|Intel-LFC)-Fix\.ps1') `
+    -Message 'SELECT_LANGUAGE.bat must never invoke a VRR/LFC mutator.'
 
 [pscustomobject]@{
     Result = 'PASS'
-    StableInstallers = $stableProfiles.Count
-    ExperimentalInstallers = $experimentalProfiles.Count
-    LfcIntegratedProfiles = $stableProfiles.Count + $experimentalProfiles.Count
+    StableInstallers = $stableActions.Count
+    ExperimentalInstallers = $experimentalActions.Count
+    LfcIntegratedProfiles = $stableActions.Count + $experimentalActions.Count
+    RoutedLaunchers = $launcherActions.Count
+    CoordinatorActions = $allowedActions.Count
     GuardedTrialOrder = 'PASS'
-    Forbidden24HzProfiles = 0
+    ForbiddenTelemetryOnlyProfiles = 0
 }
